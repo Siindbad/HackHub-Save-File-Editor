@@ -1,5 +1,8 @@
 THE EXE FILES WILL BE LOCATED IN THE DIST FOLDER
+
 https://github.com/Siindbad/HackHub-Save-File-Editor/tree/main/dist
+
+I'll Also add them into the "Releases" Eventually
 
 
 		[ USAGE ]
