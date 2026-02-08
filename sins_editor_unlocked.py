@@ -17,6 +17,7 @@ class JsonEditor:
     GITHUB_OWNER = "Siindbad"
     GITHUB_REPO = "HackHub-Save-File-Editor"
     GITHUB_ASSET_NAME = "sins_editor_unlocked.exe"
+    GITHUB_RELEASE_TAG = "v1.0.0.unlock"
     GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
 
     def __init__(self, root, path):
@@ -124,7 +125,7 @@ class JsonEditor:
         def worker():
             try:
                 self._set_status("Checking for updates...")
-                release = self._fetch_latest_release()
+                release = self._fetch_release()
                 if not release:
                     self._set_status("")
                     if not auto:
@@ -174,9 +175,10 @@ class JsonEditor:
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _fetch_latest_release(self):
+    def _fetch_release(self):
         url = (
-            f"https://api.github.com/repos/{self.GITHUB_OWNER}/{self.GITHUB_REPO}/releases/latest"
+            f"https://api.github.com/repos/{self.GITHUB_OWNER}/{self.GITHUB_REPO}"
+            f"/releases/tags/{self.GITHUB_RELEASE_TAG}"
         )
         headers = {"Accept": "application/vnd.github+json", "User-Agent": "sins-editor"}
         token = os.getenv(self.GITHUB_TOKEN_ENV, "").strip()
