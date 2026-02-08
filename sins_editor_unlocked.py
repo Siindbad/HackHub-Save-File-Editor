@@ -5,11 +5,20 @@ import gzip
 import shutil
 import subprocess
 import tempfile
+import threading
 import tkinter as tk
+import urllib.error
+import urllib.request
 from tkinter import filedialog, messagebox, ttk
 
 
 class JsonEditor:
+    APP_VERSION = "1.0.0"
+    GITHUB_OWNER = "Siindbad"
+    GITHUB_REPO = "HackHub-Save-File-Editor"
+    GITHUB_ASSET_NAME = "sins_editor_unlocked.exe"
+    GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
+
     def __init__(self, root, path):
         self.root = root
         self.root.title("SIINDBAD's HackHub Editor")
@@ -49,6 +58,9 @@ class JsonEditor:
         ttk.Button(top, text="Open", command=self.open_file).pack(side="left")
         ttk.Button(top, text="Apply Edit", command=self.apply_edit).pack(side="left", padx=(6, 0))
         ttk.Button(top, text="Export .hhsav", command=self.export_hhsave).pack(side="left", padx=(6, 0))
+        ttk.Button(top, text="Update", command=self.check_for_updates_manual).pack(
+            side="left", padx=(6, 0)
+        )
 
         find_frame = ttk.Frame(top)
         find_frame.pack(side="left", padx=(12, 0))
@@ -84,6 +96,161 @@ class JsonEditor:
         text_scroll.pack(fill="y", side="right")
         self.text.configure(yscrollcommand=text_scroll.set)
         self._style_text_widget()
+
+        self.root.after(500, self.check_for_updates_auto)
+
+    def check_for_updates_auto(self):
+        self._check_for_updates(auto=True)
+
+    def check_for_updates_manual(self):
+        self._check_for_updates(auto=False)
+
+    def _check_for_updates(self, auto=False):
+        if not getattr(sys, "frozen", False):
+            if not auto:
+                messagebox.showinfo(
+                    "Update",
+                    "Update checks are only available in the built .exe.",
+                )
+            return
+        if self.GITHUB_OWNER == "YOUR_GITHUB_USERNAME" or self.GITHUB_REPO == "YOUR_REPO_NAME":
+            if not auto:
+                messagebox.showinfo(
+                    "Update",
+                    "Set GITHUB_OWNER and GITHUB_REPO in the source to enable updates.",
+                )
+            return
+
+        def worker():
+            try:
+                self._set_status("Checking for updates...")
+                release = self._fetch_latest_release()
+                if not release:
+                    self._set_status("")
+                    if not auto:
+                        messagebox.showinfo("Update", "No release info available.")
+                    return
+
+                latest_version = self._release_version(release.get("tag_name") or "")
+                current_version = self._release_version(self.APP_VERSION)
+                if latest_version == current_version:
+                    self._set_status("Up to date.")
+                    if not auto:
+                        messagebox.showinfo("Update", "You're already on the latest version.")
+                    return
+
+                asset = self._find_asset(release.get("assets") or [])
+                if not asset:
+                    self._set_status("")
+                    if not auto:
+                        messagebox.showwarning(
+                            "Update",
+                            f"Release found, but no asset named {self.GITHUB_ASSET_NAME}.",
+                        )
+                    return
+
+                prompt = (
+                    f"Update available: {release.get('tag_name', 'new version')}.\n"
+                    "Download and install now?"
+                )
+                if not messagebox.askyesno("Update", prompt):
+                    self._set_status("")
+                    return
+
+                self._set_status("Downloading update...")
+                download_url = asset.get("browser_download_url")
+                if not download_url:
+                    raise RuntimeError("Missing download URL for release asset.")
+                new_path = self._download_asset(download_url)
+                self._set_status("Installing update...")
+                self._install_update(new_path)
+            except Exception as exc:
+                self._set_status("")
+                if not auto:
+                    messagebox.showerror("Update", f"Update failed: {exc}")
+            finally:
+                if auto:
+                    self._set_status("")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _fetch_latest_release(self):
+        url = (
+            f"https://api.github.com/repos/{self.GITHUB_OWNER}/{self.GITHUB_REPO}/releases/latest"
+        )
+        headers = {"Accept": "application/vnd.github+json", "User-Agent": "sins-editor"}
+        token = os.getenv(self.GITHUB_TOKEN_ENV, "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = resp.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401 or exc.code == 403:
+                raise RuntimeError("Unauthorized. Set a valid GitHub token.")
+            raise
+        return json.loads(data)
+
+    def _find_asset(self, assets):
+        for asset in assets:
+            if asset.get("name") == self.GITHUB_ASSET_NAME:
+                return asset
+        return None
+
+    def _download_asset(self, url):
+        token = os.getenv(self.GITHUB_TOKEN_ENV, "").strip()
+        headers = {"User-Agent": "sins-editor"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = resp.read()
+        tmp_dir = tempfile.mkdtemp(prefix="sins_update_")
+        new_path = os.path.join(tmp_dir, self.GITHUB_ASSET_NAME)
+        with open(new_path, "wb") as handle:
+            handle.write(data)
+        return new_path
+
+    def _install_update(self, new_path):
+        exe_path = os.path.abspath(sys.executable)
+        exe_name = os.path.basename(exe_path)
+        bat_path = os.path.join(tempfile.gettempdir(), "sins_update.bat")
+        lines = [
+            "@echo off",
+            "setlocal",
+            "set EXE_NAME=" + exe_name,
+            "set EXE_PATH=" + exe_path,
+            "set NEW_PATH=" + new_path,
+            ":loop",
+            "tasklist /FI \"IMAGENAME eq %EXE_NAME%\" | find /I \"%EXE_NAME%\" >nul",
+            "if not errorlevel 1 (timeout /t 1 >nul & goto loop)",
+            "move /Y \"%NEW_PATH%\" \"%EXE_PATH%\" >nul",
+            "start \"\" \"%EXE_PATH%\"",
+            "del \"%~f0\"",
+        ]
+        with open(bat_path, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines))
+        subprocess.Popen(
+            ["cmd", "/c", bat_path],
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+        )
+        self.root.after(200, self.root.destroy)
+
+    def _release_version(self, version):
+        if not version:
+            return ()
+        cleaned = version.strip().lstrip("vV")
+        parts = []
+        for token in cleaned.split("."):
+            try:
+                parts.append(int(token))
+            except ValueError:
+                break
+        return tuple(parts)
+
+    def _set_status(self, text):
+        self.root.after(0, lambda: self.status.config(text=text))
 
     def _apply_dark_theme(self):
         bg = "#0f131a"
