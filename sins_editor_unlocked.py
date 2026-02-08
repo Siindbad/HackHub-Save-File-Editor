@@ -17,7 +17,8 @@ class JsonEditor:
     GITHUB_OWNER = "Siindbad"
     GITHUB_REPO = "HackHub-Save-File-Editor"
     GITHUB_ASSET_NAME = "sins_editor_unlocked.exe"
-    GITHUB_RELEASE_TAG = "v1.0.0.unlock"
+    DIST_BRANCH = "main"
+    DIST_VERSION_FILE = "version.txt"
     GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
 
     def __init__(self, root, path):
@@ -125,14 +126,14 @@ class JsonEditor:
         def worker():
             try:
                 self._set_status("Checking for updates...")
-                release = self._fetch_release()
-                if not release:
+                latest_version = self._fetch_dist_version()
+                if not latest_version:
                     self._set_status("")
                     if not auto:
                         messagebox.showinfo("Update", "No release info available.")
                     return
 
-                latest_version = self._release_version(release.get("tag_name") or "")
+                latest_version = self._release_version(latest_version)
                 current_version = self._release_version(self.APP_VERSION)
                 if latest_version == current_version:
                     self._set_status("Up to date.")
@@ -140,18 +141,8 @@ class JsonEditor:
                         messagebox.showinfo("Update", "You're already on the latest version.")
                     return
 
-                asset = self._find_asset(release.get("assets") or [])
-                if not asset:
-                    self._set_status("")
-                    if not auto:
-                        messagebox.showwarning(
-                            "Update",
-                            f"Release found, but no asset named {self.GITHUB_ASSET_NAME}.",
-                        )
-                    return
-
                 prompt = (
-                    f"Update available: {release.get('tag_name', 'new version')}.\n"
+                    f"Update available: v{self._format_version(latest_version)}.\n"
                     "Download and install now?"
                 )
                 if not messagebox.askyesno("Update", prompt):
@@ -159,10 +150,7 @@ class JsonEditor:
                     return
 
                 self._set_status("Downloading update...")
-                download_url = asset.get("browser_download_url")
-                if not download_url:
-                    raise RuntimeError("Missing download URL for release asset.")
-                new_path = self._download_asset(download_url)
+                new_path = self._download_dist_asset()
                 self._set_status("Installing update...")
                 self._install_update(new_path)
             except Exception as exc:
@@ -175,37 +163,16 @@ class JsonEditor:
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _fetch_release(self):
-        url = (
-            f"https://api.github.com/repos/{self.GITHUB_OWNER}/{self.GITHUB_REPO}"
-            f"/releases/tags/{self.GITHUB_RELEASE_TAG}"
-        )
-        headers = {"Accept": "application/vnd.github+json", "User-Agent": "sins-editor"}
-        token = os.getenv(self.GITHUB_TOKEN_ENV, "").strip()
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        req = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = resp.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            if exc.code == 401 or exc.code == 403:
-                raise RuntimeError("Unauthorized. Set a valid GitHub token.")
-            raise
-        return json.loads(data)
+    def _fetch_dist_version(self):
+        url = self._dist_url(self.DIST_VERSION_FILE)
+        req = urllib.request.Request(url, headers=self._download_headers())
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = resp.read().decode("utf-8")
+        return data.strip()
 
-    def _find_asset(self, assets):
-        for asset in assets:
-            if asset.get("name") == self.GITHUB_ASSET_NAME:
-                return asset
-        return None
-
-    def _download_asset(self, url):
-        token = os.getenv(self.GITHUB_TOKEN_ENV, "").strip()
-        headers = {"User-Agent": "sins-editor"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        req = urllib.request.Request(url, headers=headers)
+    def _download_dist_asset(self):
+        url = self._dist_url(self.GITHUB_ASSET_NAME)
+        req = urllib.request.Request(url, headers=self._download_headers())
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = resp.read()
         tmp_dir = tempfile.mkdtemp(prefix="sins_update_")
@@ -250,6 +217,24 @@ class JsonEditor:
             except ValueError:
                 break
         return tuple(parts)
+
+    def _format_version(self, version_tuple):
+        if not version_tuple:
+            return ""
+        return ".".join(str(part) for part in version_tuple)
+
+    def _dist_url(self, filename):
+        return (
+            f"https://raw.githubusercontent.com/{self.GITHUB_OWNER}/{self.GITHUB_REPO}"
+            f"/{self.DIST_BRANCH}/dist/{filename}"
+        )
+
+    def _download_headers(self):
+        headers = {"User-Agent": "sins-editor"}
+        token = os.getenv(self.GITHUB_TOKEN_ENV, "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
 
     def _set_status(self, text):
         self.root.after(0, lambda: self.status.config(text=text))
