@@ -4,6 +4,8 @@ https://github.com/Siindbad/HackHub-Save-File-Editor/tree/main/dist
 
 I'll Also add them into the "Releases" Eventually
 
+THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Detects It
+
 
 		[ USAGE ]
 
