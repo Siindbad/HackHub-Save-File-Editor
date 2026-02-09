@@ -8,7 +8,7 @@ THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Dete
 
 		[ USAGE ]
 
-There will be a README Function Inside the application for you to view and read with small insetruction
+There will be a README Function Inside the application for you to view and read with small instructions
 
 
        [ FOR EDITORS ]
