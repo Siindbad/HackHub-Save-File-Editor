@@ -234,6 +234,7 @@ class JsonEditor:
         exe_name = os.path.basename(exe_path)
         bat_path = os.path.join(tempfile.gettempdir(), "sins_update.bat")
         log_path = os.path.join(tempfile.gettempdir(), "sins_update.log")
+        fallback_path = exe_path + ".new"
         lines = [
             "@echo off",
             "setlocal",
@@ -241,12 +242,16 @@ class JsonEditor:
             "set EXE_PATH=" + exe_path,
             "set NEW_PATH=" + new_path,
             "set LOG_PATH=" + log_path,
+            "set FALLBACK_PATH=" + fallback_path,
             "echo [%date% %time%] Update started > \"%LOG_PATH%\"",
             "echo EXE_PATH=%EXE_PATH% >> \"%LOG_PATH%\"",
             "echo NEW_PATH=%NEW_PATH% >> \"%LOG_PATH%\"",
+            "echo FALLBACK_PATH=%FALLBACK_PATH% >> \"%LOG_PATH%\"",
             ":loop",
             "tasklist /FI \"IMAGENAME eq %EXE_NAME%\" | find /I \"%EXE_NAME%\" >nul",
             "if not errorlevel 1 (timeout /t 1 >nul & goto loop)",
+            "set RETRIES=0",
+            ":replace",
             "move /Y \"%NEW_PATH%\" \"%EXE_PATH%\" >> \"%LOG_PATH%\" 2>&1",
             "if errorlevel 1 goto fail",
             "echo [%date% %time%] Update applied >> \"%LOG_PATH%\"",
@@ -254,8 +259,12 @@ class JsonEditor:
             "del \"%~f0\"",
             "exit /b 0",
             ":fail",
+            "set /a RETRIES=%RETRIES%+1",
+            "if %RETRIES% LSS 5 (timeout /t 1 >nul & goto replace)",
             "echo [%date% %time%] Update failed (move). >> \"%LOG_PATH%\"",
-            "echo Check permissions or antivirus. >> \"%LOG_PATH%\"",
+            "echo Trying fallback copy to %FALLBACK_PATH% >> \"%LOG_PATH%\"",
+            "copy /Y \"%NEW_PATH%\" \"%FALLBACK_PATH%\" >> \"%LOG_PATH%\" 2>&1",
+            "if errorlevel 1 (echo Fallback copy failed. >> \"%LOG_PATH%\") else (start \"\" explorer /select,\"%FALLBACK_PATH%\")",
             "exit /b 1",
         ]
         with open(bat_path, "w", encoding="utf-8") as handle:
