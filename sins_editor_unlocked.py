@@ -202,18 +202,30 @@ class JsonEditor:
         exe_path = os.path.abspath(sys.executable)
         exe_name = os.path.basename(exe_path)
         bat_path = os.path.join(tempfile.gettempdir(), "sins_update.bat")
+        log_path = os.path.join(tempfile.gettempdir(), "sins_update.log")
         lines = [
             "@echo off",
             "setlocal",
             "set EXE_NAME=" + exe_name,
             "set EXE_PATH=" + exe_path,
             "set NEW_PATH=" + new_path,
+            "set LOG_PATH=" + log_path,
+            "echo [%date% %time%] Update started > \"%LOG_PATH%\"",
+            "echo EXE_PATH=%EXE_PATH% >> \"%LOG_PATH%\"",
+            "echo NEW_PATH=%NEW_PATH% >> \"%LOG_PATH%\"",
             ":loop",
             "tasklist /FI \"IMAGENAME eq %EXE_NAME%\" | find /I \"%EXE_NAME%\" >nul",
             "if not errorlevel 1 (timeout /t 1 >nul & goto loop)",
-            "move /Y \"%NEW_PATH%\" \"%EXE_PATH%\" >nul",
+            "move /Y \"%NEW_PATH%\" \"%EXE_PATH%\" >> \"%LOG_PATH%\" 2>&1",
+            "if errorlevel 1 goto fail",
+            "echo [%date% %time%] Update applied >> \"%LOG_PATH%\"",
             "start \"\" \"%EXE_PATH%\"",
             "del \"%~f0\"",
+            "exit /b 0",
+            ":fail",
+            "echo [%date% %time%] Update failed (move). >> \"%LOG_PATH%\"",
+            "echo Check permissions or antivirus. >> \"%LOG_PATH%\"",
+            "exit /b 1",
         ]
         with open(bat_path, "w", encoding="utf-8") as handle:
             handle.write("\n".join(lines))
