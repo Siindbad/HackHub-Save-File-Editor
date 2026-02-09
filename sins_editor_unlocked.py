@@ -141,6 +141,17 @@ class JsonEditor:
 
                 latest_version = self._release_version(latest_version)
                 current_version = self._release_version(self.APP_VERSION)
+                if latest_version and current_version and latest_version < current_version:
+                    self._set_status("")
+                    if not auto:
+                        messagebox.showwarning(
+                            "Update",
+                            "Release version is older than this build.\n"
+                            f"Release: v{self._format_version(latest_version)}\n"
+                            f"Current: v{self._format_version(current_version)}\n"
+                            "Check dist/version.txt.",
+                        )
+                    return
                 if latest_version == current_version:
                     self._set_status("Up to date.")
                     if not auto:
