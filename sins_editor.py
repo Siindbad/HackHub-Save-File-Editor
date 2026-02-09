@@ -67,6 +67,7 @@ class JsonEditor:
             "Surfaces",
             "_persist",
         }
+        self.error_overlay = None
 
         self._build_ui()
         if path:
@@ -788,8 +789,10 @@ class JsonEditor:
         try:
             new_value = json.loads(raw)
         except Exception as exc:
-            messagebox.showerror("Invalid JSON", str(exc))
+            self._show_error_overlay("Invalid Entry", self._format_json_error(exc))
+            self._highlight_json_error(exc)
             return
+        self._clear_json_error_highlight()
 
         if not self._is_edit_allowed(path, new_value):
             return
@@ -799,6 +802,645 @@ class JsonEditor:
         # Refresh subtree
         self._populate_children(item_id)
         self.set_status("Edited")
+
+    def _format_json_error(self, exc):
+        msg = getattr(exc, "msg", None)
+        if isinstance(exc, json.JSONDecodeError) or msg:
+            example = self._example_for_error(exc)
+            if msg == "Expecting ',' delimiter":
+                if self._is_missing_object_open_at(getattr(exc, "lineno", None)):
+                    before, after = "{", "{"
+                    return self._format_suggestion(
+                        "Invalid Entry: add \"{\" before the highlighted line.",
+                        before,
+                        after,
+                    )
+                if self._is_missing_object_open(exc):
+                    before, after = self._suggestion_from_example(example, add_after="{")
+                    return self._format_suggestion(
+                        "Invalid Entry: add \"{\" after the highlighted line.",
+                        before,
+                        after,
+                    )
+                if self._is_missing_object_close():
+                    before, after = self._suggestion_from_example(example, add_after="},")
+                    return self._format_suggestion(
+                        "Invalid Entry: add the missing closing bracket.",
+                        before,
+                        after,
+                    )
+                if self._is_missing_list_close():
+                    before, after = self._suggestion_from_example(example, add_after="],")
+                    return self._format_suggestion(
+                        "Invalid Entry: add the missing closing bracket.",
+                        before,
+                        after,
+                    )
+                before, after = self._suggestion_from_example(example, add_after=",")
+                return self._format_suggestion(
+                    "Invalid Entry: add a comma near the highlighted line.",
+                    before,
+                    after,
+                )
+            if msg == "Expecting property name enclosed in double quotes":
+                before, after = self._suggestion_from_example(example, quote_key=True)
+                return self._format_suggestion(
+                    "Invalid Entry: add quotes around the highlighted name.",
+                    before,
+                    after,
+                )
+            if msg == "Expecting ':' delimiter":
+                before, after = self._suggestion_from_example(example, add_colon=True)
+                return self._format_suggestion(
+                    "Invalid Entry: add a colon after the highlighted name.",
+                    before,
+                    after,
+                )
+            if msg in ("Expecting ']'", "Expecting '}'"):
+                before, after = self._suggestion_from_example(example, add_after=example.strip())
+                return self._format_suggestion(
+                    "Invalid Entry: add the missing closing bracket.",
+                    before,
+                    after,
+                )
+            if msg == "Expecting value":
+                if self._is_missing_object_open(exc):
+                    before, after = self._suggestion_from_example(example, add_after="{")
+                    return self._format_suggestion(
+                        "Invalid Entry: add \"{\" after the highlighted line.",
+                        before,
+                        after,
+                    )
+                if self._is_missing_list_open(exc):
+                    before, after = self._suggestion_from_example(example, add_after="[")
+                    return self._format_suggestion(
+                        "Invalid Entry: add \"[\" after the highlighted line.",
+                        before,
+                        after,
+                    )
+                if self._is_missing_list_close():
+                    before, after = self._suggestion_from_example(example, add_after="],")
+                    return self._format_suggestion(
+                        "Invalid Entry: add the missing closing bracket.",
+                        before,
+                        after,
+                    )
+            if msg == "Extra data":
+                before, after = self._suggestion_from_example(example)
+                return self._format_suggestion(
+                    "Invalid Entry: extra data after a complete value. Remove it or wrap values in [].",
+                    before,
+                    after,
+                )
+            if msg in ("Unexpected ']'", "Unexpected '}'"):
+                before, after = self._suggestion_from_example(example)
+                return self._format_suggestion(
+                    "Invalid Entry: remove the extra closing bracket.",
+                    before,
+                    after,
+                )
+            if msg == "Unterminated string":
+                before, after = self._suggestion_from_example(example, add_after="\"")
+                return self._format_suggestion(
+                    "Invalid Entry: close the quote.",
+                    before,
+                    after,
+                )
+            return (
+                "Invalid Entry: check the highlighted line.\n\n"
+                f"{self._format_suggestion('Suggestion', example, example, header_only=True)}"
+            )
+        return str(exc)
+
+    def _example_for_error(self, exc):
+        lineno = getattr(exc, "lineno", None)
+        line_text = ""
+        if lineno:
+            try:
+                line_text = self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
+            except Exception:
+                line_text = ""
+
+        msg = getattr(exc, "msg", None)
+        if msg == "Expecting ',' delimiter":
+            if self._is_missing_object_open_at(lineno):
+                return "{"
+            if self._is_missing_object_open(exc):
+                return self._missing_object_example(lineno)
+            if self._is_missing_object_close():
+                return self._missing_close_example("Expecting '}'")
+            if self._is_missing_list_close():
+                return self._missing_close_example("Expecting ']'")
+            return self._comma_example_line(lineno)
+
+        if msg == "Expecting property name enclosed in double quotes":
+            if line_text:
+                return self._quote_property_name(line_text)
+            return "\"key\": \"value\""
+
+        if msg == "Expecting ':' delimiter":
+            if line_text:
+                return self._missing_colon_example(line_text)
+            return "\"key\": \"value\""
+
+        if msg in ("Expecting ']'", "Expecting '}'"):
+            return self._missing_close_example(msg)
+
+        if msg == "Expecting value":
+            if self._is_missing_list_close():
+                return self._missing_close_example("Expecting ']'")
+            if self._is_missing_object_close():
+                return self._missing_close_example("Expecting '}'")
+            if self._is_missing_list_open(exc):
+                return "\"items\": ["
+            if self._is_missing_object_open(exc):
+                return "\"data\": {"
+
+        if msg == "Extra data":
+            next_line = self._next_non_empty_line(lineno or 1)
+            if next_line:
+                next_text = self._line_text(next_line).strip()
+                if next_text:
+                    return next_text
+            if line_text:
+                return line_text
+            return "\"key\": \"value\""
+
+        if msg in ("Unexpected ']'", "Unexpected '}'"):
+            return self._missing_close_example(msg)
+
+        if msg == "Unterminated string":
+            return "\"text\""
+
+        if line_text:
+            return line_text
+        return "\"key\": \"value\""
+
+    def _missing_colon_example(self, line_text):
+        if ":" in line_text:
+            return line_text
+        stripped = line_text.strip().strip(",")
+        if not stripped:
+            return "\"key\": \"value\""
+        if not stripped.startswith("\""):
+            stripped = f"\"{stripped.strip()}\""
+        return f"{stripped}: \"value\""
+
+    def _missing_close_example(self, msg):
+        if msg in ("Expecting ']'", "Unexpected ']'"):
+            return "],"
+        return "},"
+
+    def _format_suggestion(self, header, before, after, header_only=False):
+        if header_only:
+            return f"Suggestion:\n- Before: {before}\n- After:  {after}"
+        return f"{header}\n\nSuggestion:\n- Before: {before}\n- After:  {after}"
+
+    def _suggestion_from_example(self, example, add_after=None, add_colon=False, quote_key=False):
+        before = example.strip()
+        after = before
+        if quote_key:
+            after = self._quote_property_name(before)
+        if add_colon and ":" not in after:
+            if after and not after.endswith(":"):
+                after = after.rstrip(",") + ": \"value\""
+        if add_after:
+            if add_after in (",", "],", "},", "{", "["):
+                if add_after == ",":
+                    before = before.rstrip().rstrip(",")
+                    after = before + ","
+                else:
+                    after = add_after
+                    if add_after in ("},", "],"):
+                        before = add_after.replace(",", "")
+                    if add_after in ("{", "["):
+                        before = add_after
+            else:
+                after = add_after
+        return (before if before else "\"value\""), (after if after else "\"value\"")
+    def _is_missing_object_open_at(self, lineno):
+        if not lineno:
+            return False
+        line_text = self._line_text(lineno).lstrip()
+        if not line_text or ":" not in line_text:
+            return False
+        prev_line_num = self._closest_non_empty_line_before(lineno)
+        if not prev_line_num:
+            return False
+        prev_text = self._line_text(prev_line_num).strip()
+        if prev_text in ("[", ",", "],", "{", "},"):
+            return True
+        return False
+
+    def _line_text(self, lineno):
+        try:
+            return self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")
+        except Exception:
+            return ""
+
+    def _missing_close_target_line_from_exc(self, exc, open_bracket, close_bracket):
+        line = getattr(exc, "lineno", None)
+        if line:
+            return line
+        return self._missing_close_target_line(open_bracket, close_bracket)
+
+    def _missing_close_target_line_any(self, exc):
+        if self._is_missing_object_close():
+            target = self._missing_object_close_target_line(exc)
+            if target:
+                return target
+        if self._is_missing_list_close():
+            target = self._missing_list_close_target_line(exc)
+            if target:
+                return target
+        return None
+
+    def _missing_list_close_target_line(self, exc):
+        line = getattr(exc, "lineno", None)
+        if not line:
+            return None
+        comma_line = self._find_comma_only_line_before(line)
+        if comma_line:
+            return comma_line
+        return self._closest_non_empty_line_before(line)
+
+    def _is_missing_list_close(self):
+        text = self.text.get("1.0", "end-1c")
+        return text.count("[") > text.count("]")
+
+    def _is_missing_object_close(self):
+        text = self.text.get("1.0", "end-1c")
+        return text.count("{") > text.count("}")
+
+    def _last_unmatched_bracket_line(self, open_bracket, close_bracket):
+        text = self.text.get("1.0", "end-1c")
+        stack = []
+        line = 1
+        col = 0
+        for ch in text:
+            if ch == "\n":
+                line += 1
+                col = 0
+                continue
+            col += 1
+            if ch == open_bracket:
+                stack.append(line)
+            elif ch == close_bracket and stack:
+                stack.pop()
+        if stack:
+            return stack[-1]
+        return None
+
+    def _missing_object_close_target_line(self, exc):
+        line = getattr(exc, "lineno", None)
+        if not line:
+            return None
+        comma_line = self._find_comma_only_line_before(line)
+        if comma_line:
+            return comma_line
+        return self._closest_non_empty_line_before(line)
+
+    def _find_comma_only_line_before(self, start_line):
+        line = max(start_line - 1, 1)
+        while line >= 1:
+            try:
+                text = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
+            except Exception:
+                return None
+            if text == ",":
+                return line
+            line -= 1
+        return None
+
+    def _closest_non_empty_line_before(self, start_line):
+        line = max(start_line - 1, 1)
+        while line >= 1:
+            try:
+                text = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
+            except Exception:
+                return None
+            if text:
+                return line
+            line -= 1
+        return None
+
+
+    def _missing_close_target_line(self, open_bracket, close_bracket):
+        open_line = self._last_unmatched_bracket_line(open_bracket, close_bracket)
+        if not open_line:
+            return None
+        line = open_line + 1
+        last_line = int(self.text.index("end-1c").split(".")[0])
+        while line <= last_line:
+            try:
+                text = self.text.get(f"{line}.0", f"{line}.0 lineend")
+            except Exception:
+                return open_line
+            if text.strip():
+                return line
+            line += 1
+        return open_line
+
+    def _is_missing_object_open(self, exc):
+        lineno = getattr(exc, "lineno", None)
+        if not lineno:
+            return False
+        prev_line = self._previous_non_empty_line(lineno)
+        if not prev_line:
+            return False
+        prev_line_stripped = prev_line.strip()
+        return prev_line_stripped.endswith("\":") and not prev_line_stripped.endswith("\": {")
+
+    def _is_missing_list_open(self, exc):
+        lineno = getattr(exc, "lineno", None)
+        if not lineno:
+            return False
+        prev_line = self._previous_non_empty_line(lineno)
+        if not prev_line:
+            return False
+        prev_line_stripped = prev_line.strip()
+        if not prev_line_stripped.endswith("\":"):
+            return False
+        next_line = self._next_non_empty_line(lineno)
+        if not next_line:
+            return False
+        next_line_stripped = next_line.strip()
+        return next_line_stripped.startswith("\"")
+
+    def _previous_non_empty_line(self, lineno):
+        line = max(lineno - 1, 1)
+        while line >= 1:
+            try:
+                text = self.text.get(f"{line}.0", f"{line}.0 lineend")
+            except Exception:
+                return ""
+            if text.strip():
+                return text
+            line -= 1
+        return ""
+
+    def _next_non_empty_line(self, lineno):
+        line = max(lineno, 1)
+        last_line = int(self.text.index("end-1c").split(".")[0])
+        while line <= last_line:
+            try:
+                text = self.text.get(f"{line}.0", f"{line}.0 lineend")
+            except Exception:
+                return ""
+            if text.strip():
+                return text
+            line += 1
+        return ""
+
+    def _missing_object_example(self, lineno):
+        prev_line = self._previous_non_empty_line(lineno)
+        if not prev_line:
+            return "\"data\": {"
+        prev_line_stripped = prev_line.strip()
+        if prev_line_stripped.endswith("\":"):
+            return prev_line_stripped + " {"
+        return "\"data\": {"
+
+    def _quote_property_name(self, line_text):
+        if ":" in line_text:
+            left, right = line_text.split(":", 1)
+            left = left.strip()
+            if not left.startswith("\""):
+                left = f"\"{left.strip().strip(',')}\""
+            right = right.strip()
+            return f"{left}: {right}"
+        return "\"key\": \"value\""
+
+    def _comma_example_line(self, lineno):
+        if not lineno:
+            return "\"item1\",\n\"item2\""
+        target_line = max(lineno - 1, 1)
+        try:
+            line_text = self.text.get(f"{target_line}.0", f"{target_line}.0 lineend").strip()
+        except Exception:
+            line_text = ""
+        if not line_text:
+            return "\"item1\",\n\"item2\""
+        if not line_text.endswith(","):
+            line_text = line_text.rstrip()
+            line_text = line_text + ","
+        return line_text
+
+    def _highlight_json_error(self, exc):
+        line = getattr(exc, "lineno", None)
+        col = getattr(exc, "colno", None)
+        try:
+            last_line = int(self.text.index("end-1c").split(".")[0])
+            if not line:
+                line = 1
+            if not col:
+                col = 1
+            line = min(max(line, 1), max(last_line, 1))
+            msg = getattr(exc, "msg", None)
+            if msg == "Expecting ',' delimiter":
+                if self._is_missing_object_open_at(line):
+                    line_end = self.text.index(f"{line}.0 lineend")
+                    start_index = f"{line}.0"
+                    end_index = line_end
+                    self.text.tag_remove("json_error", "1.0", "end")
+                    self.text.tag_remove("json_error_line", "1.0", "end")
+                    self.text.tag_add("json_error", start_index, end_index)
+                    self.text.tag_config("json_error", background="#0b6b2b", foreground="#ffffff")
+                    self.text.tag_add("json_error_line", f"{line}.0", f"{line}.0 lineend")
+                    self.text.tag_config("json_error_line", background="#0f3f24")
+                    self.text.mark_set("insert", start_index)
+                    self.text.see(start_index)
+                    self._log_json_error(exc, line)
+                    self._position_error_overlay(line)
+                    return
+                if self._is_missing_object_open(exc):
+                    line = max(line - 1, 1)
+                    line_end = self.text.index(f"{line}.0 lineend")
+                    start_index = line_end
+                    end_index = line_end
+                elif self._is_missing_object_close():
+                    target_line = self._missing_close_target_line_any(exc)
+                    if not target_line:
+                        target_line = self._missing_close_target_line_from_exc(exc, "{", "}")
+                    if not target_line:
+                        target_line = int(self.text.index("end-1c").split(".")[0])
+                    line = max(target_line, 1)
+                    line_end = self.text.index(f"{line}.0 lineend")
+                    start_index = line_end
+                    end_index = line_end
+                elif self._is_missing_list_close():
+                    target_line = self._missing_close_target_line_any(exc)
+                    if not target_line:
+                        target_line = self._missing_close_target_line_from_exc(exc, "[", "]")
+                    if not target_line:
+                        target_line = int(self.text.index("end-1c").split(".")[0])
+                    line = max(target_line, 1)
+                    line_end = self.text.index(f"{line}.0 lineend")
+                    start_index = line_end
+                    end_index = line_end
+                else:
+                    line = max(line - 1, 1)
+                    line_end = self.text.index(f"{line}.0 lineend")
+                    start_index = line_end
+                    end_index = line_end
+            elif msg == "Expecting ':' delimiter":
+                start_index = f"{line}.{max(col - 1, 0)}"
+                end_index = f"{line}.{col}"
+            elif msg in ("Expecting ']'", "Expecting '}'"):
+                target_line = self._missing_close_target_line_any(exc)
+                if not target_line:
+                    if exc.msg == "Expecting ']'":
+                        target_line = self._missing_close_target_line_from_exc(exc, "[", "]")
+                    else:
+                        target_line = self._missing_close_target_line_from_exc(exc, "{", "}")
+                if not target_line:
+                    target_line = int(self.text.index("end-1c").split(".")[0])
+                line = max(target_line, 1)
+                line_end = self.text.index(f"{line}.0 lineend")
+                start_index = line_end
+                end_index = line_end
+            elif msg == "Expecting value":
+                if self._is_missing_object_open(exc):
+                    line = max(line - 1, 1)
+                    line_end = self.text.index(f"{line}.0 lineend")
+                    start_index = line_end
+                    end_index = line_end
+                elif self._is_missing_list_open(exc):
+                    line = max(line - 1, 1)
+                    line_end = self.text.index(f"{line}.0 lineend")
+                    start_index = line_end
+                    end_index = line_end
+                elif self._is_missing_list_close() or self._is_missing_object_close():
+                    target_line = self._missing_close_target_line_any(exc)
+                    if not target_line:
+                        target_line = int(self.text.index("end-1c").split(".")[0])
+                    line = max(target_line, 1)
+                    line_end = self.text.index(f"{line}.0 lineend")
+                    start_index = line_end
+                    end_index = line_end
+                else:
+                    start_index = f"{line}.{max(col - 1, 0)}"
+                    end_index = f"{line}.{col}"
+            elif msg in ("Unexpected ']'", "Unexpected '}'", "Unterminated string"):
+                start_index = f"{line}.{max(col - 1, 0)}"
+                end_index = f"{line}.{col}"
+            elif msg == "Extra data":
+                next_line = self._next_non_empty_line(line)
+                if next_line:
+                    line = next_line
+                line_end = self.text.index(f"{line}.0 lineend")
+                start_index = f"{line}.0"
+                end_index = line_end
+            else:
+                line = max(line - 1, 1)
+                line_end = self.text.index(f"{line}.0 lineend")
+                start_index = line_end
+                end_index = line_end
+            self.text.tag_remove("json_error", "1.0", "end")
+            self.text.tag_remove("json_error_line", "1.0", "end")
+            self.text.tag_add("json_error", start_index, end_index)
+            self.text.tag_config("json_error", background="#0b6b2b", foreground="#ffffff")
+            self.text.tag_add("json_error_line", f"{line}.0", f"{line}.0 lineend")
+            self.text.tag_config("json_error_line", background="#0f3f24")
+            self.text.mark_set("insert", start_index)
+            self.text.see(start_index)
+            self._log_json_error(exc, line)
+            self._position_error_overlay(line)
+        except Exception as highlight_exc:
+            try:
+                self._log_json_error(exc, line or 1, note=f"highlight_failed: {highlight_exc}")
+            except Exception:
+                pass
+            return
+
+    def _position_error_overlay(self, line):
+        if self.error_overlay is None:
+            return
+        try:
+            bbox = self.text.bbox(f"{line}.0")
+            if not bbox:
+                return
+            x, y, w, h = bbox
+            text_w = self.text.winfo_width()
+            text_h = self.text.winfo_height()
+            overlay = self.error_overlay
+            overlay.update_idletasks()
+            ow = overlay.winfo_width()
+            oh = overlay.winfo_height()
+
+            gap = 6
+            # Prefer below; if not enough space, try right
+            nx = x
+            ny = y + h + gap
+            if ny + oh > text_h:
+                nx = x + w + gap
+                ny = y
+            if ny + oh > text_h:
+                ny = max(text_h - oh - gap, 0)
+            if nx + ow > text_w:
+                nx = max(text_w - ow - gap, 0)
+
+            overlay.place_configure(x=nx, y=ny)
+        except Exception:
+            return
+
+    def _log_json_error(self, exc, target_line, note=""):
+        try:
+            log_path = os.path.join(tempfile.gettempdir(), "sins_json_diagnostics.log")
+            msg = getattr(exc, "msg", str(exc))
+            lineno = getattr(exc, "lineno", None)
+            colno = getattr(exc, "colno", None)
+            context = []
+            start = max(target_line - 2, 1)
+            end = target_line + 2
+            for ln in range(start, end + 1):
+                try:
+                    text = self.text.get(f"{ln}.0", f"{ln}.0 lineend")
+                except Exception:
+                    text = ""
+                context.append(f"{ln}: {text}")
+            with open(log_path, "a", encoding="utf-8") as handle:
+                handle.write("\n---\n")
+                handle.write(f"msg={msg} lineno={lineno} col={colno} target={target_line} {note}\n")
+                handle.write("\n".join(context).rstrip() + "\n")
+        except Exception:
+            return
+
+    def _clear_json_error_highlight(self):
+        try:
+            self.text.tag_remove("json_error", "1.0", "end")
+            self.text.tag_remove("json_error_line", "1.0", "end")
+        except Exception:
+            return
+
+    def _show_error_overlay(self, title, message):
+        self._destroy_error_overlay()
+        overlay = tk.Frame(self.text, bg="#11161f", bd=0, highlightthickness=2, highlightbackground="#0b6b2b")
+        overlay.place(x=12, y=12)
+
+        msg_label = tk.Label(
+            overlay,
+            text=message,
+            bg="#11161f",
+            fg="#ffffff",
+            font=("Consolas", 9),
+            anchor="w",
+            justify="left",
+        )
+        msg_label.pack(fill="both", padx=10, pady=(8, 8))
+
+        overlay.bind("<Button-1>", lambda _evt: self._destroy_error_overlay())
+        msg_label.bind("<Button-1>", lambda _evt: self._destroy_error_overlay())
+
+        self.error_overlay = overlay
+
+    def _destroy_error_overlay(self):
+        if self.error_overlay is not None:
+            try:
+                self.error_overlay.destroy()
+            except Exception:
+                pass
+            self.error_overlay = None
 
     def save_file(self):
         if not self.path:
