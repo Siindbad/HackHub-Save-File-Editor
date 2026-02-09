@@ -1,8 +1,7 @@
-THE EXE FILES WILL BE LOCATED IN THE DIST FOLDER
+ALL NEW EXE Apps Will Be Available In The RELEASE Section
 
-https://github.com/Siindbad/HackHub-Save-File-Editor/tree/main/dist
+https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 
-I'll Also add them into the "Releases" Eventually
 
 THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Detects It
 
