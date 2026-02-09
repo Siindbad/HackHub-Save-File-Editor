@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 
 
 class JsonEditor:
-    APP_VERSION = "1.0.0"
+    APP_VERSION = "1.1.0"
     GITHUB_OWNER = "Siindbad"
     GITHUB_REPO = "HackHub-Save-File-Editor"
     GITHUB_ASSET_NAME = "sins_editor.exe"
@@ -74,6 +74,7 @@ class JsonEditor:
 
     def _build_ui(self):
         self._apply_dark_theme()
+        self._set_window_icon()
 
         header = ttk.Frame(self.root)
         header.pack(fill="x", padx=8, pady=(8, 4))
@@ -91,9 +92,6 @@ class JsonEditor:
         ttk.Button(top, text="Open", command=self.open_file).pack(side="left")
         ttk.Button(top, text="Apply Edit", command=self.apply_edit).pack(side="left", padx=(6, 0))
         ttk.Button(top, text="Export .hhsav", command=self.export_hhsave).pack(side="left", padx=(6, 0))
-        ttk.Button(top, text="Update", command=self.check_for_updates_manual).pack(
-            side="left", padx=(6, 0)
-        )
 
         find_frame = ttk.Frame(top)
         find_frame.pack(side="left", padx=(12, 0))
@@ -103,8 +101,16 @@ class JsonEditor:
         ttk.Button(find_frame, text="Find Next", command=self.find_next).pack(side="left", padx=(6, 0))
         self.find_entry.bind("<Return>", self.find_next)
 
-        self.status = ttk.Label(top, text="")
-        self.status.pack(side="right")
+        right_actions = ttk.Frame(top)
+        right_actions.pack(side="right")
+        ttk.Label(right_actions, text=f"v{self.APP_VERSION}").pack(side="left", padx=(0, 6))
+        ttk.Button(right_actions, text="Update", command=self.check_for_updates_manual).pack(
+            side="left", padx=(6, 0)
+        )
+        ttk.Button(right_actions, text="ReadMe", command=self.show_readme).pack(
+            side="left", padx=(6, 0)
+        )
+        self.status = None
 
         body = ttk.Panedwindow(self.root, orient="horizontal")
         body.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -268,6 +274,8 @@ class JsonEditor:
         return headers
 
     def _set_status(self, text):
+        if self.status is None:
+            return
         self.root.after(0, lambda: self.status.config(text=text))
 
     def _apply_dark_theme(self):
@@ -358,6 +366,15 @@ class JsonEditor:
             return sys._MEIPASS
         return os.path.dirname(os.path.abspath(__file__))
 
+    def _set_window_icon(self):
+        base_dir = self._resource_base_dir()
+        icon_path = os.path.join(base_dir, "assets", "sinlogo.ico")
+        if os.path.isfile(icon_path):
+            try:
+                self.root.iconbitmap(icon_path)
+            except Exception:
+                pass
+
     def _load_logo_image(self, path):
         ext = os.path.splitext(path)[1].lower()
         try:
@@ -382,8 +399,54 @@ class JsonEditor:
         except Exception:
             return None
 
+    def show_readme(self):
+        theme = getattr(self, "_theme", None)
+        base_dir = self._resource_base_dir()
+        readme_path = os.path.join(base_dir, "assets", "Readme.txt")
+        content = ""
+        if os.path.isfile(readme_path):
+            try:
+                with open(readme_path, "r", encoding="utf-8") as handle:
+                    content = handle.read()
+            except Exception as exc:
+                messagebox.showerror("ReadMe", f"Failed to load README.md: {exc}")
+                return
+        else:
+            content = "Readme.txt not found in assets."
+
+        window = tk.Toplevel(self.root)
+        window.title("ReadMe")
+        window.geometry("760x520")
+        window.transient(self.root)
+        if theme:
+            window.configure(bg=theme["bg"])
+
+        frame = ttk.Frame(window)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        text = tk.Text(frame, wrap="word")
+        text.pack(fill="both", expand=True, side="left")
+        scroll = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
+        scroll.pack(fill="y", side="right")
+        text.configure(yscrollcommand=scroll.set)
+        if theme:
+            text.configure(
+                bg="#000000",
+                fg=theme["fg"],
+                insertbackground=theme["fg"],
+                selectbackground=theme["select_bg"],
+                selectforeground=theme["select_fg"],
+                relief="flat",
+                highlightthickness=1,
+                highlightbackground=theme["panel"],
+                highlightcolor=theme["panel"],
+            )
+        text.insert("1.0", content)
+        text.configure(state="disabled")
+
     def set_status(self, msg):
-        self.status.config(text=msg)
+        if self.status is not None:
+            self.status.config(text=msg)
 
     def open_file(self):
         path = filedialog.askopenfilename(
