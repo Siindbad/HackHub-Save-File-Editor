@@ -9,10 +9,7 @@ THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Dete
 
 		[ USAGE ]
 
-1. While Logged Into Your Game, Hit F1 and type "save.export" and the game will create a .hhsav file and tell you where it dropped
-2. (Both) Editors Will Be Able to "OPEN" a full .hhsav File : There is NO Need to Extract the .hhsav file with 7ZIP like the old methods.
-3. When making an Edit : You just click "Apply Edit" and when you are all done : you use the "EXPORT" Button and Save it, It's Ok To Overwrite The Existing Or You can add it to another location
-4. To Import it back to the game : Just hit F1 in the MAIN MENU and type : save.import : then you can find or select your edited save and enter the game.
+There will be a README Function Inside the application for you to view and read with small insetruction
 
 
        [ FOR EDITORS ]
