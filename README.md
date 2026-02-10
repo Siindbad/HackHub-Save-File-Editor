@@ -37,6 +37,9 @@ Version 1.2.0
 - Should detect missing symbols when you Apply Edit
 - Fixed Correction Bugs but some still remain and will get it in later releases
 - @ Symbols in emails should be reconized if missing in the edit
+- Created new update process, will now show with a status popup
+- When updating, the app will force close to install the update
+- Any CMD's being used during updates will be silent and hidden
 
 Version 1.1.0
 - Added Readme.txt
@@ -47,4 +50,3 @@ Version 1.1.0
 Version 1.0.0
 - Added Update Button
 - Added Find Function
-
