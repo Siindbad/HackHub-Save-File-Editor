@@ -1,10 +1,10 @@
-ALL NEW EXE Apps Will Be Available In The RELEASE Section
+﻿ALL NEW EXE Apps Will Be Available In The RELEASE Section
 
 https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 
 ## Dark Template
 
-![Dark Template](assets/readme-template/readme-top-dark-template.svg)
+![Dark Template](assets/readme-template/readme-top-dark-template.svg?v=f974db7cbe16)
 
 
 THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Detects It
@@ -54,4 +54,5 @@ Version 1.1.0
 Version 1.0.0
 - Added Update Button
 - Added Find Function
+
 
