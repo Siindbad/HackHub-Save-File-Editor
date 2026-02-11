@@ -2,6 +2,10 @@ ALL NEW EXE Apps Will Be Available In The RELEASE Section
 
 https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 
+## Dark Template
+
+![Dark Template](https://raw.githubusercontent.com/Siindbad/HackHub-Editor-Source/main/assets/readme-template/readme-top-dark-template.svg)
+
 
 THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Detects It
 
