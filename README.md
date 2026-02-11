@@ -31,26 +31,15 @@ you can open the save file and go into "NETWORK" Tab and find the Public IP and 
 
 		 [ CHANGE LOGS ]
 
-Version 1.2.0
-- Credit To Kamue For Adding the idea of Splash Boxes. Big Thanks
-- Added A Splash Error Box
-- Added Before & After Corrections in the splash box
-- Should detect missing symbols when you Apply Edit
-- Fixed Correction Bugs but some still remain and will get it in later releases
-- @ Symbols in emails should be reconized if missing in the edit
-- Created new update process, will now show with a status popup
-- When updating, the app will force close to install the update
-- Any CMD's being used during updates will be silent and hidden
-
-Version 1.1.0
-- Added Readme.txt
-- Added New Logo Icon
-- Changed Location of Buttons
-- Fixed Random Issues
-
-Version 1.0.0
-- Added Update Button
-- Added Find Function
+Version 1.2.5
+- Better error detection for missing or wrong symbols when editing.
+- Error highlight now points to the exact fix spot more consistently.
+- Improved Before/After suggestions to be clearer and more accurate.
+- Added stronger visual feedback: cyan for guidance, red for wrong typed fixes.
+- Error popup and highlights clear correctly when switching categories.
+- Cursor behavior is smoother during fixes (no random jump to older position).
+- Arrow-key editing works better inside the active error line.
+- Many reliability fixes and regression checks were added to prevent old bugs from returning.
 
 
 
