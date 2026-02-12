@@ -10,7 +10,7 @@ https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 2. The program supports automatic update checks and a manual Update button to keep you on the latest version.
 
 
-       [ USAGE ]
+		[ USAGE ]
 
 Sin EDITOR is designed for quick, practical save-file fixes.
 It helps players and community helpers resolve common issues faster, with focused editing and clearer error guidance.
