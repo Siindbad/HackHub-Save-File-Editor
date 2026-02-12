@@ -39,6 +39,7 @@ Version 1.2.5
 - Error popup and highlights clear correctly when switching categories.
 - Cursor behavior is smoother during fixes (no random jump to older position).
 - Arrow-key editing works better inside the active error line.
+- Updater install is now more silent and reliable on Windows (less chance of command window flashes).
 - Many reliability fixes and regression checks were added to prevent old bugs from returning.
 
 
