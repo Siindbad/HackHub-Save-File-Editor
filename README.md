@@ -12,18 +12,16 @@ THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Dete
 There will be a README Function Inside the application for you to view and read with small instructions
 
 
-       [ FOR EDITORS ]
+       [ USAGE ]
 
-Sin EDITOR : is for common quick fixing of small issues players may run into, and a community helper can identify them quicker with a smaller list to choose from
-that entail more of the common issues people may need assistance with.
+Sin EDITOR is designed for quick, practical save-file fixes.
+It helps players and community helpers resolve common issues faster, with focused editing and clearer error guidance.
 
-	   [ COMMON USAGE ]
+You can edit many values in a save file, but the safest use is targeted corrections (for example: ports, missing services, credentials, and similar recovery fixes).
+Directly changing device identities or IP structures is possible, but not recommended unless you know exactly what you are doing.
 
-This editor can be used to simply change all aspects of the information in the game. Even though is NOT Recommended to change Any Devices and IP's, it would be more common to change
-things like Port Numbers that are having issues, or even bugs showing no services when there should be.
-
-For Example : If a user has issues getting into a ROUTER due to 404 Page Error, it could be because some how it's bugged with PORT 22 when it should be PORT 80. If this was the case
-you can open the save file and go into "NETWORK" Tab and find the Public IP and change that 22 to an 80 then EXPORT the save. 
+Example:
+If a router is showing a 404 page because a port is incorrect, open the save, go to the `NETWORK` section, locate the affected public IP entry, correct the port (for example `22` to `80`), then export and import the updated save.
 
 
 		 [ CHANGE LOGS ]
