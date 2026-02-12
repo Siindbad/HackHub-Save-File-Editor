@@ -4,9 +4,6 @@ https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 
 
 
-The program includes both automatic update checks and a manual Update button, so you can stay on the latest version.
-
-
 		[ REMINDER ]
 
 1. Use the in-app README for quick usage guidance.
