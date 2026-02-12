@@ -1,6 +1,7 @@
-﻿ALL NEW EXE Apps Will Be Available In The RELEASE Section
+﻿New executable releases are published on the Releases page.
 
-https://github.com/Siindbad/HackHub-Save-File-Editor/releases
+- [View latest releases](https://github.com/Siindbad/HackHub-Save-File-Editor/releases)
+- [Download latest release](https://github.com/Siindbad/HackHub-Save-File-Editor/releases/latest)
 
 
 
@@ -17,6 +18,8 @@ https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 | <img align="left" alt="CHANGE LOGS" src="https://img.shields.io/badge/CHANGE%20LOGS-5B21B6?style=for-the-badge&labelColor=0F172A"> |
 |---|
 | **Version 1.2.5**<br>- Better error detection for missing or wrong symbols when editing.<br>- Error highlight now points to the exact fix spot more consistently.<br>- Improved Before/After suggestions to be clearer and more accurate.<br>- Added stronger visual feedback: cyan for guidance, red for wrong typed fixes.<br>- Error popup and highlights clear correctly when switching categories.<br>- Cursor behavior is smoother during fixes (no random jump to older position).<br>- Arrow-key editing works better inside the active error line.<br>- Updater install is now more silent and reliable on Windows (less chance of command window flashes).<br>- Many reliability fixes and regression checks were added to prevent old bugs from returning. |
+
+
 
 
 
