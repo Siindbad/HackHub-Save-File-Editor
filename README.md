@@ -4,13 +4,13 @@ https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 
 
 
-		[ REMINDER ]
+[ REMINDER ]
 
 1. Use the in-app README for quick usage guidance.
 2. The program supports automatic update checks and a manual Update button to keep you on the latest version.
 
 
-		[ USAGE ]
+[ USAGE ]
 
 Sin EDITOR is designed for quick, practical save-file fixes.
 It helps players and community helpers resolve common issues faster, with focused editing and clearer error guidance.
@@ -22,7 +22,7 @@ Example:
 If a router is showing a 404 page because a port is incorrect, open the save, go to the `NETWORK` section, locate the affected public IP entry, correct the port (for example `22` to `80`), then export and import the updated save.
 
 
-		 [ CHANGE LOGS ]
+[ CHANGE LOGS ]
 
 Version 1.2.5
 - Better error detection for missing or wrong symbols when editing.
