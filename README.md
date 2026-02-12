@@ -4,7 +4,7 @@ https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 
 
 
-THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Detects It
+The program includes both automatic update checks and a manual Update button, so you can stay on the latest version.
 
 
 		[ REMINDER ]
