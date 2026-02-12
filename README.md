@@ -7,7 +7,7 @@ https://github.com/Siindbad/HackHub-Save-File-Editor/releases
 THE PROGRAM NOW HAS AN UPDATE Button : To Update To Latest Versions When It Detects It
 
 
-		[ USAGE ]
+		[ REMINDER ]
 
 There will be a README Function Inside the application for you to view and read with small instructions
 
