@@ -9,7 +9,8 @@ The program includes both automatic update checks and a manual Update button, so
 
 		[ REMINDER ]
 
-There will be a README Function Inside the application for you to view and read with small instructions
+1. Use the in-app README for quick usage guidance.
+2. The program supports automatic update checks and a manual Update button to keep you on the latest version.
 
 
        [ USAGE ]
