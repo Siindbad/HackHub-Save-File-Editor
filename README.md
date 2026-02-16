@@ -1,6 +1,6 @@
 ﻿| <img align="left" alt="DISCORD" src="https://img.shields.io/badge/DISCORD-5865F2?style=for-the-badge&labelColor=0F172A&logo=discord&logoColor=white"> |
 |---|
-| [<img alt="Discord" src="https://cdn.simpleicons.org/discord/5865F2" height="14"> <strong>SIN.NETWORK</strong>](https://discord.gg/kpFXrtyr2Z) |
+| [SIN.NETWORK](https://discord.gg/kpFXrtyr2Z) |
 
 
 
