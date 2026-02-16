@@ -1,4 +1,10 @@
-﻿| <img align="left" alt="RELEASES" src="https://img.shields.io/badge/RELEASES-F59E0B?style=for-the-badge&labelColor=0F172A"> |
+﻿| <img align="left" alt="DISCORD" src="https://img.shields.io/badge/DISCORD-5865F2?style=for-the-badge&labelColor=0F172A&logo=discord&logoColor=white"> |
+|---|
+| [<img alt="Discord" src="https://cdn.simpleicons.org/discord/5865F2" height="14"> <strong>SIN.NETWORK</strong>](https://discord.gg/kpFXrtyr2Z) |
+
+
+
+| <img align="left" alt="RELEASES" src="https://img.shields.io/badge/RELEASES-F59E0B?style=for-the-badge&labelColor=0F172A"> |
 |---|
 | [Download latest release](https://github.com/Siindbad/HackHub-Save-File-Editor/releases/latest) |
 
@@ -17,7 +23,6 @@
 | <img align="left" alt="CHANGE LOGS" src="https://img.shields.io/badge/CHANGE%20LOGS-5B21B6?style=for-the-badge&labelColor=0F172A"> |
 |---|
 | **Version 1.3.1**<br>- Added JSON and INPUT editor mode tabs for easier workflow switching.<br>- JSON mode is now the default editing mode for safer day-to-day use.<br>- INPUT mode is currently disabled in public builds and will return in a future release.<br>- Added an in-app bug report flow to submit issues directly from the editor.<br>- Added a clearer crash recovery flow after unexpected app closes.<br>- Added right-click editor actions (Undo, Redo, Copy, Paste, and Auto-Fix).<br>- Improved save and export reliability to reduce failed writes.<br>- Improved startup behavior and overall app stability during normal use.<br>- Updated error guidance so fix directions are clearer for common editing mistakes.<br>- Improved update reliability with stronger safety checks.<br>- Fixed a rare Windows issue where the app could fail to relaunch after an update.<br>- Refreshed in-app README presentation and formatting for better readability.<br>- Added general quality, stability, and usability improvements across the editor. |
-
 
 
 
