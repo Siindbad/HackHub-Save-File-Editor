@@ -1,4 +1,4 @@
-STILL W.I.P. : Thanks to Community for helping us out on it, we'll pull it down until fixes are applied. 
+STILL W.I.P. : Thanks to Community for helping us out on it, we'll pull release down until more stable release is fixed. Thanks! 
  
  
  
