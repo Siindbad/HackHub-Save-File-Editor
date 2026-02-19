@@ -22,7 +22,7 @@
 
 | <img align="left" alt="CHANGE LOGS" src="https://img.shields.io/badge/CHANGE%20LOGS-5B21B6?style=for-the-badge&labelColor=0F172A"> |
 |---|
-| **[ Version 1.3.2 ]**<br>- HOTFIX: Added clearer Windows update and install errors for common file, lock, checksum, and signature failures.<br>- Improved wrong-bracket error feedback with clearer symbol highlighting.<br>- Improved right-click context menu placement in the editor.<br>- Improved bug report UI polish for a cleaner in-app reporting flow.<br>- Improved diagnostics log retention to keep recent logs and reduce clutter.<br>- Improved tree marker alignment for clearer category scanning.<br>- Improved category labels for Bookmarks, BCC.News, Process, and Typewriter. |
+| **[ Version 1.3.3 ]**<br>- Added targeted key-quote repair path.<br>- Updated diagnostics to daily files and retained only today and yesterday logs.<br>- Updated right-click menu to open above near bottom editor/app bounds for better.<br>- Added magic-byte format verification and blocked extension/content mismatch uploads.<br>- Added optional screenshot picker.<br>- Updated dialog labels/layout.<br>- Added browser fallback prompt to open direct update download page.<br>- Added clearer Windows-friendly update errors for access denied.<br>- Added structured update failure logging with details to diagnostics logs.<br>- HOTFIX: Added clear download/install/restart status and persistent update overlay.<br>- HOTFIX: Updated version/changelog/disclaimer to include missed 1.3.2 items.<br>- Updated sub marker nudge logic with fractional offsets for micro vertical centering. |
 
 
 
