@@ -16212,20 +16212,6 @@ class JsonEditor:
             )
         return None
 
-    def _strip_invalid_trailing_chars(self, value_str):
-        """Remove invalid trailing characters from an unclosed string value.
-        
-        Examples: "GOMAIL/" -> "GOMAIL", "test|" -> "test"
-        """
-        if not value_str:
-            return value_str
-        # Remove trailing invalid JSON string characters
-        # Keep only alphanumeric, underscore, hyphen, dot, @, and space
-        valid_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.@\t \n\r")
-        while value_str and value_str[-1] not in valid_chars:
-            value_str = value_str[:-1]
-        return value_str.rstrip()
-
     def _fix_missing_quote(self, line_text):
         if not line_text:
             return "\"key\": \"value\""
