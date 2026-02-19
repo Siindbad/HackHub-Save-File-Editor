@@ -1,4 +1,8 @@
-﻿| <img align="left" alt="DISCORD" src="https://img.shields.io/badge/DISCORD-5865F2?style=for-the-badge&labelColor=0F172A&logo=discord&logoColor=white"> |
+STILL W.I.P. : Thanks to Community for helping us out on it, we'll pull it down until fixes are applied. 
+ 
+ 
+ 
+ | <img align="left" alt="DISCORD" src="https://img.shields.io/badge/DISCORD-5865F2?style=for-the-badge&labelColor=0F172A&logo=discord&logoColor=white"> |
 |---|
 | [SIN.NETWORK](https://discord.gg/kpFXrtyr2Z) |
 
