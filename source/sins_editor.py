@@ -26,24 +26,31 @@ import urllib.error
 from tkinter import filedialog, messagebox, ttk
 from services import bug_report_api_service
 from services import bug_report_service
+from services import bug_report_ui_service
 from services import edit_guard_service
 from services import footer_service
 from services import input_mode_service
 from services import json_view_service
 from services import label_format_service
 from services import loader_service
+from services import json_error_highlight_render_service
 from services import error_service
 from services import error_overlay_service
 from services import runtime_log_service
+from services import startup_loader_ui_service
 from services import theme_asset_service
 from services import theme_service
 from services import toolbar_service
 from services import tree_view_service
 from services import update_ui_service
+from services import ui_build_service
+from services import update_orchestrator_service
 from services import windows_runtime_service
 from services import update_service
 from core import constants as app_constants
 from core import display_profile as display_profile_core
+from core import json_error_diagnostics_core
+from core import json_error_highlight_core
 from core import json_diagnostics as json_diag_core
 from core import layout_topbar as layout_topbar_core
 from core import startup_loader as startup_loader_core
@@ -195,6 +202,22 @@ class JsonEditor:
     INPUT_MODE_DISABLED_CATEGORY_MESSAGE = (
         "This Category Is Not Editable In INPUT Mode Due To Core Game Information Could Get Corrupted"
     )
+    # Update orchestration helpers keep these message templates visible in editor source.
+    UPDATE_PREPARING_OVERLAY_MESSAGE = "Preparing update...\nThe app will restart automatically."
+    UPDATE_DOWNLOADING_OVERLAY_MESSAGE = "Downloading update...\nThis may take a moment."
+    UPDATE_RESTART_STATUS_MESSAGE = "Update installed. Restarting app..."
+    UPDATE_AVAILABLE_PROMPT_TEMPLATE = "Update v{self._format_version(latest_version)} is available."
+    UPDATE_CONFIRM_INSTALL_QUESTION = "Do you want to install it now?"
+    UPDATE_CONFIRM_WIRING_CONTRACT = """self._ui_call(
+self._ask_themed_update_confirm,
+"Update",
+prompt,
+True,
+wait=True,
+default=False,
+)
+if not install_started:
+"""
 
     def __init__(self, root, path):
         self.root = root
@@ -679,289 +702,7 @@ class JsonEditor:
             pass
 
     def _build_ui(self):
-        self._apply_dark_theme()
-        self._set_window_icon()
-
-        header = ttk.Frame(self.root)
-        header.pack(fill="x", padx=4, pady=(2, 0))
-        self._header_frame = header
-        self._update_logo_for_theme(force=True)
-
-        top = ttk.Frame(self.root)
-        top.pack(fill="x", padx=4, pady=(2, 3))
-        self._toolbar_host = top
-        self._rebuild_toolbar(preserve_find_text=False)
-        self.status = None
-        theme = getattr(self, "_theme", {})
-        separator = tk.Frame(
-            self.root,
-            bg=theme.get("bg", "#0f131a"),
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=theme.get("logo_border_outer", "#349fc7"),
-            highlightcolor=theme.get("logo_border_outer", "#349fc7"),
-            height=2,
-        )
-        separator.pack(fill="x", padx=4, pady=(0, 1))
-        separator.pack_propagate(False)
-        separator_inner = tk.Frame(
-            separator,
-            bg=theme.get("bg", "#0f131a"),
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=theme.get("logo_border_inner", "#a9ddf0"),
-            highlightcolor=theme.get("logo_border_inner", "#a9ddf0"),
-        )
-        separator_inner.pack(fill="both", expand=True, padx=0, pady=0)
-        self._body_top_separator = separator
-        self._body_top_separator_inner = separator_inner
-
-        body = ttk.Panedwindow(self.root, orient="horizontal")
-
-        left = ttk.Frame(body)
-        right = ttk.Frame(body)
-        self._editor_right_parent = right
-        body.add(left, weight=1)
-        body.add(right, weight=2)
-
-        self.tree = ttk.Treeview(left, show="tree")
-        self.tree.pack(fill="both", expand=True, side="left")
-        try:
-            tree_inset = 6 if str(getattr(self, "_tree_style_variant", "B")).upper() == "B" else 0
-            self.tree.configure(padding=(tree_inset, 0, 0, 0))
-        except Exception:
-            pass
-        scroll_style = getattr(self, "_v_scrollbar_style", "Vertical.TScrollbar")
-        tree_scroll = ttk.Scrollbar(
-            left, orient="vertical", command=self.tree.yview, style=scroll_style
-        )
-        tree_scroll.pack(fill="y", side="right")
-        self.tree.configure(yscrollcommand=tree_scroll.set)
-
-        self.tree.bind("<Button-1>", self._on_tree_click_toggle, add="+")
-        self.tree.bind("<<TreeviewOpen>>", self.on_expand)
-        self.tree.bind("<<TreeviewClose>>", self.on_collapse)
-        self.tree.bind("<<TreeviewSelect>>", self.on_select)
-        # Re-apply tree styling now that the widget exists so level tag fonts
-        # (main/sub categories) are guaranteed to take effect on initial load.
-        self._apply_tree_style()
-
-        # Enable built-in Tk text undo/redo support (Ctrl+Z / Ctrl+Y)
-        self.text = tk.Text(
-            right,
-            wrap="none",
-            height=10,
-            undo=True,
-            autoseparators=True,
-            maxundo=100,
-            padx=6,
-        )
-        # Keep editor content below INPUT/JSON mode tabs anchored at pane top.
-        editor_mode_top_inset = 24
-        self.text.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
-        text_scroll = ttk.Scrollbar(
-            right, orient="vertical", command=self.text.yview, style=scroll_style
-        )
-        text_scroll.pack(fill="y", side="right", pady=(editor_mode_top_inset, 0))
-        self.text.configure(yscrollcommand=text_scroll.set)
-        self._text_scroll = text_scroll
-        self._build_input_mode_panel(right, scroll_style)
-        self._style_text_widget()
-        self._build_editor_mode_toggle(right)
-        self._refresh_editor_mode_view()
-        self._build_text_context_menu()
-        self.text.bind("<KeyPress>", self._on_text_keypress, add="+")
-        self.text.bind("<KeyRelease>", self._on_text_keyrelease, add="+")
-        self.text.bind("<Button-1>", self._on_text_nav_attempt, add="+")
-        self.text.bind("<B1-Motion>", self._on_text_nav_attempt, add="+")
-        self.text.bind("<ButtonRelease-1>", self._on_text_nav_attempt, add="+")
-        self.text.bind("<Double-Button-1>", self._on_text_nav_attempt, add="+")
-        self.text.bind("<Triple-Button-1>", self._on_text_nav_attempt, add="+")
-        self.text.bind("<Button-3>", self._show_text_context_menu, add="+")
-        self.text.bind("<Shift-F10>", self._show_text_context_menu, add="+")
-        self.text.bind("<Menu>", self._show_text_context_menu, add="+")
-        self.root.bind("<FocusOut>", self._on_root_focus_out, add="+")
-        self.root.bind("<FocusIn>", self._on_root_focus_in, add="+")
-        self.root.bind("<Configure>", self._on_root_configure, add="+")
-        # Run one extra delayed pass so startup picks the correct layout mode.
-        self._schedule_topbar_alignment(delay_ms=120)
-
-        # Undo / Redo keyboard bindings (common Windows shortcuts)
-        try:
-            self.text.bind("<Control-z>", self._safe_edit_undo, add="+")
-            self.text.bind("<Control-y>", self._safe_edit_redo, add="+")
-            # Some keyboards/OS use Ctrl+Shift+Z for redo
-            self.text.bind("<Control-Shift-Z>", self._safe_edit_redo, add="+")
-        except Exception:
-            # If widget doesn't support undo methods for any reason, ignore.
-            pass
-
-        theme = getattr(self, "_theme", {})
-        credit_bar_bg = theme.get("credit_bg", "#0b1118")
-        credit_bar_border = theme.get("credit_border", "#1f2f3f")
-        credit_label_fg = theme.get("credit_label_fg", "#b5cade")
-
-        credit_bar = tk.Frame(
-            self.root,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=credit_bar_border,
-            highlightcolor=credit_bar_border,
-        )
-        credit_bar.pack(side="bottom", fill="x", padx=4, pady=(0, 2))
-        self._credit_bar = credit_bar
-
-        credit_left = tk.Frame(
-            credit_bar,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        credit_center = tk.Frame(
-            credit_bar,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        credit_right = tk.Frame(
-            credit_bar,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        credit_left.grid(row=0, column=0, sticky="w", padx=(6, 0), pady=(1, 1))
-        credit_center.grid(row=0, column=1, sticky="ew", pady=(1, 1))
-        credit_right.grid(row=0, column=2, sticky="e", padx=(0, 6), pady=(1, 1))
-        self._credit_left_slot = credit_left
-        self._credit_center_slot = credit_center
-        self._credit_right_slot = credit_right
-        credit_bar.grid_rowconfigure(0, weight=1)
-        # Let left/right size to content and keep center as flexible spacer.
-        credit_bar.grid_columnconfigure(0, weight=0)
-        credit_bar.grid_columnconfigure(1, weight=1)
-        credit_bar.grid_columnconfigure(2, weight=0)
-
-        credit_content = tk.Frame(
-            credit_left,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        credit_content.pack(side="left")
-        self._credit_content = credit_content
-
-        credit_label = tk.Label(
-            credit_content,
-            text="DESIGNED BY :",
-            bg=credit_bar_bg,
-            fg=credit_label_fg,
-            font=(self._preferred_mono_family(), 9, "bold"),
-            anchor="w",
-            justify="left",
-            bd=0,
-            highlightthickness=0,
-        )
-        credit_label.pack(side="left")
-        self._credit_label = credit_label
-
-        credit_badges = tk.Frame(
-            credit_content,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        credit_badges.pack(side="left", padx=(8, 0))
-        self._build_credit_badges(credit_badges)
-        divider_main = self._blend_hex_color(credit_bar_border, credit_label_fg, 0.35)
-        divider_glow = self._blend_hex_color(credit_label_fg, "#ffffff", 0.18)
-        credit_divider = tk.Canvas(
-            credit_content,
-            width=8,
-            height=18,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        credit_divider.pack(side="left", padx=(8, 6))
-        line_main = credit_divider.create_line(3, 2, 3, 16, fill=divider_main, width=1)
-        line_glow = credit_divider.create_line(4, 3, 4, 15, fill=divider_glow, width=1)
-        self._credit_badges_divider = credit_divider
-        self._credit_badges_divider_lines = (line_main, line_glow)
-        credit_discord_badges = tk.Frame(
-            credit_content,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        credit_discord_badges.pack(side="left", padx=(0, 0))
-        self._build_credit_discord_badges(credit_discord_badges)
-        discord_divider = tk.Canvas(
-            credit_content,
-            width=8,
-            height=18,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        discord_divider.pack(side="left", padx=(8, 6))
-        discord_line_main = discord_divider.create_line(3, 2, 3, 16, fill=divider_main, width=1)
-        discord_line_glow = discord_divider.create_line(4, 3, 4, 15, fill=divider_glow, width=1)
-        self._credit_discord_divider = discord_divider
-        self._credit_discord_divider_lines = (discord_line_main, discord_line_glow)
-        bug_controls = tk.Frame(
-            credit_content,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        bug_controls.pack(side="left", padx=(0, 0))
-        self._build_bug_report_chip(bug_controls)
-        theme_divider = tk.Canvas(
-            credit_content,
-            width=8,
-            height=18,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        theme_divider.pack(side="left", padx=(8, 6))
-        theme_line_main = theme_divider.create_line(3, 2, 3, 16, fill=divider_main, width=1)
-        theme_line_glow = theme_divider.create_line(4, 3, 4, 15, fill=divider_glow, width=1)
-        self._credit_theme_divider = theme_divider
-        self._credit_theme_divider_lines = (theme_line_main, theme_line_glow)
-
-        theme_controls = tk.Frame(
-            credit_content,
-            bg=credit_bar_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        theme_controls.pack(side="left", padx=(0, 0))
-        self._build_theme_selector(theme_controls)
-        self._build_header_variant_switch(theme_controls, show_title=False)
-        self._apply_footer_layout_variant()
-
-        # Pack main body after footer is created so footer keeps reserved space
-        # even when editor font size grows.
-        body.pack(fill="both", expand=True, padx=4, pady=(0, 8))
-
-        # Font size keyboard shortcuts
-        self.root.bind("<Control-plus>", lambda e: self.increase_font_size())
-        self.root.bind("<Control-equal>", lambda e: self.increase_font_size())  # Ctrl+= on some keyboards
-        self.root.bind("<Control-minus>", lambda e: self.decrease_font_size())
-
-        active_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        other_variant = "KAMUE" if active_variant == "SIINDBAD" else "SIINDBAD"
-        self._schedule_theme_asset_prewarm(targets=(active_variant,), delay_ms=120)
-        if bool(getattr(self, "_startup_loader_enabled", False)):
-            self._startup_loader_deferred_variants = {other_variant}
-            self._show_startup_loader()
-        else:
-            self._startup_loader_deferred_variants = set()
-            self._schedule_theme_asset_prewarm(targets=(other_variant,), delay_ms=650)
-            if self._auto_update_startup_enabled():
-                self._schedule_auto_update_check(delay_ms=500)
+        return ui_build_service.build_ui(self, tk=tk, ttk=ttk)
 
     def _safe_edit_undo(self, event=None):
         try:
@@ -1819,196 +1560,18 @@ class JsonEditor:
             pass
 
     def _run_update_ui_demo(self, auto=False, sleep_fn=time.sleep):
-        try:
-            self._set_status("Preparing update...")
-            self._ui_call(
-                self._show_update_overlay,
-                "Preparing update...\nThe app will restart automatically.",
-                wait=True,
-            )
-            self._ui_call(
-                self._update_update_overlay,
-                "Preparing update...\nThe app will restart automatically.",
-                stage="preparing",
-                wait=True,
-            )
-            sleep_fn(0.45)
-
-            self._set_status("Downloading update...")
-            self._ui_call(
-                self._update_update_overlay,
-                "Downloading update...\nThis may take a moment.",
-                stage="downloading",
-                wait=True,
-            )
-            for _ in range(8):
-                self._ui_call(
-                    self._update_update_overlay,
-                    stage="downloading",
-                    pulse=True,
-                    wait=True,
-                )
-                sleep_fn(0.12)
-
-            self._set_status("Installing update...")
-            self._ui_call(
-                self._update_update_overlay,
-                "Installing update...\nThe app will restart automatically.",
-                stage="installing",
-                wait=True,
-            )
-            install_hold_ms = max(0, int(getattr(self, "_update_install_stage_hold_ms", 3000) or 3000))
-            sleep_fn(float(install_hold_ms) / 1000.0)
-
-            self._set_status("Update installed. Restarting app...")
-            self._ui_call(
-                self._update_update_overlay,
-                "Update installed.\nRestarting app...",
-                stage="restarting",
-                wait=True,
-            )
-            restart_hold_ms = max(0, int(getattr(self, "_update_restart_notice_ms", 4200) or 4200))
-            sleep_fn(float(restart_hold_ms) / 1000.0)
-
-            if not auto:
-                self._set_status("Update UI demo complete.")
-                self._ui_call(
-                    self._show_themed_update_info,
-                    "Update",
-                    "Update UI demo complete.\nNo files were downloaded or installed.",
-                )
-        finally:
-            self._ui_call(self._close_update_overlay)
-            if auto:
-                self._set_status("")
+        return update_orchestrator_service.run_update_ui_demo(
+            self,
+            auto=auto,
+            sleep_fn=sleep_fn,
+        )
 
     def _check_for_updates(self, auto=False):
-        if self._update_ui_demo_enabled():
-            threading.Thread(target=lambda: self._run_update_ui_demo(auto=auto), daemon=True).start()
-            return
-        if not getattr(sys, "frozen", False):
-            self._set_status("You already have the latest version installed.")
-            if not auto:
-                self._show_themed_update_info(
-                    "Update",
-                    "You already have the latest version installed.",
-                    True,
-                )
-            return
-        if self.GITHUB_OWNER == "YOUR_GITHUB_USERNAME" or self.GITHUB_REPO == "YOUR_REPO_NAME":
-            if not auto:
-                self._show_themed_update_info(
-                    "Update",
-                    "Set GITHUB_OWNER and GITHUB_REPO in the source to enable updates.",
-                )
-            return
-
-        def worker():
-            install_started = False
-            try:
-                self._set_status("Checking for updates...")
-                latest_version = self._fetch_dist_version()
-                if not latest_version:
-                    self._set_status("")
-                    if not auto:
-                        self._ui_call(self._show_themed_update_info, "Update", "No release info available.")
-                    return
-
-                latest_version = self._release_version(latest_version)
-                current_version = self._release_version(self.APP_VERSION)
-                if latest_version and current_version and latest_version < current_version:
-                    self._set_status("")
-                    if not auto:
-                        self._ui_call(
-                            messagebox.showwarning,
-                            "Update",
-                            "Release version is older than this build.\n"
-                            f"Release: v{self._format_version(latest_version)}\n"
-                            f"Current: v{self._format_version(current_version)}\n"
-                            "Check dist/version.txt.",
-                        )
-                    return
-                if latest_version == current_version:
-                    self._set_status("Up to date.")
-                    if not auto:
-                        self._ui_call(
-                            self._show_themed_update_info,
-                            "Update",
-                            "You're already on the latest version.",
-                            True,
-                        )
-                    return
-
-                prompt = (
-                    f"Update v{self._format_version(latest_version)} is available.\n"
-                    "Do you want to install it now?\n\n"
-                    "The app will close and restart automatically."
-                )
-                if not self._ui_call(
-                    self._ask_themed_update_confirm,
-                    "Update",
-                    prompt,
-                    True,
-                    wait=True,
-                    default=False,
-                ):
-                    self._set_status("")
-                    return
-
-                self._ui_call(
-                    self._show_update_overlay,
-                    "Preparing update...\nThe app will restart automatically.",
-                    wait=True,
-                )
-                self._ui_call(
-                    self._update_update_overlay,
-                    "Preparing update...\nThe app will restart automatically.",
-                    stage="preparing",
-                    wait=True,
-                )
-                self._set_status("Downloading update...")
-                self._ui_call(
-                    self._update_update_overlay,
-                    "Downloading update...\nThis may take a moment.",
-                    stage="downloading",
-                    wait=True,
-                )
-                new_path = self._download_dist_asset()
-                self._ui_call(
-                    self._update_update_overlay,
-                    "Installing update...\nThe app will restart automatically.",
-                    stage="installing",
-                    wait=True,
-                )
-                self._set_status("Installing update...")
-                install_hold_ms = max(0, int(getattr(self, "_update_install_stage_hold_ms", 3000) or 3000))
-                if install_hold_ms > 0:
-                    time.sleep(float(install_hold_ms) / 1000.0)
-                install_started = True
-                self._install_update(new_path)
-                self._set_status("Update installed. Restarting app...")
-                self._ui_call(
-                    self._update_update_overlay,
-                    "Update installed.\nRestarting app...",
-                    stage="restarting",
-                    wait=True,
-                )
-            except Exception as exc:
-                self._set_status("")
-                pretty_error = self._format_update_error(exc)
-                self._log_update_failure(exc, auto=auto, pretty_error=pretty_error)
-                if not auto:
-                    self._ui_call(messagebox.showerror, "Update", pretty_error)
-                    self._ui_call(self._offer_manual_update_fallback, pretty_error, wait=True, default=False)
-            finally:
-                if auto and not install_started:
-                    self._set_status("")
-                # Keep overlay visible on successful install path so restart messaging remains visible
-                # until the app closes and relaunches.
-                if not install_started:
-                    self._ui_call(self._close_update_overlay)
-
-        threading.Thread(target=worker, daemon=True).start()
+        return update_orchestrator_service.check_for_updates(
+            self,
+            auto=auto,
+            messagebox=messagebox,
+        )
 
     def _ui_call(self, callback, *args, wait=False, default=None, timeout=15.0, **kwargs):
         root = getattr(self, "root", None)
@@ -2928,500 +2491,16 @@ class JsonEditor:
         include_diag_default=True,
         crash_tail="",
     ):
-        existing = getattr(self, "_bug_report_dialog", None)
-        if existing is not None:
-            try:
-                if existing.winfo_exists():
-                    existing.deiconify()
-                    existing.lift()
-                    existing.focus_force()
-                    return
-            except Exception:
-                pass
-        theme = getattr(self, "_theme", {})
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        chip_colors = self._bug_chip_palette(variant)
-
-        dlg = tk.Toplevel(self.root)
-        try:
-            dlg.withdraw()
-        except Exception:
-            pass
-        self._bug_report_dialog = dlg
-        dlg.title("Submit Bug Report")
-        use_custom_chrome = bool(getattr(self, "BUG_REPORT_USE_CUSTOM_CHROME", True))
-        if not use_custom_chrome:
-            dlg.transient(self.root)
-        dlg.configure(bg=theme.get("panel", "#161b24"))
-        self._apply_centered_toplevel_geometry(
-            dlg,
-            width_px=684,
-            height_px=576,
-            anchor_window=self.root,
-            min_width=612,
-            min_height=504,
+        return bug_report_ui_service.open_bug_report_dialog(
+            self,
+            tk=tk,
+            filedialog=filedialog,
+            messagebox=messagebox,
+            summary_prefill=summary_prefill,
+            details_prefill=details_prefill,
+            include_diag_default=include_diag_default,
+            crash_tail=crash_tail,
         )
-
-        card = tk.Frame(
-            dlg,
-            bg=theme.get("panel", "#161b24"),
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=chip_colors["border"],
-            highlightcolor=chip_colors["border"],
-        )
-        card.pack(fill="both", expand=True, padx=0, pady=0)
-        self._bug_report_card_frame = card
-
-        header_bg = theme.get("title_bar_bg", chip_colors["bg"])
-        header_fg = theme.get("title_bar_fg", theme.get("fg", "#e6e6e6"))
-        header_border = theme.get("title_bar_border", chip_colors["border"])
-        header = tk.Frame(
-            card,
-            bg=header_bg,
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=header_border,
-            highlightcolor=header_border,
-        )
-        header.pack(fill="x", padx=12, pady=(10, 8))
-        header_icon_photo = self._load_bug_report_chip_icon(max_size=18, tint=header_fg)
-        self._bug_report_header_icon_photo = header_icon_photo
-        icon = tk.Label(
-            header,
-            text="",
-            image=header_icon_photo if header_icon_photo is not None else "",
-            bg=header_bg,
-            fg=header_fg,
-            bd=0,
-            highlightthickness=0,
-        )
-        icon.pack(side="left", padx=(8, 7), pady=4)
-        title = tk.Label(
-            header,
-            text="SUBMIT BUG REPORT",
-            bg=header_bg,
-            fg=header_fg,
-            font=(self._preferred_mono_family(), 12, "bold"),
-            anchor="w",
-        )
-        title.pack(side="left", pady=2)
-        close_badge = tk.Label(
-            header,
-            text="X",
-            bg=header_bg,
-            fg=header_fg,
-            font=(self._preferred_mono_family(), 11, "bold"),
-            cursor="hand2",
-            padx=10,
-            pady=4,
-        )
-        close_badge.pack(side="right")
-        self._bug_report_header_frame = header
-        self._bug_report_header_icon = icon
-        self._bug_report_header_title = title
-        self._bug_report_close_badge = close_badge
-
-        form_intro = tk.Frame(card, bg=theme.get("panel", "#161b24"), bd=0, highlightthickness=0)
-        form_intro.pack(fill="x", padx=12, pady=(0, 8))
-        tk.Label(
-            form_intro,
-            text="DISCORD (OPTIONAL)",
-            bg=theme.get("panel", "#161b24"),
-            fg=theme.get("fg", "#e6e6e6"),
-            font=(self._preferred_mono_family(), 10, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-        discord_var = tk.StringVar(value="")
-        discord_entry = tk.Entry(
-            form_intro,
-            textvariable=discord_var,
-            bg=theme.get("bg", "#0f131a"),
-            fg=theme.get("fg", "#e6e6e6"),
-            insertbackground=theme.get("fg", "#e6e6e6"),
-            relief="flat",
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=chip_colors["border"],
-            highlightcolor=chip_colors["border"],
-            font=(self._preferred_mono_family(), 10),
-        )
-        discord_entry.pack(fill="x", pady=(4, 0), ipady=5)
-
-        screenshot_var = tk.StringVar(value="")
-        screenshot_block = tk.Frame(form_intro, bg=theme.get("panel", "#161b24"), bd=0, highlightthickness=0)
-        screenshot_block.pack(fill="x", pady=(8, 0))
-        tk.Label(
-            screenshot_block,
-            text="SCREENSHOT (OPTIONAL)",
-            bg=theme.get("panel", "#161b24"),
-            fg=theme.get("fg", "#e6e6e6"),
-            font=(self._preferred_mono_family(), 10, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-        screenshot_row = tk.Frame(screenshot_block, bg=theme.get("panel", "#161b24"), bd=0, highlightthickness=0)
-        screenshot_row.pack(fill="x", pady=(4, 0))
-        screenshot_entry = tk.Entry(
-            screenshot_row,
-            textvariable=screenshot_var,
-            state="readonly",
-            readonlybackground=theme.get("bg", "#0f131a"),
-            fg=theme.get("credit_label_fg", "#b5cade"),
-            relief="flat",
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=chip_colors["border"],
-            highlightcolor=chip_colors["border"],
-            font=(self._preferred_mono_family(), 9),
-        )
-        screenshot_entry.pack(side="left", fill="x", expand=True, ipady=5)
-
-        def _pick_screenshot_file():
-            file_path = filedialog.askopenfilename(
-                title="Select Screenshot",
-                filetypes=[
-                    ("Image files", "*.png;*.jpg;*.jpeg;*.webp"),
-                    ("PNG", "*.png"),
-                    ("JPEG", "*.jpg;*.jpeg"),
-                    ("WebP", "*.webp"),
-                ],
-            )
-            if not file_path:
-                return
-            try:
-                validated = self._validate_bug_screenshot_file(file_path)
-            except Exception as exc:
-                messagebox.showwarning("Bug Report", str(exc))
-                return
-            screenshot_var.set(validated)
-
-        def _clear_screenshot_file():
-            screenshot_var.set("")
-
-        pick_wrap = tk.Frame(
-            screenshot_row,
-            bg=chip_colors["border"],
-            bd=0,
-            highlightthickness=0,
-        )
-        pick_wrap.pack(side="left", padx=(6, 0))
-        pick_btn = tk.Button(
-            pick_wrap,
-            text="Browse",
-            bg=theme.get("bg", "#0f131a"),
-            fg=theme.get("fg", "#e6e6e6"),
-            activebackground=theme.get("accent", "#202737"),
-            activeforeground="#ffffff",
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-            font=(self._preferred_mono_family(), 9, "bold"),
-            padx=10,
-            pady=4,
-            command=_pick_screenshot_file,
-        )
-        pick_btn.pack(side="left", padx=1, pady=1)
-        clear_wrap = tk.Frame(
-            screenshot_row,
-            bg=chip_colors["border"],
-            bd=0,
-            highlightthickness=0,
-        )
-        clear_wrap.pack(side="left", padx=(6, 0))
-        clear_btn = tk.Button(
-            clear_wrap,
-            text="Clear",
-            bg=theme.get("bg", "#0f131a"),
-            fg=theme.get("fg", "#e6e6e6"),
-            activebackground=theme.get("accent", "#202737"),
-            activeforeground="#ffffff",
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-            font=(self._preferred_mono_family(), 9, "bold"),
-            padx=10,
-            pady=4,
-            command=_clear_screenshot_file,
-        )
-        clear_btn.pack(side="left", padx=1, pady=1)
-
-        form = tk.Frame(card, bg=theme.get("panel", "#161b24"), bd=0, highlightthickness=0)
-        form.pack(fill="both", expand=True, padx=12, pady=(2, 8))
-
-        tk.Label(
-            form,
-            text="Title",
-            bg=theme.get("panel", "#161b24"),
-            fg=theme.get("fg", "#e6e6e6"),
-            font=(self._preferred_mono_family(), 10, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-        summary_var = tk.StringVar(value=str(summary_prefill or ""))
-        summary_entry = tk.Entry(
-            form,
-            textvariable=summary_var,
-            bg=theme.get("bg", "#0f131a"),
-            fg=theme.get("fg", "#e6e6e6"),
-            insertbackground=theme.get("fg", "#e6e6e6"),
-            relief="flat",
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=chip_colors["border"],
-            highlightcolor=chip_colors["border"],
-            font=(self._preferred_mono_family(), 10),
-        )
-        summary_entry.pack(fill="x", pady=(4, 10), ipady=5)
-
-        tk.Label(
-            form,
-            text="Details",
-            bg=theme.get("panel", "#161b24"),
-            fg=theme.get("fg", "#e6e6e6"),
-            font=(self._preferred_mono_family(), 10, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-        details_text = tk.Text(
-            form,
-            wrap="word",
-            height=9,
-            bg=theme.get("bg", "#0f131a"),
-            fg=theme.get("fg", "#e6e6e6"),
-            insertbackground=theme.get("fg", "#e6e6e6"),
-            selectbackground=theme.get("select_bg", "#2f3a4d"),
-            selectforeground=theme.get("select_fg", "#ffffff"),
-            relief="flat",
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=chip_colors["border"],
-            highlightcolor=chip_colors["border"],
-            font=(self._preferred_mono_family(), 10),
-        )
-        details_text.pack(fill="both", expand=True, pady=(4, 8))
-        if str(details_prefill or "").strip():
-            try:
-                details_text.insert("1.0", str(details_prefill))
-            except Exception:
-                pass
-
-        include_diag_var = tk.BooleanVar(value=bool(include_diag_default))
-        diag_block = tk.Frame(form, bg=theme.get("panel", "#161b24"), bd=0, highlightthickness=0)
-        diag_block.pack(fill="x", pady=(0, 0))
-
-        include_diag = tk.Checkbutton(
-            diag_block,
-            text="Include diagnostics tail from local app log",
-            variable=include_diag_var,
-            onvalue=True,
-            offvalue=False,
-            bg=theme.get("panel", "#161b24"),
-            fg=theme.get("fg", "#e6e6e6"),
-            activebackground=theme.get("panel", "#161b24"),
-            activeforeground=theme.get("fg", "#e6e6e6"),
-            selectcolor=theme.get("panel", "#161b24"),
-            highlightthickness=0,
-            bd=0,
-            font=(self._preferred_mono_family(), 9),
-            anchor="w",
-        )
-        include_diag.pack(fill="x")
-        tk.Label(
-            diag_block,
-            text=(
-                "Privacy Notice: Submitted reports may include your notes, runtime context,\n"
-                "optional diagnostics/crash logs, and optional Discord contact info."
-            ),
-            bg=theme.get("panel", "#161b24"),
-            fg=theme.get("credit_label_fg", "#8ca6bb"),
-            font=(self._preferred_mono_family(), 10),
-            justify="left",
-            anchor="w",
-        ).pack(fill="x", padx=(0, 0), pady=(2, 0))
-
-        status_var = tk.StringVar(value="")
-        status_label = tk.Label(
-            form,
-            textvariable=status_var,
-            bg=theme.get("panel", "#161b24"),
-            fg=theme.get("credit_label_fg", "#b5cade"),
-            font=(self._preferred_mono_family(), 9),
-            anchor="w",
-        )
-        status_label.pack(fill="x", pady=(8, 0))
-
-        controls = tk.Frame(card, bg=theme.get("panel", "#161b24"), bd=0, highlightthickness=0)
-        controls.pack(fill="x", padx=12, pady=(0, 12))
-
-        submit_wrap = tk.Frame(
-            controls,
-            bg=chip_colors["border"],
-            bd=0,
-            highlightthickness=0,
-        )
-        submit_wrap.pack(side="right")
-        submit_btn = tk.Button(
-            submit_wrap,
-            text="Submit Report",
-            bg=chip_colors["bg"],
-            fg=chip_colors["fg"],
-            activebackground=chip_colors["active_bg"],
-            activeforeground="#ffffff",
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-            font=(self._preferred_mono_family(), 10, "bold"),
-            padx=14,
-            pady=5,
-        )
-        submit_btn.pack(side="right", padx=1, pady=1)
-
-        cancel_wrap = tk.Frame(
-            controls,
-            bg=chip_colors["border"],
-            bd=0,
-            highlightthickness=0,
-        )
-        cancel_wrap.pack(side="right", padx=(0, 8))
-        cancel_btn = tk.Button(
-            cancel_wrap,
-            text="Cancel",
-            bg=theme.get("bg", "#0f131a"),
-            fg=theme.get("fg", "#e6e6e6"),
-            activebackground=theme.get("accent", "#202737"),
-            activeforeground="#ffffff",
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-            font=(self._preferred_mono_family(), 10, "bold"),
-            padx=14,
-            pady=5,
-            command=self._close_bug_report_dialog,
-        )
-        cancel_btn.pack(side="right", padx=1, pady=1)
-
-        def submit_action():
-            cooldown_remaining = self._bug_report_submit_cooldown_remaining()
-            if cooldown_remaining > 0:
-                unit = "second" if cooldown_remaining == 1 else "seconds"
-                wait_msg = f"Please wait {cooldown_remaining} {unit} before sending another report."
-                self._set_status(wait_msg)
-                status_var.set(wait_msg)
-                messagebox.showwarning("Bug Report", wait_msg)
-                return
-            summary = summary_var.get().strip()
-            details = details_text.get("1.0", "end-1c").strip()
-            if not summary:
-                messagebox.showwarning("Bug Report", "Enter a title before submitting.")
-                return
-            screenshot_path = screenshot_var.get().strip()
-            screenshot_file_name = os.path.basename(screenshot_path) if screenshot_path else ""
-            issue_title = f"[Bug] {summary}"[:120]
-            self._mark_bug_report_submit_now()
-
-            def worker():
-                try:
-                    self._ui_call(status_var.set, "Submitting issue...", wait=False)
-                    self._ui_call(submit_btn.configure, state="disabled", wait=False)
-                    screenshot_url = ""
-                    screenshot_note = ""
-                    selected_name = screenshot_file_name
-                    if screenshot_path:
-                        try:
-                            self._validate_bug_screenshot_file(screenshot_path)
-                            if JsonEditor._has_bug_report_token(self):
-                                self._ui_call(status_var.set, "Uploading screenshot...", wait=False)
-                                uploaded = self._upload_bug_screenshot(screenshot_path, summary=summary)
-                                screenshot_url = str(uploaded.get("download_url", "")).strip()
-                                selected_name = str(uploaded.get("filename", "")).strip() or selected_name
-                            else:
-                                screenshot_note = (
-                                    "Screenshot selected locally, but token is unavailable. "
-                                    "Attach image manually in browser issue form."
-                                )
-                        except Exception as upload_exc:
-                            screenshot_note = str(upload_exc)
-                    body = self._build_bug_report_markdown(
-                        summary=summary,
-                        details=details,
-                        include_diag=bool(include_diag_var.get()),
-                        discord_contact=(
-                            discord_var.get().strip()
-                        ),
-                        crash_tail=str(crash_tail or ""),
-                        screenshot_url=screenshot_url,
-                        screenshot_filename=selected_name,
-                        screenshot_note=screenshot_note,
-                    )
-                    self._ui_call(status_var.set, "Submitting issue...", wait=False)
-                    self._submit_bug_report_issue(issue_title, body)
-                    self._set_status("Bug report submitted.")
-                    self._ui_call(status_var.set, "Submitted successfully.", wait=False)
-                    # Release modal grab and close dialog first.
-                    self._ui_call(self._close_bug_report_dialog, wait=True)
-                    self._ui_call(
-                        self._show_bug_submit_splash,
-                        "BUG REPORT SUBMITTED",
-                        wait=False,
-                    )
-                except Exception as exc:
-                    self._set_status("")
-                    self._ui_call(status_var.set, "Submit failed.", wait=False)
-                    self._ui_call(messagebox.showerror, "Bug Report", str(exc), wait=False)
-                finally:
-                    self._ui_call(submit_btn.configure, state="normal", wait=False)
-
-            threading.Thread(target=worker, daemon=True).start()
-
-        submit_btn.configure(command=submit_action)
-        if use_custom_chrome:
-            chrome_ok = self._activate_bug_report_custom_chrome(
-                dlg,
-                header=header,
-                drag_widgets=(header, icon, title),
-                close_widget=close_badge,
-            )
-            if not chrome_ok:
-                self._set_window_icon_for(dlg)
-                self._apply_windows_titlebar_theme(dlg)
-                try:
-                    close_badge.pack_forget()
-                except Exception:
-                    pass
-        else:
-            self._set_window_icon_for(dlg)
-            self._apply_windows_titlebar_theme(dlg)
-            try:
-                close_badge.pack_forget()
-            except Exception:
-                pass
-        try:
-            dlg.deiconify()
-            dlg.lift()
-            dlg.focus_force()
-        except Exception:
-            pass
-        self._arm_bug_report_follow_root(dlg)
-        dlg.bind("<Escape>", lambda _e: self._close_bug_report_dialog())
-        dlg.protocol("WM_DELETE_WINDOW", self._close_bug_report_dialog)
-        summary_entry.focus_set()
-        self._start_bug_report_header_pulse()
-
-        def clear_ref(_evt=None):
-            self._stop_bug_report_header_pulse()
-            self._bug_report_card_frame = None
-            self._bug_report_header_frame = None
-            self._bug_report_header_icon = None
-            self._bug_report_header_icon_photo = None
-            self._bug_report_header_title = None
-            self._bug_report_close_badge = None
-            self._bug_report_dialog = None
-            self._bug_report_follow_root = False
-            self._bug_report_is_dragging = False
-
-        dlg.bind("<Destroy>", clear_ref, add="+")
 
     def _close_bug_report_dialog(self):
         dlg = getattr(self, "_bug_report_dialog", None)
@@ -8654,301 +7733,12 @@ class JsonEditor:
             return None
 
     def _show_startup_loader(self):
-        if not bool(getattr(self, "_startup_loader_enabled", False)):
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        active_variant, required_variants, deferred_variants = startup_loader_core.prepare_loader_variants(
-            getattr(self, "_app_theme_variant", "SIINDBAD"),
-            getattr(self, "_startup_loader_deferred_variants", set()),
+        return startup_loader_ui_service.show_startup_loader(
+            self,
+            tk=tk,
+            time=time,
+            startup_loader_core=startup_loader_core,
         )
-        # Loader readiness is tied to the active theme only. The other theme
-        # prewarms after loader close to keep startup snappy.
-        self._startup_loader_required_variants = required_variants
-        self._startup_loader_deferred_variants = deferred_variants
-        existing = getattr(self, "_startup_loader_overlay", None)
-        if existing is not None and existing.winfo_exists():
-            return
-        display_scale = max(0.85, min(1.35, float(getattr(self, "_display_scale", 1.0) or 1.0)))
-        loader_scale = max(0.70, min(0.98, 0.75 * display_scale))
-
-        def _s(value, minimum=1):
-            return max(int(minimum), int(round(float(value) * loader_scale)))
-
-        theme = getattr(self, "_theme", {}) or self._theme_palette_for_variant(
-            getattr(self, "_app_theme_variant", "SIINDBAD")
-        )
-
-        def _rgb_to_hex(rgb):
-            r, g, b = [max(0, min(255, int(round(v)))) for v in rgb]
-            return f"#{r:02x}{g:02x}{b:02x}"
-
-        def _mix_hex(color_a, color_b, ratio):
-            ra, ga, ba = self._hex_to_rgb_tuple(color_a, default_rgb=(18, 24, 32))
-            rb, gb, bb = self._hex_to_rgb_tuple(color_b, default_rgb=(0, 0, 0))
-            t = max(0.0, min(1.0, float(ratio)))
-            return _rgb_to_hex(
-                (
-                    ra + (rb - ra) * t,
-                    ga + (gb - ga) * t,
-                    ba + (bb - ba) * t,
-                )
-            )
-
-        logo_outer = theme.get("logo_border_outer", "#349fc7")
-        # Restore original loader palette.
-        card_bg = "#020812"
-        overlay_bg = "#040d1b" if bool(getattr(self, "_startup_loader_window_mode", False)) else "#02050c"
-        track_top_bg = "#081a2c"
-        track_bottom_bg = "#140f22"
-        bar_top_fill = "#1f7a8f"
-        bar_bottom_fill = "#70479a"
-        line_bg = "#08172a"
-        line_border = "#335677"
-        title_fg = "#d8ecff"
-        sub_fg = "#8fb0cd"
-        pct_fg = "#d8ecff"
-
-        window_mode = bool(getattr(self, "_startup_loader_window_mode", False))
-        window_width = _s(560)
-        window_height = _s(240)
-        card_width = window_width if window_mode else _s(540)
-        card_height = window_height if window_mode else _s(220)
-        if window_mode:
-            overlay = tk.Toplevel(root)
-            overlay.overrideredirect(True)
-            try:
-                overlay.attributes("-topmost", True)
-            except Exception:
-                pass
-            overlay.configure(bg=overlay_bg, cursor="watch")
-            self._apply_centered_toplevel_geometry(
-                overlay,
-                width_px=window_width,
-                height_px=window_height,
-                min_width=_s(420),
-                min_height=_s(180),
-                max_width_ratio=0.86,
-                max_height_ratio=0.75,
-            )
-            container = overlay
-        else:
-            overlay = tk.Frame(root, bg=overlay_bg, bd=0, highlightthickness=0, cursor="watch")
-            overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-            overlay.lift()
-            for event_name in ("<Button-1>", "<Button-2>", "<Button-3>", "<Key>"):
-                overlay.bind(event_name, lambda _evt: "break")
-            container = overlay
-
-        card = tk.Frame(
-            container,
-            bg=card_bg,
-            bd=0,
-            highlightthickness=1,
-            highlightbackground="#2d4d72",
-            highlightcolor="#2d4d72",
-        )
-        if window_mode:
-            card.place(x=0, y=0, width=card_width, height=card_height)
-        else:
-            card.place(relx=0.5, rely=0.5, anchor="center", width=card_width, height=card_height)
-
-        title_row = tk.Frame(card, bg=card_bg, bd=0, highlightthickness=0)
-        title_row.place(x=_s(16), y=_s(20), width=max(_s(200), card_width - _s(100)), height=_s(34))
-
-        title_prefix = tk.Label(
-            title_row,
-            text="SIINDBAD",
-            bg=card_bg,
-            fg=title_fg,
-            font=(
-                self._resolve_font_family(
-                    [
-                        "Tektur SemiBold",
-                        "Tektur",
-                    ],
-                    self._preferred_mono_family(),
-                ),
-                max(10, _s(17)),
-                "bold",
-            ),
-            bd=0,
-            highlightthickness=0,
-            anchor="center",
-            justify="center",
-            width=8,
-        )
-        title_prefix.pack(side="left")
-        title_suffix = tk.Label(
-            title_row,
-            text=" SHELL SYSTEM SYNC",
-            bg=card_bg,
-            fg=title_fg,
-            font=(
-                self._resolve_font_family(
-                    [
-                        "Tektur SemiBold",
-                        "Tektur",
-                    ],
-                    self._preferred_mono_family(),
-                ),
-                max(10, _s(17)),
-                "bold",
-            ),
-            bd=0,
-            highlightthickness=0,
-            anchor="w",
-            justify="left",
-        )
-        title_suffix.pack(side="left")
-
-        pct = tk.Label(
-            card,
-            text="0%",
-            bg=card_bg,
-            fg=pct_fg,
-            font=(
-                self._resolve_font_family(
-                    [
-                        "Coalition",
-                    ],
-                    self._preferred_mono_family(),
-                ),
-                max(24, _s(32)),
-                "bold",
-            ),
-            bd=0,
-            highlightthickness=0,
-            anchor="e",
-            justify="right",
-        )
-        # Keep the percentage locked to a static right-edge position.
-        pct.place(x=card_width - _s(18), y=_s(6), anchor="ne")
-
-        track_x = _s(16)
-        track_width = max(_s(220), card_width - (_s(16) * 2))
-        track_height = max(8, _s(16))
-
-        track_top = tk.Frame(
-            card,
-            bg=card_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        track_top.place(x=track_x, y=_s(70), width=track_width, height=track_height)
-        track_top_shell = tk.Label(track_top, bg=card_bg, bd=0, highlightthickness=0)
-        track_top_shell.place(x=0, y=0, relwidth=1, relheight=1)
-        track_top_shell_photo = self._startup_loader_rounded_panel_photo(
-            track_top_bg,
-            line_border,
-            track_width,
-            track_height,
-            border_px=1,
-        )
-        if track_top_shell_photo is not None:
-            track_top_shell.configure(image=track_top_shell_photo)
-            track_top_shell.image = track_top_shell_photo
-        fill_top_widget = tk.Label(track_top, bg=track_top_bg, bd=0, highlightthickness=0)
-        fill_top_widget.place_forget()
-        fill_top = {
-            "owner": self,
-            "track": track_top,
-            "widget": fill_top_widget,
-            "color": bar_top_fill,
-        }
-
-        track_bottom = tk.Frame(
-            card,
-            bg=card_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        track_bottom.place(x=track_x, y=_s(96), width=track_width, height=track_height)
-        track_bottom_shell = tk.Label(track_bottom, bg=card_bg, bd=0, highlightthickness=0)
-        track_bottom_shell.place(x=0, y=0, relwidth=1, relheight=1)
-        track_bottom_shell_photo = self._startup_loader_rounded_panel_photo(
-            track_bottom_bg,
-            "#5d4682",
-            track_width,
-            track_height,
-            border_px=1,
-        )
-        if track_bottom_shell_photo is not None:
-            track_bottom_shell.configure(image=track_bottom_shell_photo)
-            track_bottom_shell.image = track_bottom_shell_photo
-        fill_bottom_widget = tk.Label(track_bottom, bg=track_bottom_bg, bd=0, highlightthickness=0)
-        fill_bottom_widget.place_forget()
-        fill_bottom = {
-            "owner": self,
-            "track": track_bottom,
-            "widget": fill_bottom_widget,
-            "color": bar_bottom_fill,
-        }
-
-        line = tk.Label(
-            card,
-            text="/buffering startup core sectors...",
-            bg=line_bg,
-            fg=_mix_hex("#d4f0ff", card_bg, 0.18),
-            font=(self._preferred_mono_family(), max(8, _s(10)), "bold"),
-            anchor="w",
-            justify="left",
-            bd=0,
-            padx=max(4, _s(8)),
-            pady=max(3, _s(6)),
-            highlightthickness=1,
-            highlightbackground=line_border,
-            highlightcolor=line_border,
-        )
-        line.place(x=track_x, y=_s(136), width=track_width, height=max(20, _s(34)))
-
-        sub = tk.Label(
-            card,
-            text="siindbad <-> kamue : buffering protocol fusion",
-            bg=card_bg,
-            fg=sub_fg,
-            font=(self._preferred_mono_family(), max(8, _s(9))),
-            anchor="w",
-            justify="left",
-            bd=0,
-            highlightthickness=0,
-        )
-        sub.place(x=track_x, y=_s(182))
-
-        self._startup_loader_overlay = overlay
-        self._startup_loader_pct_label = pct
-        self._startup_loader_statement_label = line
-        self._startup_loader_title_prefix_label = title_prefix
-        self._startup_loader_title_suffix_label = title_suffix
-        self._startup_loader_top_fill = fill_top
-        self._startup_loader_bottom_fill = fill_bottom
-        self._startup_loader_started_ts = time.perf_counter()
-        self._startup_loader_ready_ts = None
-        self._startup_loader_statement_index = 0
-        self._startup_loader_line_pool_loading = []
-        self._startup_loader_line_pool_ready = []
-        self._startup_loader_title_variant = "SIINDBAD"
-        self._apply_startup_loader_title_variant()
-        if window_mode:
-            try:
-                overlay.update_idletasks()
-                overlay.update()
-            except Exception:
-                pass
-        root = getattr(self, "root", None)
-        if root is not None:
-            after_id = getattr(self, "_startup_loader_title_after_id", None)
-            if after_id:
-                try:
-                    root.after_cancel(after_id)
-                except Exception:
-                    pass
-            cycle_ms = max(2200, int(getattr(self, "_startup_loader_title_cycle_ms", 4200) or 4200))
-            self._startup_loader_title_after_id = root.after(cycle_ms, self._tick_startup_loader_title)
-        self._update_startup_loader_progress()
-        self._tick_startup_loader_progress()
-        self._tick_startup_loader_statement()
 
     def _tick_startup_loader_progress(self):
         overlay = getattr(self, "_startup_loader_overlay", None)
@@ -12078,6 +10868,9 @@ class JsonEditor:
         return True
 
     def _format_json_error(self, exc):
+        if hasattr(self, "_line_text"):
+            return json_error_diagnostics_core.format_json_error(self, exc)
+
         msg = getattr(exc, "msg", None)
         self._last_json_error_msg = msg
         self._last_json_error_diag = None
@@ -14087,6 +12880,13 @@ class JsonEditor:
         return None, None
 
     def _build_symbol_json_diagnostic(self, exc, lineno=None):
+        if hasattr(self, "_line_text"):
+            return json_error_diagnostics_core.build_symbol_json_diagnostic(
+                self,
+                exc,
+                lineno=lineno,
+            )
+
         msg = getattr(exc, "msg", "") or ""
         if msg not in (
             "Expecting ',' delimiter",
@@ -14584,6 +13384,9 @@ class JsonEditor:
         return None
 
     def _build_json_diagnostic(self, exc):
+        if hasattr(self, "_line_text"):
+            return json_error_diagnostics_core.build_json_diagnostic(self, exc)
+
         msg = getattr(exc, "msg", "") or ""
         if msg not in (
             "Expecting ',' delimiter",
@@ -16520,6 +15323,14 @@ class JsonEditor:
         self._position_error_overlay(line)
 
     def _highlight_json_error(self, exc):
+        if hasattr(self, "_line_text"):
+            return json_error_highlight_core.highlight_json_error(
+                self,
+                exc,
+                apply_highlight_fn=json_error_highlight_render_service.apply_json_error_highlight,
+                log_error_fn=json_error_highlight_render_service.log_json_error,
+            )
+
         line = getattr(exc, "lineno", None)
         col = getattr(exc, "colno", None)
         try:
@@ -17687,3 +16498,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
