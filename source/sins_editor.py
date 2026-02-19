@@ -11614,6 +11614,23 @@ class JsonEditor:
         except Exception:
             return
 
+    def _json_token_followed_by_colon(self, end_index, lookahead_chars=24):
+        # Locked-key highlight guard: only tag JSON object keys ("key":), not string values ("KEY").
+        text = getattr(self, "text", None)
+        if text is None:
+            return False
+        try:
+            tail = self.text.get(end_index, f"{end_index}+{max(1, int(lookahead_chars))}c")
+        except Exception:
+            return False
+        if not tail:
+            return False
+        for ch in tail:
+            if ch in (" ", "\t", "\r", "\n"):
+                continue
+            return ch == ":"
+        return False
+
     def _tag_json_locked_key_occurrences(self, key_name):
         token = f'"{key_name}"'
         index = "1.0"
@@ -11626,10 +11643,73 @@ class JsonEditor:
                 break
             try:
                 end = f"{hit}+{len(token)}c"
-                self.text.tag_add("json_locked_key", hit, end)
+                if self._json_token_followed_by_colon(end):
+                    self.text.tag_add("json_locked_key", hit, end)
             except Exception:
                 break
             index = end
+
+    def _json_literal_offsets_after_key(self, key_end_index, literal_token, lookahead_chars=120, ignore_case=False):
+        # Value-highlight guard: only tag when this key is immediately followed by the configured JSON literal.
+        text = getattr(self, "text", None)
+        token = str(literal_token or "")
+        if text is None or not token:
+            return None
+        try:
+            tail = self.text.get(key_end_index, f"{key_end_index}+{max(1, int(lookahead_chars))}c")
+        except Exception:
+            return None
+        if not tail:
+            return None
+        i = 0
+        while i < len(tail) and tail[i] in (" ", "\t", "\r", "\n"):
+            i += 1
+        if i >= len(tail) or tail[i] != ":":
+            return None
+        i += 1
+        while i < len(tail) and tail[i] in (" ", "\t", "\r", "\n"):
+            i += 1
+        if i >= len(tail):
+            return None
+        candidate = tail[i:i + len(token)]
+        if ignore_case:
+            if candidate.casefold() != token.casefold():
+                return None
+        else:
+            if candidate != token:
+                return None
+        end = i + len(token)
+        if end < len(tail):
+            next_ch = tail[end]
+            if next_ch not in (" ", "\t", "\r", "\n", ",", "}", "]"):
+                return None
+        return i, end
+
+    def _tag_json_locked_value_occurrences(self, field_name, literal_value, ignore_case=False):
+        key_token = json.dumps(str(field_name), ensure_ascii=False)
+        value_token = json.dumps(literal_value, ensure_ascii=False)
+        index = "1.0"
+        while True:
+            try:
+                hit = self.text.search(key_token, index, stopindex="end", nocase=True)
+            except Exception:
+                hit = ""
+            if not hit:
+                break
+            try:
+                key_end = f"{hit}+{len(key_token)}c"
+                offsets = self._json_literal_offsets_after_key(
+                    key_end,
+                    value_token,
+                    ignore_case=bool(ignore_case),
+                )
+                if offsets is not None:
+                    value_start = f"{key_end}+{int(offsets[0])}c"
+                    value_end = f"{key_end}+{int(offsets[1])}c"
+                    self.text.tag_add("json_locked_key", value_start, value_end)
+            except Exception:
+                break
+            index = key_end
 
     def _apply_json_view_lock_state(self, path):
         self._clear_json_lock_highlight()
@@ -11642,6 +11722,13 @@ class JsonEditor:
             return
         for field_name in edit_guard_service.locked_highlight_fields_for_path(use_path):
             self._tag_json_locked_key_occurrences(field_name)
+        for rule in edit_guard_service.locked_highlight_value_rules_for_path(use_path):
+            field_name = str(rule.get("field") or "").strip()
+            if not field_name:
+                continue
+            ignore_case = bool(rule.get("ignore_case", False))
+            for literal in tuple(rule.get("values") or ()):
+                self._tag_json_locked_value_occurrences(field_name, literal, ignore_case=ignore_case)
 
     def _describe(self, value):
         if isinstance(value, dict):
@@ -11673,8 +11760,11 @@ class JsonEditor:
         try:
             new_value = json.loads(raw)
         except Exception as exc:
+            message = self._format_json_error(exc)
+            if self._maybe_restore_locked_parse_error(path, self._last_json_error_diag, exc=exc):
+                return
             self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", self._format_json_error(exc))
+            self._show_error_overlay("Invalid Entry", message)
             try:
                 self._log_json_error(exc, getattr(exc, "lineno", None) or 1, note="overlay_parse")
             except Exception:
@@ -11767,6 +11857,225 @@ class JsonEditor:
         # Refresh subtree
         self._populate_children(item_id)
         self.set_status("Edited")
+
+    def _extract_key_name_from_diag_line(self, line_text):
+        raw = str(line_text or "").strip()
+        if not raw:
+            return ""
+        m = re.search(r'"([^"\r\n:]+)"\s*:', raw)
+        if m:
+            return str(m.group(1) or "").strip()
+        m = re.search(r'([A-Za-z_][A-Za-z0-9_]*)"\s*:', raw)
+        if m:
+            return str(m.group(1) or "").strip()
+        m = re.search(r'"([A-Za-z_][A-Za-z0-9_]*)\s*:', raw)
+        if m:
+            return str(m.group(1) or "").strip()
+        return ""
+
+    def _locked_field_name_from_parse_diag(self, path, diag):
+        use_path = list(path or [])
+        if edit_guard_service.is_locked_field_path(use_path) and use_path:
+            return str(use_path[-1] or "").strip()
+        locked_fields = tuple(edit_guard_service.locked_highlight_fields_for_path(use_path))
+        if not locked_fields:
+            return ""
+        for key in ("after", "before"):
+            field_name = self._extract_key_name_from_diag_line((diag or {}).get(key))
+            if not field_name:
+                continue
+            for locked_name in locked_fields:
+                if str(locked_name).casefold() == str(field_name).casefold():
+                    return str(locked_name)
+        return ""
+
+    def _find_lock_anchor_index(self, field_name, preferred_index=None):
+        token = f'"{str(field_name or "").strip()}"'
+        if token == '""':
+            token = ""
+        normalized_preferred = str(preferred_index or "")
+        try:
+            if normalized_preferred:
+                normalized_preferred = str(self.text.index(normalized_preferred))
+        except Exception:
+            pass
+        if not token:
+            return normalized_preferred
+        try:
+            if normalized_preferred:
+                # Anchor priority for repeated locked keys:
+                # 1) nearest key at/above current edit position
+                # 2) nearest key below current edit position
+                backward_hit = self.text.search(
+                    token,
+                    normalized_preferred,
+                    stopindex="1.0",
+                    nocase=True,
+                    backwards=True,
+                )
+                if backward_hit:
+                    return backward_hit
+                forward_hit = self.text.search(token, normalized_preferred, stopindex="end", nocase=True)
+                if forward_hit:
+                    return forward_hit
+        except Exception:
+            pass
+        try:
+            hit = self.text.search(token, "1.0", stopindex="end", nocase=True)
+            if hit:
+                return hit
+        except Exception:
+            pass
+        return normalized_preferred
+
+    def _diag_line_mentions_locked_field(self, line_no, field_name):
+        if not line_no or not field_name:
+            return False
+        try:
+            line_text = str(self._line_text(int(line_no)) or "")
+        except Exception:
+            return False
+        if not line_text.strip():
+            return False
+        field_lookup = str(field_name).strip().casefold()
+        line_lookup = line_text.casefold()
+        if field_lookup in line_lookup:
+            return True
+        compact_field = "".join(ch for ch in field_lookup if ch.isalnum())
+        compact_line = "".join(ch for ch in line_lookup if ch.isalnum())
+        if compact_field and compact_field in compact_line:
+            return True
+        return False
+
+    def _maybe_restore_locked_parse_error(self, path, diag, exc=None):
+        # Parse-error lock handoff: key-quote parse failures on protected keys should restore via lock flow.
+        note = str((diag or {}).get("note") or "").strip().lower()
+        parse_lock_notes = {
+            "missing_key_quote_before_colon",
+            "symbol_wrong_property_key_symbol",
+            "symbol_wrong_property_quote_char",
+        }
+        if note not in parse_lock_notes:
+            return False
+        use_path = list(path or [])
+        policy = edit_guard_service.lock_policy_for_path(use_path)
+        if policy is None:
+            return False
+        field_name = self._locked_field_name_from_parse_diag(use_path, diag)
+        if not field_name:
+            return False
+        try:
+            insert_line = self._line_number_from_index(self.text.index("insert")) or 0
+        except Exception:
+            insert_line = 0
+        try:
+            insert_line_text = str(self._line_text(int(insert_line)) or "") if insert_line else ""
+        except Exception:
+            insert_line_text = ""
+        try:
+            diag_line = int((diag or {}).get("line") or 0)
+        except Exception:
+            diag_line = 0
+        # Strict handoff gate:
+        # diagnostic line must match parser-reported line for this exact Apply Edit parse failure.
+        try:
+            parse_line = int(getattr(exc, "lineno", 0) or 0)
+        except Exception:
+            parse_line = 0
+        if parse_line and diag_line and int(parse_line) != int(diag_line):
+            return False
+        # Lock handoff must be anchored to the actively edited line.
+        if insert_line and diag_line and int(insert_line) != int(diag_line):
+            return False
+        # Parse-lock safety gate:
+        # only auto-restore when the parse diagnostic is near the user's active edit location.
+        if insert_line and diag_line and abs(int(insert_line) - int(diag_line)) > 1:
+            return False
+        if diag_line and not self._diag_line_mentions_locked_field(diag_line, field_name):
+            return False
+        # Strict key-quote gate:
+        # only route into lock auto-restore when the parser line itself is a key-quote syntax issue.
+        if diag_line:
+            try:
+                diag_line_text = str(self._line_text(diag_line) or "")
+            except Exception:
+                diag_line_text = ""
+            has_key_quote_issue = False
+            try:
+                has_key_quote_issue = bool(
+                    self._line_has_missing_key_quote_before_colon(diag_line_text)
+                    or self._line_has_property_key_invalid_escape(diag_line_text)
+                )
+            except Exception:
+                has_key_quote_issue = False
+            if not has_key_quote_issue:
+                return False
+            line_field = self._extract_key_name_from_diag_line(diag_line_text)
+            if line_field and str(line_field).casefold() != str(field_name).casefold():
+                return False
+        # Also require the current insert line to be the same locked key-quote issue.
+        try:
+            insert_has_key_quote_issue = bool(
+                self._line_has_missing_key_quote_before_colon(insert_line_text)
+                or self._line_has_property_key_invalid_escape(insert_line_text)
+            )
+        except Exception:
+            insert_has_key_quote_issue = False
+        if not insert_has_key_quote_issue:
+            return False
+        insert_field = self._extract_key_name_from_diag_line(insert_line_text)
+        if insert_field and str(insert_field).casefold() != str(field_name).casefold():
+            return False
+        try:
+            current_value = self._get_value(use_path)
+        except Exception:
+            return False
+
+        try:
+            previous_insert = self.text.index("insert")
+        except Exception:
+            previous_insert = "1.0"
+        self._show_value(current_value, path=use_path)
+        self._clear_json_error_highlight()
+        self._error_visual_mode = "guide"
+        self._show_error_overlay(
+            "Not editable",
+            f'Locked: "{field_name}" is a protected field. Line restored.',
+        )
+        anchor_index = self._find_lock_anchor_index(field_name, preferred_index=previous_insert)
+        if not anchor_index:
+            try:
+                anchor_index = str(previous_insert or self.text.index("insert"))
+            except Exception:
+                anchor_index = "1.0"
+        self._error_focus_index = anchor_index
+        try:
+            self.text.mark_set("insert", anchor_index)
+            self.text.see(anchor_index)
+        except Exception:
+            pass
+        try:
+            anchor_line = self._line_number_from_index(anchor_index) or 1
+            self._position_error_overlay(anchor_line)
+        except Exception:
+            pass
+        try:
+            self._tag_json_locked_key_occurrences(field_name)
+        except Exception:
+            pass
+        try:
+            self.set_status(
+                str(policy.get("status_restored") or "Auto-fixed: protected field restored.")
+            )
+        except Exception:
+            pass
+        try:
+            log_line = int((diag or {}).get("line") or 1)
+            marker = type("E", (), {"msg": "Locked parse edit restored", "lineno": log_line, "colno": 1})
+            self._log_json_error(marker, log_line, note="locked_parse_auto_restore")
+        except Exception:
+            pass
+        return True
 
     def _format_json_error(self, exc):
         msg = getattr(exc, "msg", None)
@@ -13087,6 +13396,12 @@ class JsonEditor:
         # Detect: `"name: "lib",` where the closing quote on the key is missing.
         m = re.match(r'^(?P<indent>\s*)"(?P<key>[^":]+):(?P<rest>.*)$', raw)
         if m:
+            rest = m.group("rest") or ""
+            rest_trim = rest.lstrip()
+            # Ignore array-item/value typos like `"hackhub.net:,` so they route
+            # through value-tail diagnostics instead of key-quote diagnostics.
+            if not rest_trim or rest_trim.startswith(","):
+                return None
             indent = m.group("indent") or ""
             key = m.group("key") or ""
             colon_col = len(indent) + 1 + len(key)
@@ -14300,6 +14615,39 @@ class JsonEditor:
                 "note": "missing_list_open_typed_comma",
             }
 
+        # Missing closing value quote before comma/EOL should be resolved first
+        # so cursor focus lands on the quote insertion point (before comma).
+        if msg.startswith("Invalid control character") or msg in ("Expecting ',' delimiter", "Expecting value"):
+            invalid_tail_no, invalid_tail_text, invalid_tail_span = (
+                self._find_nearby_unclosed_quoted_value_invalid_tail_line(lineno)
+            )
+            if invalid_tail_text and invalid_tail_no and invalid_tail_span:
+                start_col, end_col = invalid_tail_span
+                if end_col <= start_col:
+                    end_col = start_col + 1
+                return {
+                    "header": "Invalid Entry: remove the invalid trailing symbol.",
+                    "before": str(invalid_tail_text).strip(),
+                    "after": self._fix_missing_quote(str(invalid_tail_text)).strip(),
+                    "line": int(invalid_tail_no),
+                    "start_col": int(start_col),
+                    "end_col": int(end_col),
+                    "note": "invalid_trailing_symbol_after_value",
+                }
+            missing_quote_no, missing_quote_text, insert_col = self._find_nearby_missing_value_close_quote_line(
+                lineno
+            )
+            if missing_quote_text and missing_quote_no and insert_col is not None:
+                return {
+                    "header": "Invalid Entry: add the missing quote.",
+                    "before": str(missing_quote_text).strip(),
+                    "after": self._fix_missing_quote(str(missing_quote_text)).strip(),
+                    "line": int(missing_quote_no),
+                    "start_col": int(insert_col),
+                    "end_col": int(insert_col),
+                    "note": "missing_value_close_quote",
+                }
+
         symbol_diag_builder = getattr(self, "_build_symbol_json_diagnostic", None)
         if callable(symbol_diag_builder):
             symbol_diag = symbol_diag_builder(exc, lineno=lineno)
@@ -14357,6 +14705,21 @@ class JsonEditor:
                     "start_col": bool_diag["start_col"],
                     "end_col": bool_diag["end_col"],
                     "note": "boolean_literal_typo",
+                }
+
+        # Missing opening value quote should be insertion-focused on the edited
+        # line, but only after symbol + literal typo diagnostics have priority.
+        if msg in ("Expecting value", "Expecting ',' delimiter"):
+            open_quote_no, open_quote_text, insert_col = self._find_nearby_missing_value_open_quote_line(lineno)
+            if open_quote_text and open_quote_no and insert_col is not None:
+                return {
+                    "header": "Invalid Entry: add the missing quote.",
+                    "before": str(open_quote_text).strip(),
+                    "after": self._quote_unquoted_scalar_line(str(open_quote_text)).strip(),
+                    "line": int(open_quote_no),
+                    "start_col": int(insert_col),
+                    "end_col": int(insert_col),
+                    "note": "missing_value_open_quote",
                 }
 
         # `[` opened list directly followed by object closer `}`.
@@ -14623,6 +14986,126 @@ class JsonEditor:
             return False
         fixed = self._quote_unquoted_scalar_line(line_text)
         return bool(fixed and fixed != line_text)
+
+    def _missing_value_close_quote_insert_col(self, line_text):
+        # Detect: "key": "value,  (missing closing quote before comma/EOL).
+        if not line_text:
+            return None
+        raw = str(line_text)
+        # Keep object-key quote diagnostics for key-like forms:
+        #   "name: [
+        #   "name=: {
+        #   "name: "value"
+        if re.match(r'^\s*"[A-Za-z_][A-Za-z0-9_]*[^\w"]*:\s*[\[{"]', raw):
+            return None
+
+        def _scan_unclosed_quoted_value(value_text, base_col):
+            if not value_text.startswith('"'):
+                return None
+            escape = False
+            for idx, ch in enumerate(value_text[1:], start=1):
+                if escape:
+                    escape = False
+                    continue
+                if ch == "\\":
+                    escape = True
+                    continue
+                if ch == '"':
+                    # Already has a valid closing quote.
+                    return None
+                if ch == ",":
+                    return int(base_col + idx)
+            if value_text.count('"') == 1:
+                return int(base_col + len(value_text.rstrip()))
+            return None
+
+        object_value_match = re.match(r'^\s*"[^"]*"\s*:(?P<rest>.*)$', raw)
+        if object_value_match:
+            rest = object_value_match.group("rest") or ""
+            rest_start = int(object_value_match.start("rest"))
+            ws_len = len(rest) - len(rest.lstrip(" \t"))
+            value_text = rest.lstrip(" \t")
+            return _scan_unclosed_quoted_value(value_text, base_col=int(rest_start + ws_len))
+
+        # Array/scalar line form: "value,   (missing closing quote before comma/EOL).
+        ws_len = len(raw) - len(raw.lstrip(" \t"))
+        value_text = raw.lstrip(" \t")
+        return _scan_unclosed_quoted_value(value_text, base_col=int(ws_len))
+
+    def _missing_value_open_quote_insert_col(self, line_text):
+        # Detect missing opening quote for scalar values so cursor can stay
+        # at the exact insert point instead of jumping to parser fallback lines.
+        raw = str(line_text or "")
+        if not raw:
+            return None
+        # Keep literal typo and wrong-token diagnostics in their existing paths.
+        if re.match(r'^\s*[A-Za-z_][A-Za-z0-9_]*\s*$', raw):
+            return None
+        fixed = self._quote_unquoted_scalar_line(raw)
+        if not fixed or fixed == raw:
+            return None
+        if ":" in raw:
+            colon_idx = raw.find(":")
+            rest = raw[colon_idx + 1 :]
+            ws_len = len(rest) - len(rest.lstrip(" \t"))
+            value_text = rest.lstrip(" \t")
+            if value_text.startswith('"'):
+                return None
+            return int(colon_idx + 1 + ws_len)
+        for idx, ch in enumerate(raw):
+            if not ch.isspace():
+                return int(idx)
+        return 0
+
+    def _find_nearby_missing_value_close_quote_line(self, lineno, lookback=2):
+        if not lineno:
+            return None, None, None
+        candidates = []
+        try:
+            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
+        except Exception:
+            pass
+        line = max(lineno - 1, 1)
+        scanned = 0
+        while line >= 1 and scanned < lookback:
+            try:
+                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
+            except Exception:
+                break
+            if str(txt or "").strip():
+                candidates.append((line, txt))
+                scanned += 1
+            line -= 1
+        for ln, txt in candidates:
+            insert_col = self._missing_value_close_quote_insert_col(txt)
+            if insert_col is not None:
+                return int(ln), txt, int(insert_col)
+        return None, None, None
+
+    def _find_nearby_missing_value_open_quote_line(self, lineno, lookback=3):
+        if not lineno:
+            return None, None, None
+        candidates = []
+        try:
+            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
+        except Exception:
+            pass
+        line = max(lineno - 1, 1)
+        scanned = 0
+        while line >= 1 and scanned < lookback:
+            try:
+                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
+            except Exception:
+                break
+            if str(txt or "").strip():
+                candidates.append((line, txt))
+                scanned += 1
+            line -= 1
+        for ln, txt in candidates:
+            insert_col = self._missing_value_open_quote_insert_col(txt)
+            if insert_col is not None:
+                return int(ln), txt, int(insert_col)
+        return None, None, None
 
     def _find_nearby_unquoted_value_line(self, lineno, lookback=3):
         if not lineno:
@@ -15748,8 +16231,10 @@ class JsonEditor:
             return "\"key\": \"value\""
         if line_text.count("\"") % 2 == 0:
             return line_text
-        if ":" in line_text:
-            key_part, rest = line_text.split(":", 1)
+        object_value_match = re.match(r'^(?P<key>\s*"[^"]*"\s*):(?P<rest>.*)$', str(line_text))
+        if object_value_match:
+            key_part = object_value_match.group("key") or ""
+            rest = object_value_match.group("rest") or ""
             key_part = key_part.strip().strip(",")
             rest = rest.strip().rstrip(",")
             if rest == "\"":
@@ -15767,8 +16252,101 @@ class JsonEditor:
         stripped = line_text.rstrip()
         if stripped.endswith(","):
             base = stripped[:-1]
-            return base + "\"" + ("," if line_text.strip().endswith(",") else "")
+            # Remove invalid tail symbols before closing the missing quote.
+            m = re.match(r'^(?P<head>\s*")(?P<body>.*)$', base)
+            if m:
+                head = m.group("head") or ""
+                body = _strip_invalid_trailing_chars((m.group("body") or "").rstrip())
+                return head + body + "\"" + ("," if line_text.strip().endswith(",") else "")
+            return _strip_invalid_trailing_chars(base.rstrip()) + "\"" + (
+                "," if line_text.strip().endswith(",") else ""
+            )
         return stripped + "\""
+
+    def _unclosed_quoted_value_invalid_tail_span(self, line_text):
+        # Detect unclosed quoted scalar values with invalid trailing symbols
+        # before comma/EOL (for example: "hackhub.net:,).
+        raw = str(line_text or "")
+        if not raw:
+            return None
+        # Keep object-key quote diagnostics for key-like forms:
+        #   "name: [
+        #   "name: {
+        #   "name: "value"
+        if re.match(r'^\s*"[A-Za-z_][A-Za-z0-9_]*[^\w"]*:\s*[\[{"]', raw):
+            return None
+
+        object_value_match = re.match(r'^\s*"[^"]*"\s*:(?P<rest>.*)$', raw)
+        if object_value_match:
+            rest = object_value_match.group("rest") or ""
+            rest_start = int(object_value_match.start("rest"))
+            ws_len = len(rest) - len(rest.lstrip(" \t"))
+            value_text = rest.lstrip(" \t")
+            base_col = int(rest_start + ws_len)
+        else:
+            ws_len = len(raw) - len(raw.lstrip(" \t"))
+            value_text = raw.lstrip(" \t")
+            base_col = int(ws_len)
+
+        if not value_text.startswith('"'):
+            return None
+
+        escape = False
+        comma_idx = None
+        for idx, ch in enumerate(value_text[1:], start=1):
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                return None
+            if ch == ",":
+                comma_idx = idx
+                break
+        stop_idx = int(comma_idx) if comma_idx is not None else int(len(value_text.rstrip()))
+        if stop_idx <= 1:
+            return None
+
+        body = value_text[1:stop_idx]
+        body_rstrip = body.rstrip()
+        if not body_rstrip:
+            return None
+        trimmed = _strip_invalid_trailing_chars(body_rstrip)
+        if len(trimmed) >= len(body_rstrip):
+            return None
+        invalid_start = len(trimmed)
+        invalid_end = len(body_rstrip)
+        return (
+            int(base_col + 1 + invalid_start),
+            int(base_col + 1 + invalid_end),
+        )
+
+    def _find_nearby_unclosed_quoted_value_invalid_tail_line(self, lineno, lookback=2):
+        if not lineno:
+            return None, None, None
+        candidates = []
+        try:
+            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
+        except Exception:
+            pass
+        line = max(lineno - 1, 1)
+        scanned = 0
+        while line >= 1 and scanned < lookback:
+            try:
+                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
+            except Exception:
+                break
+            if str(txt or "").strip():
+                candidates.append((line, txt))
+                scanned += 1
+            line -= 1
+        for ln, txt in candidates:
+            span = self._unclosed_quoted_value_invalid_tail_span(txt)
+            if span:
+                return int(ln), txt, span
+        return None, None, None
 
     def _comma_example_line(self, lineno):
         if not lineno:
@@ -15827,6 +16405,8 @@ class JsonEditor:
         insertion_at_point_notes = {
             "missing_list_close_before_object_end",
             "missing_object_close_eof",
+            "missing_value_close_quote",
+            "missing_value_open_quote",
         }
         insertion_marker_at_point = str(note or "") in insertion_at_point_notes
         if not insertion_only and missing_key_quote_focus:
@@ -16535,6 +17115,21 @@ class JsonEditor:
     def _position_error_overlay(self, line):
         error_overlay_service.position_error_overlay(self, line)
 
+    def _diag_system_from_note(self, note):
+        # Keep diagnostics easy to triage by tagging the source error system.
+        note_text = str(note or "").strip().lower()
+        if note_text.startswith("locked_"):
+            return "orange_lock"
+        if note_text.startswith("overlay_"):
+            return "overlay_parse"
+        if note_text.startswith("highlight_failed"):
+            return "highlight_internal"
+        if note_text.startswith("spacing_") or note_text.startswith("missing_phone"):
+            return "input_validation"
+        if note_text.startswith("symbol_"):
+            return "symbol_recovery"
+        return "json_highlight"
+
     def _log_json_error(self, exc, target_line, note=""):
         try:
             log_path = self._diag_log_path()
@@ -16552,6 +17147,8 @@ class JsonEditor:
             msg = getattr(exc, "msg", str(exc))
             lineno = getattr(exc, "lineno", None)
             colno = getattr(exc, "colno", None)
+            diag_system = self._diag_system_from_note(note)
+            diag_mode = str(getattr(self, "_error_visual_mode", "") or "").strip()
             try:
                 item_id = self.tree.focus()
                 selected_path = self.item_to_path.get(item_id, None)
@@ -16571,6 +17168,7 @@ class JsonEditor:
                 "\n---\n"
                 f"time={now} action={self._diag_action}\n"
                 f"msg={msg} lineno={lineno} col={colno} target={target_line} note={note}\n"
+                f"system={diag_system} mode={diag_mode or '-'}\n"
                 f"path={path_text}\n"
                 + "\n".join(context).rstrip()
                 + "\n"
@@ -16984,6 +17582,10 @@ class JsonEditor:
             current_value = self._get_value(path)
         except Exception:
             current_value = None
+        try:
+            previous_insert = self.text.index("insert")
+        except Exception:
+            previous_insert = "1.0"
         payload = edit_guard_service.locked_json_edit_payload(
             path=path,
             current_value=current_value,
@@ -17013,18 +17615,20 @@ class JsonEditor:
         )
         # Anchor lock overlay near the protected key so it sits just below
         # the attempted edit location when space is available.
-        try:
-            anchor_index = self.text.search(f'"{field_name}"', "1.0", stopindex="end", nocase=True)
-        except Exception:
-            anchor_index = ""
+        anchor_index = self._find_lock_anchor_index(field_name, preferred_index=previous_insert)
         if not anchor_index:
             try:
-                anchor_index = self.text.index("insert")
+                anchor_index = str(previous_insert or self.text.index("insert"))
             except Exception:
                 anchor_index = "1.0"
         self._error_focus_index = anchor_index
+        anchor_line = self._line_number_from_index(anchor_index) or 1
         try:
-            anchor_line = self._line_number_from_index(anchor_index) or 1
+            self.text.mark_set("insert", anchor_index)
+            self.text.see(anchor_index)
+        except Exception:
+            pass
+        try:
             self._position_error_overlay(anchor_line)
         except Exception:
             pass
@@ -17039,6 +17643,13 @@ class JsonEditor:
                 self.set_status(
                     str(payload.get("status_blocked") or "Blocked: locked field cannot be edited in JSON mode.")
                 )
+        except Exception:
+            pass
+        try:
+            lock_note = "locked_field_auto_restore" if was_restored else "locked_field_blocked"
+            lock_msg = "Locked field edit restored" if was_restored else "Locked field edit blocked"
+            marker = type("E", (), {"msg": lock_msg, "lineno": int(anchor_line), "colno": 1})
+            self._log_json_error(marker, int(anchor_line), note=lock_note)
         except Exception:
             pass
         return False

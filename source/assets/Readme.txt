@@ -14,8 +14,9 @@ ENGINEERS : SIINDBAD & KAMUE
 
 [ :: CAUTION :: ]
 =================================================================================
-Editing Files Can Cause A Corrupt File If Any Edits Are Performed Incorrectly
-Changing Core Gameplay Values can alter the game, but could also throw errors
+- Editing Files Can Cause A Corrupt File If Any Edits Are Performed Incorrectly
+- Changing Core Gameplay Values can alter the game, but could also throw errors
+- We help reduce save corruption risk, but we cannot guarantee prevention.
 =================================================================================
 
 [ USAGE ]
@@ -70,8 +71,10 @@ there HackTheCube web address if they deleted the email.
 [ DISCLAIMER ]
 =================================================================================
 
+- This project is built using a mix of human development and AI coding assistance.
 - This app does not collect, track, or sell your personal data.
 - This app does not transmit your save file contents in the background.
+- Automatic update checks only read public release metadata and do not upload save data.
 - Save edits happen locally on your machine.
 - Bug reports are submitted only when you choose to send them.
 - Bug reports can include your notes, runtime context, optional diagnostics/crash logs,

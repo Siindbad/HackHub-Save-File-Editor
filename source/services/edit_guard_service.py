@@ -1,4 +1,5 @@
 import copy
+import difflib
 
 
 def is_network_list(path, value, network_types_set):
@@ -142,6 +143,106 @@ LOCK_POLICY_REGISTRY = (
         # Keep subcategory JSON white; only root/object view shows orange key labels.
         "highlight_root_only": True,
     },
+    {
+        "id": "bcc_news_core",
+        "root_names": ("BCC.News",),
+        "locked_keys": (
+            "id",
+            "title",
+            "locale",
+            "data",
+            "editor",
+            "hotel",
+            "content",
+            "image",
+        ),
+        # Display-only root highlights (orange) that should not imply edit blocking.
+        "highlight_keys": (
+            "id",
+            "title",
+            "locale",
+            "data",
+            "editor",
+            "hotel",
+            "content",
+            "image",
+            "news",
+        ),
+        "detail_template": "`{field}` is locked in JSON view to protect core BCC.News values.",
+        "status_blocked": "Blocked: locked BCC.News field cannot be edited in JSON mode.",
+        "status_restored": "Auto-fixed: protected BCC.News field restored.",
+        # Only treat direct child keys under BCC.News as lock-match candidates.
+        "direct_child_lock_only": True,
+        # Keep subcategory JSON white; only root/object view shows orange key labels.
+        "highlight_root_only": True,
+    },
+    {
+        "id": "browser_session_identity",
+        "root_names": ("Browser.Session",),
+        "locked_keys": (
+            "twotter",
+            "id",
+            "name",
+            "surname",
+            "username",
+            "avatar",
+            "banner",
+            "joinedAt",
+            "followers",
+            "following",
+            "password",
+            "isMine",
+            "lcb",
+            "gomail",
+            "fullName",
+            "email",
+            "phone",
+            "provider",
+        ),
+        "detail_template": "`{field}` is locked in JSON view to protect core Browser.Session values.",
+        "status_blocked": "Blocked: locked Browser.Session field cannot be edited in JSON mode.",
+        "status_restored": "Auto-fixed: protected Browser.Session field restored.",
+        # Keep subcategory JSON white; only root/object view shows orange key labels.
+        "highlight_root_only": True,
+    },
+    {
+        "id": "database_core_records",
+        "root_names": ("Database",),
+        "locked_keys": (
+            "id",
+            "host",
+            "user",
+            "password",
+            "tables",
+            "users",
+            "customers",
+            "Grades",
+            "student",
+            "value",
+            "type",
+            "Maths",
+            "Physics",
+            "editable",
+            "Chemistry",
+            "OOP",
+            "History",
+            "Geography",
+            "Calculus",
+            "name",
+            "email",
+            "job",
+        ),
+        # Optional value-lock rules for non-key-level protection:
+        # if current value matches one of these literals, edits are blocked/restored.
+        "locked_value_rules": (
+            {"field": "type", "values": ("string", "number")},
+        ),
+        "detail_template": "`{field}` is locked in JSON view to protect core Database values.",
+        "status_blocked": "Blocked: locked Database field cannot be edited in JSON mode.",
+        "status_restored": "Auto-fixed: protected Database field restored.",
+        # Keep subcategory JSON white; only root/object view shows orange key labels.
+        "highlight_root_only": True,
+    },
 )
 
 
@@ -156,20 +257,85 @@ def _normalize_lookup_key(value):
     return str(value or "").strip().casefold()
 
 
+def _compile_locked_value_rule(raw_rule):
+    if not isinstance(raw_rule, dict):
+        return None
+    field_name = str(raw_rule.get("field") or "").strip()
+    if not field_name:
+        return None
+    values = tuple(raw_rule.get("values") or ())
+    if not values:
+        return None
+    return {
+        "field": field_name,
+        "field_lookup": _normalize_lookup_key(field_name),
+        "values": values,
+        # Default strict string matching; set ignore_case=True per rule if needed.
+        "ignore_case": bool(raw_rule.get("ignore_case", False)),
+    }
+
+
+def _compile_locked_value_rules(raw_rules):
+    compiled = []
+    for raw_rule in tuple(raw_rules or ()):
+        item = _compile_locked_value_rule(raw_rule)
+        if item:
+            compiled.append(item)
+    return tuple(compiled)
+
+
+def _value_matches_locked_rule(rule, value):
+    if rule is None:
+        return False
+    values = tuple(rule.get("values") or ())
+    if not values:
+        return False
+    ignore_case = bool(rule.get("ignore_case", False))
+    if isinstance(value, str):
+        if ignore_case:
+            want = _normalize_lookup_key(value)
+            return any(isinstance(item, str) and _normalize_lookup_key(item) == want for item in values)
+        return any(isinstance(item, str) and item == value for item in values)
+    return any(item == value for item in values)
+
+
+def _locked_value_rule_for_parts(policy, parts):
+    if not policy:
+        return None, None
+    rules = tuple(policy.get("locked_value_rules") or ())
+    if not rules:
+        return None, None
+    segments = list(parts or [])
+    if len(segments) < 2:
+        return None, None
+    for segment in reversed(segments[1:]):
+        lookup = _normalize_lookup_key(segment)
+        for rule in rules:
+            if lookup == rule.get("field_lookup", ""):
+                return rule, str(segment)
+    return None, None
+
+
 def _compile_policy(raw):
     root_names = tuple(raw.get("root_names") or ())
     locked_keys = tuple(raw.get("locked_keys") or ())
+    # Highlight keys may include display-only root labels that are not enforced locks.
+    highlight_keys = tuple(raw.get("highlight_keys") or locked_keys)
     root_lookup = {_normalize_root_key(name): str(name) for name in root_names}
     locked_lookup = {_normalize_lookup_key(name): str(name) for name in locked_keys}
     return {
         "id": str(raw.get("id") or "").strip(),
         "root_names": root_names,
         "locked_keys": locked_keys,
+        "highlight_keys": highlight_keys,
         "root_lookup": root_lookup,
         "locked_lookup": locked_lookup,
+        "locked_value_rules": _compile_locked_value_rules(raw.get("locked_value_rules")),
         "detail_template": str(raw.get("detail_template") or "").strip(),
         "status_blocked": str(raw.get("status_blocked") or "").strip(),
         "status_restored": str(raw.get("status_restored") or "").strip(),
+        # 0/1 policy toggle: when enabled, only first child under root is lock-matched.
+        "direct_child_lock_only": bool(raw.get("direct_child_lock_only", False)),
         "highlight_root_only": bool(raw.get("highlight_root_only", False)),
     }
 
@@ -214,6 +380,14 @@ def _locked_segment_for_parts(policy, parts):
     segments = list(parts or [])
     if len(segments) < 2:
         return None, None
+    if policy.get("direct_child_lock_only", False):
+        # Direct-child lock scope: only the first child under the selected category root
+        # is treated as lock-bound for edit blocking in JSON mode.
+        segment = segments[1]
+        canonical = _canonical_locked_key_for_policy(policy, segment)
+        if canonical is not None:
+            return canonical, str(segment)
+        return None, None
     # Prefer the most-specific segment nearest the edited node.
     for segment in reversed(segments[1:]):
         canonical = _canonical_locked_key_for_policy(policy, segment)
@@ -248,11 +422,30 @@ def locked_highlight_fields_for_path(path):
     if policy is None:
         return ()
     if len(parts) == 1:
-        return tuple(policy.get("locked_keys", ()))
+        return tuple(policy.get("highlight_keys", ()))
     if is_locked_field_path(parts) and not policy.get("highlight_root_only", False):
         canonical = _canonical_locked_key_for_policy(policy, parts[1])
         if canonical:
             return (canonical,)
+    return ()
+
+
+def locked_highlight_value_rules_for_path(path):
+    parts = list(path or [])
+    if not parts:
+        return ()
+    policy = lock_policy_for_path(parts)
+    if policy is None:
+        return ()
+    rules = tuple(policy.get("locked_value_rules", ()))
+    if not rules:
+        return ()
+    if len(parts) == 1:
+        return rules
+    if not policy.get("highlight_root_only", False):
+        rule, _matched = _locked_value_rule_for_parts(policy, parts)
+        if rule is not None:
+            return (rule,)
     return ()
 
 
@@ -283,6 +476,54 @@ def _copy_json_value(value):
         return value
 
 
+def _replace_key_preserve_order(data, old_key, new_key, new_value):
+    # Keep restored locked keys anchored to their edited location instead of appending to dict tail.
+    if not isinstance(data, dict):
+        return data
+    if old_key not in data:
+        data[new_key] = new_value
+        return data
+    replaced = {}
+    for key, value in data.items():
+        if key == old_key:
+            replaced[new_key] = new_value
+        else:
+            replaced[key] = value
+    data.clear()
+    data.update(replaced)
+    return data
+
+
+def _find_renamed_locked_key_candidate(old_obj, edited_obj, field_name, old_key):
+    # Rename-recovery helper: when a protected key is typo-renamed, remove that typo key on restore.
+    if not isinstance(old_obj, dict) or not isinstance(edited_obj, dict):
+        return None
+    old_lookup = {_normalize_lookup_key(key) for key in old_obj.keys()}
+    target_name = str(old_key if old_key is not None else field_name)
+    target_lookup = _normalize_lookup_key(target_name)
+    if not target_lookup:
+        return None
+
+    best_key = None
+    best_score = 0.0
+    for key in edited_obj.keys():
+        key_text = str(key)
+        key_lookup = _normalize_lookup_key(key_text)
+        if not key_lookup or key_lookup == target_lookup:
+            continue
+        # Only consider new/renamed keys, not keys that already existed in the original object.
+        if key_lookup in old_lookup:
+            continue
+        score = difflib.SequenceMatcher(a=target_lookup, b=key_lookup).ratio()
+        if score > best_score:
+            best_key = key
+            best_score = score
+    # Keep threshold conservative so unrelated new keys remain untouched.
+    if best_key is not None and best_score >= 0.78:
+        return best_key
+    return None
+
+
 def _find_locked_change_for_policy(policy, path, current_value, new_value):
     parts = list(path or [])
     if policy is None:
@@ -294,6 +535,16 @@ def _find_locked_change_for_policy(policy, path, current_value, new_value):
         if len(parts) >= 2:
             canonical, matched = _locked_segment_for_parts(policy, parts)
             if canonical is None:
+                value_rule, value_field = _locked_value_rule_for_parts(policy, parts)
+                if value_rule is None:
+                    return None
+                if current_value != new_value and _value_matches_locked_rule(value_rule, current_value):
+                    field_display = str(value_field or value_rule.get("field") or "value")
+                    return {
+                        "path": [parts[0], str(value_rule.get("field") or field_display)],
+                        "field": field_display,
+                        "policy": policy,
+                    }
                 return None
             if current_value != new_value:
                 return {
@@ -314,6 +565,21 @@ def _find_locked_change_for_policy(policy, path, current_value, new_value):
                     "field": field_display,
                     "policy": policy,
                 }
+        for rule in policy.get("locked_value_rules", ()):
+            field_name = str(rule.get("field") or "").strip()
+            if not field_name:
+                continue
+            old_found, old_key, old_field = _dict_get_ignore_case(old_obj, field_name)
+            new_found, new_key, new_field = _dict_get_ignore_case(new_obj, field_name)
+            if old_field == new_field:
+                continue
+            if old_found and _value_matches_locked_rule(rule, old_field):
+                field_display = str(new_key if new_found else (old_key if old_found else field_name))
+                return {
+                    "path": [parts[0], field_name],
+                    "field": field_display,
+                    "policy": policy,
+                }
         return None
 
     old_root_key, old_obj = _find_policy_container(current_value, policy)
@@ -325,6 +591,21 @@ def _find_locked_change_for_policy(policy, path, current_value, new_value):
         old_found, old_key, old_field = _dict_get_ignore_case(old_obj, field_name)
         new_found, new_key, new_field = _dict_get_ignore_case(new_obj, field_name)
         if old_field != new_field:
+            field_display = str(new_key if new_found else (old_key if old_found else field_name))
+            return {
+                "path": [root_label, field_name],
+                "field": field_display,
+                "policy": policy,
+            }
+    for rule in policy.get("locked_value_rules", ()):
+        field_name = str(rule.get("field") or "").strip()
+        if not field_name:
+            continue
+        old_found, old_key, old_field = _dict_get_ignore_case(old_obj, field_name)
+        new_found, new_key, new_field = _dict_get_ignore_case(new_obj, field_name)
+        if old_field == new_field:
+            continue
+        if old_found and _value_matches_locked_rule(rule, old_field):
             field_display = str(new_key if new_found else (old_key if old_found else field_name))
             return {
                 "path": [root_label, field_name],
@@ -354,6 +635,33 @@ def _restore_locked_fields_for_policy_dict(policy, current_obj, edited_obj):
         if old_field == new_field:
             continue
         if old_found:
+            placed_via_rename = False
+            if not new_found:
+                renamed_key = _find_renamed_locked_key_candidate(old_obj, fixed, field_name, old_key)
+                if renamed_key is not None and renamed_key in fixed:
+                    target_key = old_key if old_key is not None else field_name
+                    _replace_key_preserve_order(
+                        fixed,
+                        renamed_key,
+                        target_key,
+                        _copy_json_value(old_field),
+                    )
+                    placed_via_rename = True
+            if placed_via_rename:
+                changed = True
+                continue
+            target_key = new_key if new_found else (old_key if old_key is not None else field_name)
+            fixed[target_key] = _copy_json_value(old_field)
+            changed = True
+    for rule in policy.get("locked_value_rules", ()):
+        field_name = str(rule.get("field") or "").strip()
+        if not field_name:
+            continue
+        old_found, old_key, old_field = _dict_get_ignore_case(old_obj, field_name)
+        new_found, new_key, new_field = _dict_get_ignore_case(fixed, field_name)
+        if old_field == new_field:
+            continue
+        if old_found and _value_matches_locked_rule(rule, old_field):
             target_key = new_key if new_found else (old_key if old_key is not None else field_name)
             fixed[target_key] = _copy_json_value(old_field)
             changed = True
