@@ -82,3 +82,5 @@ there HackTheCube web address if they deleted the email.
 - Optional screenshot uploads are sanitized to strip hidden metadata before upload.
 - Screenshot uploads are validated to block unsafe or mismatched file types.
 - Release files are protected with checksum integrity verification.
+- Security and privacy safeguards were improved for safer everyday use.
+
