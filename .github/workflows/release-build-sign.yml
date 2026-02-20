@@ -50,9 +50,10 @@ jobs:
           pip install -r source/requirements-build.txt
 
       - name: Build with PyInstaller
+        working-directory: source
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --distpath dist --workpath build source/sins_editor.spec
+          python -m PyInstaller --noconfirm --distpath ../dist --workpath ../build sins_editor.spec
 
       - name: Package fallback zip and metadata
         shell: pwsh
