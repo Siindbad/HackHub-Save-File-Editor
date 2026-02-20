@@ -2,7 +2,7 @@
  
  
  
- | <img align="left" alt="DISCORD" src="https://img.shields.io/badge/DISCORD-5865F2?style=for-the-badge&labelColor=0F172A&logo=discord&logoColor=white"> |
+| <img align="left" alt="DISCORD" src="https://img.shields.io/badge/DISCORD-5865F2?style=for-the-badge&labelColor=0F172A"> |
 |---|
 | [SIN.NETWORK](https://discord.gg/kpFXrtyr2Z) |
 
@@ -35,7 +35,6 @@
 | <img align="left" alt="LICENSE" src="https://img.shields.io/badge/LICENSE-MIT-8B0000?style=for-the-badge&labelColor=0F172A"> |
 |---|
 | MIT License. Copyright (c) 2026 Siindbad. |
-
 
 
 
