@@ -1,9 +1,5 @@
 # Core Suite
 
-Simple reference for shared core modules in `core/`.
-Helper-note policy: keep short inline helper comments in sync whenever core logic changes.
-Last sync: 2026-02-19 (token-scope hardening sync).
-
 | Module | Purpose | When to Update |
 | --- | --- | --- |
 | `constants.py` | Defines shared static configuration values used across editor components, including updater/bug-report token env names, bug-report destination, screenshot-upload limits, and submit cooldown settings. | When app-level constants or defaults change. |

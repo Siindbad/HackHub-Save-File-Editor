@@ -1,9 +1,5 @@
 # Services Suite
 
-Simple reference for service-layer modules in `services/`.
-Helper-note policy: keep short inline helper comments in sync whenever service logic changes.
-Last sync: 2026-02-20 (highlight-label service rename + themed update dialogs + shared startup-check checkbox preference sync + global JSON value-lock rules + JSON diagnostics logging service extraction).
-
 | Module | Purpose | When to Update |
 | --- | --- | --- |
 | `bug_report_api_service.py` | Handles bug-report API/browser submission operations, including screenshot upload and issue creation fallback behavior. | Bug-report GitHub API request flow, auth handling, or browser fallback behavior changes. |
