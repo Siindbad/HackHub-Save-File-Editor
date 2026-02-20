@@ -498,6 +498,7 @@ source/services/error_service.py
 source/services/footer_service.py
 source/services/highlight_label_service.py
 source/services/input_mode_service.py
+source/services/json_error_diag_service.py
 source/services/json_error_highlight_render_service.py
 source/services/json_view_service.py
 source/services/label_format_service.py

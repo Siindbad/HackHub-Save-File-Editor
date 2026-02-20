@@ -30,6 +30,7 @@ from services import bug_report_ui_service
 from services import highlight_label_service
 from services import footer_service
 from services import input_mode_service
+from services import json_error_diag_service
 from services import json_view_service
 from services import label_format_service
 from services import loader_service
@@ -10381,17 +10382,14 @@ if not install_started:
         return "break"
 
     def on_select(self, event):
-        select_started = time.perf_counter()
         item_id = self.tree.focus()
         if not item_id:
             return
-        marker_started = time.perf_counter()
         previous_item = str(getattr(self, "_last_tree_selected_item", "") or "")
         if previous_item and previous_item != item_id:
             self._refresh_tree_marker_for_item(previous_item, selected=False)
         self._refresh_tree_marker_for_item(item_id, selected=True)
         self._last_tree_selected_item = item_id
-        marker_ms = (time.perf_counter() - marker_started) * 1000.0
         self._auto_apply_pending = False
         self._destroy_error_overlay()
         self._clear_json_error_highlight()
@@ -10416,57 +10414,29 @@ if not install_started:
         else:
             self._show_value(value, path=path)
         self.set_status(self._describe(value))
-        total_ms = (time.perf_counter() - select_started) * 1000.0
-        try:
-            if total_ms >= 20.0:
-                self._log_perf_diag("select", marker=marker_ms, total=total_ms)
-        except Exception:
-            pass
 
     def _show_value(self, value, path=None):
-        render_started = time.perf_counter()
         self._json_render_seq = int(getattr(self, "_json_render_seq", 0) or 0) + 1
         render_seq = int(self._json_render_seq)
         try:
             self.text.configure(state="normal")
         except Exception:
             pass
-        clear_started = time.perf_counter()
         self.text.delete("1.0", "end")
-        clear_ms = (time.perf_counter() - clear_started) * 1000.0
-        dumps_started = time.perf_counter()
         try:
             rendered = json.dumps(value, indent=2, ensure_ascii=False)
         except TypeError:
             rendered = str(value)
-        dumps_ms = (time.perf_counter() - dumps_started) * 1000.0
-        insert_started = time.perf_counter()
         self.text.insert("1.0", rendered)
-        insert_ms = (time.perf_counter() - insert_started) * 1000.0
         # Keep visible key highlights instant; defer heavier value-rule pass.
-        key_started = time.perf_counter()
         self._clear_json_lock_highlight()
         self._set_json_text_editable(True)
         self._apply_json_view_key_highlights(path, line_limit=self._initial_highlight_line_limit())
-        key_ms = (time.perf_counter() - key_started) * 1000.0
         self._schedule_json_view_lock_state(path, render_seq=render_seq)
         try:
             # Keep undo/redo scoped to the current node content.
             self.text.edit_reset()
             self.text.edit_modified(False)
-        except Exception:
-            pass
-        total_ms = (time.perf_counter() - render_started) * 1000.0
-        try:
-            if total_ms >= 20.0:
-                self._log_perf_diag(
-                    "show_value",
-                    clear=clear_ms,
-                    dumps=dumps_ms,
-                    insert=insert_ms,
-                    key=key_ms,
-                    total=total_ms,
-                )
         except Exception:
             pass
 
@@ -10501,19 +10471,8 @@ if not install_started:
             self._json_lock_apply_after_id = None
             if int(getattr(self, "_json_render_seq", 0) or 0) != expected_seq:
                 return
-            deferred_started = time.perf_counter()
-            key_started = time.perf_counter()
             self._apply_json_view_key_highlights(snapshot_path)
-            key_ms = (time.perf_counter() - key_started) * 1000.0
-            value_started = time.perf_counter()
             self._apply_json_view_value_highlights(snapshot_path)
-            value_ms = (time.perf_counter() - value_started) * 1000.0
-            total_ms = (time.perf_counter() - deferred_started) * 1000.0
-            try:
-                if total_ms >= 8.0:
-                    self._log_perf_diag("deferred_highlight", key=key_ms, value=value_ms, total=total_ms)
-            except Exception:
-                pass
 
         try:
             self._json_lock_apply_after_id = self.root.after_idle(_apply_pending)
@@ -16359,96 +16318,25 @@ if not install_started:
         error_overlay_service.position_error_overlay(self, line)
 
     def _diag_system_from_note(self, note):
-        # Keep diagnostics easy to triage by tagging the source error system.
-        note_text = str(note or "").strip().lower()
-        if note_text.startswith("locked_"):
-            return "orange_lock"
-        if note_text.startswith("overlay_"):
-            return "overlay_parse"
-        if note_text.startswith("highlight_failed"):
-            return "highlight_internal"
-        if note_text.startswith("spacing_") or note_text.startswith("missing_phone"):
-            return "input_validation"
-        if note_text.startswith("symbol_"):
-            return "symbol_recovery"
-        return "json_highlight"
+        # Diagnostic mapping checklist:
+        # - locked_* -> highlight_restore
+        # - overlay_* -> overlay_parse
+        # - highlight_failed* -> highlight_internal
+        # - spacing_*, missing_phone*, invalid_email* -> input_validation
+        # - symbol_* and symbol-type invalid_* -> symbol_recovery
+        # - everything else -> json_highlight
+        return json_error_diag_service.diag_system_from_note(
+            note,
+            is_symbol_error_note=getattr(self, "_is_symbol_error_note", None),
+        )
 
     def _log_json_error(self, exc, target_line, note=""):
-        try:
-            log_path = self._diag_log_path()
-            log_path_abs = os.path.abspath(log_path)
-            for legacy_name in self.LEGACY_DIAG_LOG_FILENAMES:
-                legacy_path = os.path.join(tempfile.gettempdir(), str(legacy_name))
-                if os.path.abspath(legacy_path) == log_path_abs:
-                    continue
-                try:
-                    if os.path.isfile(legacy_path):
-                        os.remove(legacy_path)
-                except Exception:
-                    pass
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            msg = getattr(exc, "msg", str(exc))
-            lineno = getattr(exc, "lineno", None)
-            colno = getattr(exc, "colno", None)
-            diag_system = self._diag_system_from_note(note)
-            diag_mode = str(getattr(self, "_error_visual_mode", "") or "").strip()
-            try:
-                item_id = self.tree.focus()
-                selected_path = self.item_to_path.get(item_id, None)
-            except Exception:
-                selected_path = None
-            path_text = repr(selected_path)
-            context = []
-            start = max(target_line - 2, 1)
-            end = target_line + 2
-            for ln in range(start, end + 1):
-                try:
-                    text = self.text.get(f"{ln}.0", f"{ln}.0 lineend")
-                except Exception:
-                    text = ""
-                context.append(f"{ln}: {text}")
-            entry = (
-                "\n---\n"
-                f"time={now} action={self._diag_action}\n"
-                f"msg={msg} lineno={lineno} col={colno} target={target_line} note={note}\n"
-                f"system={diag_system} mode={diag_mode or '-'}\n"
-                f"path={path_text}\n"
-                + "\n".join(context).rstrip()
-                + "\n"
-            )
-            self._trim_text_file_for_append(
-                log_path,
-                self.DIAG_LOG_MAX_BYTES,
-                self.DIAG_LOG_KEEP_BYTES,
-            )
-            with open(log_path, "a", encoding="utf-8") as handle:
-                handle.write(entry)
-        except Exception:
-            return
+        return json_error_diag_service.log_json_error(self, exc, target_line, note=note)
 
     def _begin_diag_action(self, action_name):
         self._diag_event_seq += 1
         self._diag_action = f"{action_name}:{self._diag_event_seq}"
         return self._diag_action
-
-    def _log_perf_diag(self, stage, **metrics):
-        # Performance diagnostics: compact ms timings for selection/render/highlight stages.
-        try:
-            marker = type("E", (), {"msg": "perf", "lineno": 1, "colno": 1})()
-            parts = []
-            for key in sorted(metrics.keys()):
-                raw = metrics.get(key)
-                if raw is None:
-                    continue
-                try:
-                    value = float(raw)
-                    parts.append(f"{key}={value:.2f}ms")
-                except Exception:
-                    parts.append(f"{key}={raw}")
-            note = f"perf_{str(stage or '').strip()} {' '.join(parts)}".strip()
-            self._log_json_error(marker, 1, note=note)
-        except Exception:
-            return
 
     def _clear_json_error_highlight(self):
         try:
