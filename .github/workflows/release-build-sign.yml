@@ -1,0 +1,119 @@
+name: Release Build and Sigstore Sign
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (example: v1.3.5)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-sign-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve tag
+        id: vars
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "${{ github.ref_name }}"
+          }
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw "Unable to resolve release tag."
+          }
+          if (-not $tag.StartsWith("v")) {
+            throw "Tag must start with 'v' (received: $tag)."
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Install build requirements
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r source/requirements-build.txt
+
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --distpath dist --workpath build source/sins_editor.spec
+
+      - name: Package fallback zip and metadata
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/sins_editor.exe")) {
+            throw "dist/sins_editor.exe not found after build."
+          }
+          if (-not (Test-Path "dist/sins_editor-onedir")) {
+            throw "dist/sins_editor-onedir not found after build."
+          }
+          if (Test-Path "dist/sins_editor-onedir.zip") {
+            Remove-Item "dist/sins_editor-onedir.zip" -Force
+          }
+          Compress-Archive -Path "dist/sins_editor-onedir" -DestinationPath "dist/sins_editor-onedir.zip" -CompressionLevel Optimal -Force
+
+          $version = python -c "import re, pathlib; text=pathlib.Path('source/core/constants.py').read_text(encoding='utf-8'); m=re.search(r'APP_VERSION\\s*=\\s*\"([^\"]+)\"', text); print(m.group(1) if m else '')"
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Failed to parse APP_VERSION from source/core/constants.py."
+          }
+          Set-Content -Path "dist/version.txt" -Value $version -Encoding ASCII
+
+          $hash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor.exe").Hash.ToLowerInvariant()
+          Set-Content -Path "dist/sins_editor.exe.sha256" -Value "$hash *sins_editor.exe" -Encoding ASCII
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sigstore keyless sign artifacts
+        shell: pwsh
+        run: |
+          $artifacts = @(
+            "dist/sins_editor.exe",
+            "dist/sins_editor-onedir.zip",
+            "dist/version.txt",
+            "dist/sins_editor.exe.sha256"
+          )
+          foreach ($path in $artifacts) {
+            if (-not (Test-Path $path)) {
+              throw "Missing artifact for signing: $path"
+            }
+            cosign sign-blob --yes `
+              --output-signature "$path.sig" `
+              --output-certificate "$path.cert" `
+              "$path"
+          }
+
+      - name: Publish GitHub release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/sins_editor.exe
+            dist/sins_editor-onedir.zip
+            dist/version.txt
+            dist/sins_editor.exe.sha256
+            dist/sins_editor.exe.sig
+            dist/sins_editor.exe.cert
+            dist/sins_editor-onedir.zip.sig
+            dist/sins_editor-onedir.zip.cert
+            dist/version.txt.sig
+            dist/version.txt.cert
+            dist/sins_editor.exe.sha256.sig
+            dist/sins_editor.exe.sha256.cert
