@@ -32,6 +32,9 @@
 |---|
 | `pytest` regression tests<br>`ruff` quality lint checks<br>`semgrep` static security analysis<br>`trufflehog` secret scanning<br>`bandit` Python security scan<br>`safety` dependency vulnerability scan<br>Microsoft Defender CLI preflight for release artifacts<br>VirusTotal release evidence (hash-first with upload fallback)<br>Published `SHA256` checksum + `security-report.txt` release artifact evidence<br><br>These checks reduce risk and improve transparency, but do not guarantee zero vulnerabilities or false positives. |
 
+| <img align="left" alt="LICENSE" src="https://img.shields.io/badge/LICENSE-MIT-8B0000?style=for-the-badge&labelColor=0F172A"> |
+|---|
+| MIT License. Copyright (c) 2026 Siindbad. |
 
 
 
