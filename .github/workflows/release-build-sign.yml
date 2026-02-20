@@ -69,7 +69,11 @@ jobs:
           }
           Compress-Archive -Path "dist/sins_editor-onedir" -DestinationPath "dist/sins_editor-onedir.zip" -CompressionLevel Optimal -Force
 
-          $version = python -c "import re, pathlib; text=pathlib.Path('source/core/constants.py').read_text(encoding='utf-8'); m=re.search(r'APP_VERSION\\s*=\\s*\"([^\"]+)\"', text); print(m.group(1) if m else '')"
+          $match = Select-String -Path "source/core/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"' | Select-Object -First 1
+          $version = ""
+          if ($match -and $match.Matches.Count -gt 0) {
+            $version = $match.Matches[0].Groups[1].Value
+          }
           if ([string]::IsNullOrWhiteSpace($version)) {
             throw "Failed to parse APP_VERSION from source/core/constants.py."
           }
