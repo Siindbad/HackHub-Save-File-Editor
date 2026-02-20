@@ -478,6 +478,7 @@ source/assets/known_email_domains.json
 source/assets/logo2.png
 source/assets/sindbadlogo.png
 source/assets/windows-longpath.manifest
+source/core/README.md
 source/core/__init__.py
 source/core/constants.py
 source/core/display_profile.py
@@ -488,6 +489,7 @@ source/core/layout_topbar.py
 source/core/startup_loader.py
 source/core/update_service.py
 source/requirements-build.txt
+source/services/README.md
 source/services/__init__.py
 source/services/bug_report_api_service.py
 source/services/bug_report_service.py
