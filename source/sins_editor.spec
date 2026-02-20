@@ -5,7 +5,8 @@ import re
 
 from PyInstaller.utils.hooks import collect_submodules
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+_SPEC_FILE = globals().get("__file__", "")
+PROJECT_ROOT = Path(_SPEC_FILE).resolve().parent if _SPEC_FILE else Path.cwd()
 ASSETS_DIR = PROJECT_ROOT / "assets"
 
 
