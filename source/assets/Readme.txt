@@ -84,3 +84,8 @@ there HackTheCube web address if they deleted the email.
 - Release files are protected with checksum integrity verification.
 - Security and privacy safeguards were improved for safer everyday use.
 
+[ LICENSE ]
+=================================================================================
+
+- MIT License. See the LICENSE file in the public repo README.md.
+
