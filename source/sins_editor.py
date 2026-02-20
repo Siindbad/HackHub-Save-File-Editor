@@ -27,7 +27,7 @@ from tkinter import filedialog, messagebox, ttk
 from services import bug_report_api_service
 from services import bug_report_service
 from services import bug_report_ui_service
-from services import edit_guard_service
+from services import highlight_label_service
 from services import footer_service
 from services import input_mode_service
 from services import json_view_service
@@ -58,6 +58,9 @@ try:
     import winreg
 except Exception:
     winreg = None
+
+# Backward-compatible module alias for older tests/integrations.
+edit_guard_service = highlight_label_service
 
 
 # Module-level helper to locate 7z executable. Used during initialization
@@ -453,6 +456,11 @@ if not install_started:
         self._last_error_highlight_note = ""
         self._last_error_insertion_only = False
         self._last_error_overlay_message = ""
+        self._error_overlay_actions = None
+        self._allow_highlight_key_change_once = False
+        self._last_tree_selected_item = None
+        self._json_lock_apply_after_id = None
+        self._json_render_seq = 0
         self._last_json_error_diag = None
         self._error_hooks_installed = False
         self._crash_notice_shown = False
@@ -4251,6 +4259,13 @@ if not install_started:
         payload = self._current_overlay_suggestion()
         if not payload:
             return
+        item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
+        path = self.item_to_path.get(item_id, []) if item_id else []
+        restore_index = ""
+        try:
+            restore_index = str(self.text.index("insert") or "")
+        except Exception:
+            restore_index = ""
         if self.error_overlay is not None:
             self._destroy_error_overlay()
             self._clear_json_error_highlight()
@@ -4260,6 +4275,24 @@ if not install_started:
             payload.get("after"),
         )
         if changed:
+            if restore_index:
+                try:
+                    line_text = str(restore_index).split(".", 1)
+                    line_no = max(1, int(line_text[0]))
+                    col_no = max(0, int(line_text[1]))
+                    max_line = max(1, int(str(self.text.index("end-1c")).split(".", 1)[0]))
+                    line_no = min(line_no, max_line)
+                    live_line_text = str(self._line_text(line_no) or "")
+                    col_no = min(col_no, len(live_line_text))
+                    restore_index = f"{line_no}.{col_no}"
+                    self.text.mark_set("insert", restore_index)
+                    self.text.see(restore_index)
+                except Exception:
+                    pass
+            try:
+                self._apply_json_view_lock_state(path)
+            except Exception:
+                pass
             self._auto_apply_pending = True
 
     @staticmethod
@@ -4482,6 +4515,8 @@ if not install_started:
         except Exception:
             pass
         self._refresh_open_readme_window()
+        # Keep active warning/error overlays synchronized with font-size changes.
+        self._refresh_active_error_theme()
 
     def _sync_font_size_from_var(self):
         """Read the combobox StringVar and apply it to the internal font size."""
@@ -9838,9 +9873,42 @@ if not install_started:
             except Exception:
                 continue
 
+    def _refresh_tree_marker_for_item(self, item_id, selected=False):
+        tree = getattr(self, "tree", None)
+        if tree is None or not item_id:
+            return
+        if str(getattr(self, "_tree_style_variant", "B")).upper() != "B":
+            return
+        try:
+            if not tree.exists(item_id):
+                return
+            path = self.item_to_path.get(item_id)
+            is_group = isinstance(path, tuple) and path and path[0] == "__group__"
+            depth = 0 if is_group else (len(path) if isinstance(path, list) else 0)
+            has_children = bool(tree.get_children(item_id))
+            is_expanded = bool(tree.item(item_id, "open")) if has_children else False
+            if depth <= 1:
+                icon = self._load_tree_marker_icon(
+                    "main",
+                    selected=False,
+                    expandable=has_children,
+                    expanded=is_expanded,
+                )
+            else:
+                icon = self._load_tree_marker_icon(
+                    "sub",
+                    selected=bool(selected),
+                    expandable=has_children,
+                    expanded=is_expanded,
+                )
+            tree.item(item_id, image=icon if icon is not None else "")
+        except Exception:
+            return
+
     def _rebuild_tree(self):
         self.tree.delete(*self.tree.get_children())
         self.item_to_path.clear()
+        self._last_tree_selected_item = None
         self._reset_find_state()
 
         # Render top-level categories under Tk's implicit root (hidden "root" row).
@@ -10313,10 +10381,17 @@ if not install_started:
         return "break"
 
     def on_select(self, event):
+        select_started = time.perf_counter()
         item_id = self.tree.focus()
         if not item_id:
             return
-        self._refresh_tree_item_markers()
+        marker_started = time.perf_counter()
+        previous_item = str(getattr(self, "_last_tree_selected_item", "") or "")
+        if previous_item and previous_item != item_id:
+            self._refresh_tree_marker_for_item(previous_item, selected=False)
+        self._refresh_tree_marker_for_item(item_id, selected=True)
+        self._last_tree_selected_item = item_id
+        marker_ms = (time.perf_counter() - marker_started) * 1000.0
         self._auto_apply_pending = False
         self._destroy_error_overlay()
         self._clear_json_error_highlight()
@@ -10341,55 +10416,163 @@ if not install_started:
         else:
             self._show_value(value, path=path)
         self.set_status(self._describe(value))
+        total_ms = (time.perf_counter() - select_started) * 1000.0
+        try:
+            if total_ms >= 20.0:
+                self._log_perf_diag("select", marker=marker_ms, total=total_ms)
+        except Exception:
+            pass
 
     def _show_value(self, value, path=None):
+        render_started = time.perf_counter()
+        self._json_render_seq = int(getattr(self, "_json_render_seq", 0) or 0) + 1
+        render_seq = int(self._json_render_seq)
         try:
             self.text.configure(state="normal")
         except Exception:
             pass
+        clear_started = time.perf_counter()
         self.text.delete("1.0", "end")
+        clear_ms = (time.perf_counter() - clear_started) * 1000.0
+        dumps_started = time.perf_counter()
         try:
             rendered = json.dumps(value, indent=2, ensure_ascii=False)
         except TypeError:
             rendered = str(value)
+        dumps_ms = (time.perf_counter() - dumps_started) * 1000.0
+        insert_started = time.perf_counter()
         self.text.insert("1.0", rendered)
-        self._apply_json_view_lock_state(path)
+        insert_ms = (time.perf_counter() - insert_started) * 1000.0
+        # Keep visible key highlights instant; defer heavier value-rule pass.
+        key_started = time.perf_counter()
+        self._clear_json_lock_highlight()
+        self._set_json_text_editable(True)
+        self._apply_json_view_key_highlights(path, line_limit=self._initial_highlight_line_limit())
+        key_ms = (time.perf_counter() - key_started) * 1000.0
+        self._schedule_json_view_lock_state(path, render_seq=render_seq)
         try:
             # Keep undo/redo scoped to the current node content.
             self.text.edit_reset()
             self.text.edit_modified(False)
         except Exception:
             pass
+        total_ms = (time.perf_counter() - render_started) * 1000.0
+        try:
+            if total_ms >= 20.0:
+                self._log_perf_diag(
+                    "show_value",
+                    clear=clear_ms,
+                    dumps=dumps_ms,
+                    insert=insert_ms,
+                    key=key_ms,
+                    total=total_ms,
+                )
+        except Exception:
+            pass
+
+    def _initial_highlight_line_limit(self):
+        # Fast-first paint: highlight currently visible JSON area first.
+        try:
+            text_h = max(1, int(self.text.winfo_height()))
+            top_idx = str(self.text.index("@0,0"))
+            bottom_idx = str(self.text.index(f"@0,{text_h}"))
+            top_line = int(top_idx.split(".", 1)[0])
+            bottom_line = int(bottom_idx.split(".", 1)[0])
+            return max(80, int(bottom_line - top_line + 30))
+        except Exception:
+            return 160
+
+    def _cancel_pending_json_view_lock_state(self):
+        after_id = getattr(self, "_json_lock_apply_after_id", None)
+        self._json_lock_apply_after_id = None
+        if not after_id:
+            return
+        try:
+            self.root.after_cancel(after_id)
+        except Exception:
+            return
+
+    def _schedule_json_view_lock_state(self, path, render_seq=None):
+        self._cancel_pending_json_view_lock_state()
+        snapshot_path = list(path or [])
+        expected_seq = int(render_seq if render_seq is not None else getattr(self, "_json_render_seq", 0) or 0)
+
+        def _apply_pending():
+            self._json_lock_apply_after_id = None
+            if int(getattr(self, "_json_render_seq", 0) or 0) != expected_seq:
+                return
+            deferred_started = time.perf_counter()
+            key_started = time.perf_counter()
+            self._apply_json_view_key_highlights(snapshot_path)
+            key_ms = (time.perf_counter() - key_started) * 1000.0
+            value_started = time.perf_counter()
+            self._apply_json_view_value_highlights(snapshot_path)
+            value_ms = (time.perf_counter() - value_started) * 1000.0
+            total_ms = (time.perf_counter() - deferred_started) * 1000.0
+            try:
+                if total_ms >= 8.0:
+                    self._log_perf_diag("deferred_highlight", key=key_ms, value=value_ms, total=total_ms)
+            except Exception:
+                pass
+
+        try:
+            self._json_lock_apply_after_id = self.root.after_idle(_apply_pending)
+        except Exception:
+            self._json_lock_apply_after_id = None
+            self._apply_json_view_key_highlights(snapshot_path)
+            self._apply_json_view_value_highlights(snapshot_path)
 
     def _json_lock_tag_palette(self):
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
         if variant == "KAMUE":
             return {
-                "fg": "#ffbb66",
+                "fg": "#f5b043",
                 "block_bg": "#241608",
             }
         return {
-            "fg": "#ffb347",
+            "fg": "#f2a024",
             "block_bg": "#2a1b0b",
         }
 
     def _configure_json_lock_tags(self):
         palette = self._json_lock_tag_palette()
         try:
+            self.text.tag_config("json_brace_token", foreground="#54d5ff")
+            self.text.tag_config("json_bracket_token", foreground="#ff7ac8")
+            self.text.tag_config("json_bool_true", foreground="#5fa8ff")
+            self.text.tag_config("json_bool_false", foreground="#ff9ea1")
+            self.text.tag_config("json_value_green", foreground="#49c979")
+            self.text.tag_config("json_property_key", foreground=palette["fg"])
             self.text.tag_config("json_locked_key", foreground=palette["fg"])
             self.text.tag_config(
                 "json_locked_block",
                 foreground=palette["fg"],
                 background=palette["block_bg"],
             )
+            # Lime-green label accents for coordinate/dimension keys.
+            self.text.tag_config("json_xy_key", foreground="#b6ff3b")
+            self.text.tag_raise("json_brace_token")
+            self.text.tag_raise("json_bracket_token")
+            self.text.tag_raise("json_bool_true")
+            self.text.tag_raise("json_bool_false")
+            self.text.tag_raise("json_value_green")
             self.text.tag_raise("json_locked_key")
+            self.text.tag_raise("json_property_key")
+            self.text.tag_raise("json_xy_key")
         except Exception:
             return
 
     def _clear_json_lock_highlight(self):
         try:
+            self.text.tag_remove("json_brace_token", "1.0", "end")
+            self.text.tag_remove("json_bracket_token", "1.0", "end")
+            self.text.tag_remove("json_bool_true", "1.0", "end")
+            self.text.tag_remove("json_bool_false", "1.0", "end")
+            self.text.tag_remove("json_value_green", "1.0", "end")
+            self.text.tag_remove("json_property_key", "1.0", "end")
             self.text.tag_remove("json_locked_key", "1.0", "end")
             self.text.tag_remove("json_locked_block", "1.0", "end")
+            self.text.tag_remove("json_xy_key", "1.0", "end")
         except Exception:
             return
 
@@ -10423,6 +10606,8 @@ if not install_started:
 
     def _tag_json_locked_key_occurrences(self, key_name):
         token = f'"{key_name}"'
+        malformed_missing_close_quote = f'"{key_name}:'
+        malformed_missing_open_quote = f'{key_name}"'
         index = "1.0"
         while True:
             try:
@@ -10438,6 +10623,239 @@ if not install_started:
             except Exception:
                 break
             index = end
+        # Parse-error continuity: keep key labels highlighted when one quote is removed
+        # (for example `"key:` or `key"` before `:`) while user is fixing JSON syntax.
+        for malformed_token in (malformed_missing_close_quote, malformed_missing_open_quote):
+            index = "1.0"
+            while True:
+                try:
+                    hit = self.text.search(malformed_token, index, stopindex="end", nocase=True)
+                except Exception:
+                    hit = ""
+                if not hit:
+                    break
+                try:
+                    if malformed_token.endswith(":"):
+                        end = f"{hit}+{len(malformed_token) - 1}c"
+                    else:
+                        end = f"{hit}+{len(malformed_token)}c"
+                    if self._json_token_followed_by_colon(end):
+                        self.text.tag_add("json_locked_key", hit, end)
+                except Exception:
+                    break
+                index = end
+
+    def _tag_json_xy_key_occurrences(self, key_name):
+        token = f'"{key_name}"'
+        index = "1.0"
+        while True:
+            try:
+                hit = self.text.search(token, index, stopindex="end", nocase=False)
+            except Exception:
+                hit = ""
+            if not hit:
+                break
+            try:
+                end = f"{hit}+{len(token)}c"
+                if self._json_token_followed_by_colon(end):
+                    self.text.tag_add("json_xy_key", hit, end)
+            except Exception:
+                break
+            index = end
+
+    def _should_batch_tag_locked_keys(self, key_names):
+        # Large-category optimization: use one-pass key tagging for big root JSON blocks.
+        if not key_names:
+            return False
+        if len(tuple(key_names)) < 12:
+            return False
+        # While editing with active error overlays, keep per-key path for malformed key handling.
+        try:
+            if getattr(self, "error_overlay", None) is not None:
+                return False
+        except Exception:
+            return False
+        try:
+            raw = self.text.get("1.0", "end-1c")
+        except Exception:
+            return False
+        if len(raw or "") < 4000:
+            return False
+        return True
+
+    def _tag_json_key_occurrences_batch(self, locked_key_names, xy_key_names=(), line_limit=None):
+        locked_targets = {
+            str(name or "").strip().casefold()
+            for name in tuple(locked_key_names or ())
+            if str(name or "").strip()
+        }
+        xy_targets = {
+            str(name or "").strip()
+            for name in tuple(xy_key_names or ())
+            if str(name or "").strip()
+        }
+        if not locked_targets and not xy_targets:
+            return
+        try:
+            raw = self.text.get("1.0", "end-1c")
+        except Exception:
+            return
+        line_no = 1
+        key_pattern = re.compile(r'"([^"\r\n:]+)"\s*:')
+        max_lines = int(line_limit or 0)
+        for line_text in str(raw or "").splitlines():
+            if max_lines and line_no > max_lines:
+                break
+            for hit in key_pattern.finditer(line_text):
+                key_name = str(hit.group(1) or "")
+                locked_match = key_name.casefold() in locked_targets
+                xy_match = key_name in xy_targets
+                if not locked_match and not xy_match:
+                    continue
+                key_start = int(hit.start(0))
+                key_end = int(key_start + len(key_name) + 2)
+                try:
+                    start = f"{line_no}.{key_start}"
+                    end = f"{line_no}.{key_end}"
+                    if locked_match:
+                        self.text.tag_add("json_locked_key", start, end)
+                    if xy_match:
+                        self.text.tag_add("json_xy_key", start, end)
+                except Exception:
+                    continue
+            line_no += 1
+
+    def _tag_json_string_value_literals(self, line_limit=None):
+        # Value accent pass: tag quoted JSON string values while leaving object keys untagged.
+        try:
+            raw = self.text.get("1.0", "end-1c")
+        except Exception:
+            return
+        line_no = 1
+        max_lines = int(line_limit or 0)
+        token_pattern = re.compile(r'"([^"\\]|\\.)*"')
+        for line_text in str(raw or "").splitlines():
+            if max_lines and line_no > max_lines:
+                break
+            for hit in token_pattern.finditer(line_text):
+                start_col = int(hit.start(0))
+                end_col = int(hit.end(0))
+                next_nonspace = ""
+                for ch in line_text[end_col:]:
+                    if ch in (" ", "\t", "\r", "\n"):
+                        continue
+                    next_nonspace = ch
+                    break
+                is_key = next_nonspace == ":"
+                if is_key:
+                    continue
+                try:
+                    self.text.tag_add("json_value_green", f"{line_no}.{start_col}", f"{line_no}.{end_col}")
+                except Exception:
+                    continue
+            line_no += 1
+
+    def _tag_json_brace_tokens(self, line_limit=None):
+        # Structural accent pass: color object/list tokens without touching quoted strings.
+        try:
+            raw = self.text.get("1.0", "end-1c")
+        except Exception:
+            return
+        line_no = 1
+        max_lines = int(line_limit or 0)
+        for line_text in str(raw or "").splitlines():
+            if max_lines and line_no > max_lines:
+                break
+            in_string = False
+            escaped = False
+            col_no = 0
+            for ch in line_text:
+                if escaped:
+                    escaped = False
+                    col_no += 1
+                    continue
+                if ch == "\\" and in_string:
+                    escaped = True
+                    col_no += 1
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    col_no += 1
+                    continue
+                if not in_string and ch in ("{", "}", "[", "]"):
+                    try:
+                        token_tag = "json_brace_token" if ch in ("{", "}") else "json_bracket_token"
+                        self.text.tag_add(token_tag, f"{line_no}.{col_no}", f"{line_no}.{col_no + 1}")
+                    except Exception:
+                        pass
+                col_no += 1
+            line_no += 1
+
+    def _tag_json_boolean_literals(self, line_limit=None):
+        # Boolean accent pass: color JSON literals true/false outside quoted strings.
+        try:
+            raw = self.text.get("1.0", "end-1c")
+        except Exception:
+            return
+        line_no = 1
+        max_lines = int(line_limit or 0)
+        token_pattern = re.compile(r"\b(true|false)\b")
+        for line_text in str(raw or "").splitlines():
+            if max_lines and line_no > max_lines:
+                break
+            in_string = False
+            escaped = False
+            string_mask = [False] * len(line_text)
+            for idx, ch in enumerate(line_text):
+                string_mask[idx] = in_string
+                if escaped:
+                    escaped = False
+                    continue
+                if ch == "\\" and in_string:
+                    escaped = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+            for hit in token_pattern.finditer(line_text):
+                start_col = int(hit.start(0))
+                end_col = int(hit.end(0))
+                inside_string = any(string_mask[idx] for idx in range(start_col, min(end_col, len(string_mask))))
+                if inside_string:
+                    continue
+                token = str(hit.group(1) or "")
+                tag_name = "json_bool_true" if token == "true" else "json_bool_false"
+                try:
+                    self.text.tag_add(tag_name, f"{line_no}.{start_col}", f"{line_no}.{end_col}")
+                except Exception:
+                    continue
+            line_no += 1
+
+    def _tag_json_property_keys(self, line_limit=None):
+        # Property-key accent pass: color all JSON object key tokens including quotes.
+        try:
+            raw = self.text.get("1.0", "end-1c")
+        except Exception:
+            return
+        line_no = 1
+        max_lines = int(line_limit or 0)
+        key_pattern = re.compile(r'"([^"\\]|\\.)*"\s*:')
+        for line_text in str(raw or "").splitlines():
+            if max_lines and line_no > max_lines:
+                break
+            for hit in key_pattern.finditer(line_text):
+                token = str(hit.group(0) or "")
+                colon_index = token.rfind(":")
+                if colon_index <= 0:
+                    continue
+                end_col = int(hit.start(0) + colon_index)
+                start_col = int(hit.start(0))
+                while end_col > start_col and line_text[end_col - 1] in (" ", "\t"):
+                    end_col -= 1
+                try:
+                    self.text.tag_add("json_property_key", f"{line_no}.{start_col}", f"{line_no}.{end_col}")
+                except Exception:
+                    continue
+            line_no += 1
 
     def _json_literal_offsets_after_key(self, key_end_index, literal_token, lookahead_chars=120, ignore_case=False):
         # Value-highlight guard: only tag when this key is immediately followed by the configured JSON literal.
@@ -10504,15 +10922,41 @@ if not install_started:
     def _apply_json_view_lock_state(self, path):
         self._clear_json_lock_highlight()
         self._set_json_text_editable(True)
+        self._apply_json_view_key_highlights(path)
+        self._apply_json_view_value_highlights(path)
+
+    def _apply_json_view_key_highlights(self, path, line_limit=None):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "JSON":
+            return
+        self._tag_json_brace_tokens(line_limit=line_limit)
+        self._tag_json_boolean_literals(line_limit=line_limit)
+        self._tag_json_property_keys(line_limit=line_limit)
+        use_path = list(path or [])
+        xy_keys = ("x", "y") if len(use_path) == 1 else ()
+        dimension_keys = ("width", "height")
+        if highlight_label_service.is_locked_field_path(use_path):
+            # Subcategory JSON stays white; apply-time guard still blocks locked edits.
+            return
+        locked_fields = tuple(highlight_label_service.locked_highlight_fields_for_path(use_path))
+        if self._should_batch_tag_locked_keys(locked_fields):
+            self._tag_json_key_occurrences_batch(locked_fields, xy_key_names=xy_keys, line_limit=line_limit)
+        else:
+            for coord_key in xy_keys:
+                self._tag_json_xy_key_occurrences(coord_key)
+            for field_name in locked_fields:
+                self._tag_json_locked_key_occurrences(field_name)
+        for dim_key in dimension_keys:
+            self._tag_json_xy_key_occurrences(dim_key)
+        # Global value tint: render quoted values in light green without overriding key highlights.
+        self._tag_json_string_value_literals(line_limit=line_limit)
+
+    def _apply_json_view_value_highlights(self, path):
         if str(getattr(self, "_editor_mode", "JSON")).upper() != "JSON":
             return
         use_path = list(path or [])
-        if edit_guard_service.is_locked_field_path(use_path):
-            # Subcategory JSON stays white; apply-time guard still blocks locked edits.
+        if highlight_label_service.is_locked_field_path(use_path):
             return
-        for field_name in edit_guard_service.locked_highlight_fields_for_path(use_path):
-            self._tag_json_locked_key_occurrences(field_name)
-        for rule in edit_guard_service.locked_highlight_value_rules_for_path(use_path):
+        for rule in highlight_label_service.locked_highlight_value_rules_for_path(use_path):
             field_name = str(rule.get("field") or "").strip()
             if not field_name:
                 continue
@@ -10551,14 +10995,14 @@ if not install_started:
             new_value = json.loads(raw)
         except Exception as exc:
             message = self._format_json_error(exc)
-            if self._maybe_restore_locked_parse_error(path, self._last_json_error_diag, exc=exc):
-                return
             self._error_visual_mode = "guide"
             self._show_error_overlay("Invalid Entry", message)
             try:
                 self._log_json_error(exc, getattr(exc, "lineno", None) or 1, note="overlay_parse")
             except Exception:
                 pass
+            # Keep highlight-label colors active while JSON is temporarily invalid.
+            self._apply_json_view_lock_state(path)
             self._highlight_json_error(exc)
             return
         self._clear_json_error_highlight()
@@ -10646,6 +11090,8 @@ if not install_started:
 
         # Refresh subtree
         self._populate_children(item_id)
+        # Repaint label highlights after JSON edits so fixed key quotes stay orange.
+        self._apply_json_view_lock_state(path)
         self.set_status("Edited")
 
     def _extract_key_name_from_diag_line(self, line_text):
@@ -10665,9 +11111,9 @@ if not install_started:
 
     def _locked_field_name_from_parse_diag(self, path, diag):
         use_path = list(path or [])
-        if edit_guard_service.is_locked_field_path(use_path) and use_path:
+        if highlight_label_service.is_locked_field_path(use_path) and use_path:
             return str(use_path[-1] or "").strip()
-        locked_fields = tuple(edit_guard_service.locked_highlight_fields_for_path(use_path))
+        locked_fields = tuple(highlight_label_service.locked_highlight_fields_for_path(use_path))
         if not locked_fields:
             return ""
         for key in ("after", "before"):
@@ -10748,7 +11194,7 @@ if not install_started:
         if note not in parse_lock_notes:
             return False
         use_path = list(path or [])
-        policy = edit_guard_service.lock_policy_for_path(use_path)
+        policy = highlight_label_service.lock_policy_for_path(use_path)
         if policy is None:
             return False
         field_name = self._locked_field_name_from_parse_diag(use_path, diag)
@@ -15985,6 +16431,25 @@ if not install_started:
         self._diag_action = f"{action_name}:{self._diag_event_seq}"
         return self._diag_action
 
+    def _log_perf_diag(self, stage, **metrics):
+        # Performance diagnostics: compact ms timings for selection/render/highlight stages.
+        try:
+            marker = type("E", (), {"msg": "perf", "lineno": 1, "colno": 1})()
+            parts = []
+            for key in sorted(metrics.keys()):
+                raw = metrics.get(key)
+                if raw is None:
+                    continue
+                try:
+                    value = float(raw)
+                    parts.append(f"{key}={value:.2f}ms")
+                except Exception:
+                    parts.append(f"{key}={raw}")
+            note = f"perf_{str(stage or '').strip()} {' '.join(parts)}".strip()
+            self._log_json_error(marker, 1, note=note)
+        except Exception:
+            return
+
     def _clear_json_error_highlight(self):
         try:
             self.text.tag_remove("json_error", "1.0", "end")
@@ -16130,6 +16595,8 @@ if not install_started:
         except Exception as exc:
             self._error_visual_mode = "guide"
             self._show_error_overlay("Invalid Entry", self._format_json_error(exc))
+            # Keep highlight-label colors active while JSON is temporarily invalid.
+            self._apply_json_view_lock_state(path)
             self._highlight_json_error(exc)
             return
 
@@ -16190,7 +16657,8 @@ if not install_started:
         if not self._is_json_edit_allowed(path, new_value, show_feedback=True):
             return
 
-    def _show_error_overlay(self, title, message):
+    def _show_error_overlay(self, title, message, actions=None):
+        self._error_overlay_actions = tuple(actions or ()) or None
         error_overlay_service.show_error_overlay(self, title, message)
 
     def _destroy_error_overlay(self):
@@ -16313,7 +16781,7 @@ if not install_started:
         self._reset_find_state()
 
     def _is_network_list(self, path, value):
-        return edit_guard_service.is_network_list(path, value, self.network_types_set)
+        return highlight_label_service.is_network_list(path, value, self.network_types_set)
 
     def _mail_account_label(self, idx, item):
         return label_format_service.mail_account_label(idx, item, getattr(self, "_tree_style_variant", "B"))
@@ -16375,88 +16843,21 @@ if not install_started:
         return label_format_service.find_first_dict_key_change(old_value, new_value, current_path=current_path)
 
     def _is_json_edit_allowed(self, path, new_value, show_feedback=True, auto_restore=False):
-        try:
-            current_value = self._get_value(path)
-        except Exception:
-            current_value = None
-        try:
-            previous_insert = self.text.index("insert")
-        except Exception:
-            previous_insert = "1.0"
-        payload = edit_guard_service.locked_json_edit_payload(
-            path=path,
-            current_value=current_value,
-            new_value=new_value,
-            format_path_for_display=self._format_path_for_display,
-        )
-        if payload.get("allowed", False):
-            return True
-        if not show_feedback:
-            return False
-        was_restored = False
-        if auto_restore and current_value is not None:
-            # Global lock restore: only protected JSON fields are reverted.
-            was_restored, fixed_value = edit_guard_service.restore_locked_json_edit(
-                path=path,
-                current_value=current_value,
-                new_value=new_value,
-            )
-            if was_restored:
-                self._show_value(fixed_value, path=path)
-        self._error_visual_mode = "guide"
-        field_name = str(payload.get("field") or "value").strip() or "value"
-        lock_result = "Line restored." if was_restored else "Edit blocked."
-        self._show_error_overlay(
-            "Not editable",
-            f'Locked: "{field_name}" is a protected field. {lock_result}',
-        )
-        # Anchor lock overlay near the protected key so it sits just below
-        # the attempted edit location when space is available.
-        anchor_index = self._find_lock_anchor_index(field_name, preferred_index=previous_insert)
-        if not anchor_index:
-            try:
-                anchor_index = str(previous_insert or self.text.index("insert"))
-            except Exception:
-                anchor_index = "1.0"
-        self._error_focus_index = anchor_index
-        anchor_line = self._line_number_from_index(anchor_index) or 1
-        try:
-            self.text.mark_set("insert", anchor_index)
-            self.text.see(anchor_index)
-        except Exception:
-            pass
-        try:
-            self._position_error_overlay(anchor_line)
-        except Exception:
-            pass
-        if field_name:
-            self._tag_json_locked_key_occurrences(field_name)
-        try:
-            if was_restored:
-                self.set_status(
-                    str(payload.get("status_restored") or "Auto-fixed: protected field restored.")
-                )
-            else:
-                self.set_status(
-                    str(payload.get("status_blocked") or "Blocked: locked field cannot be edited in JSON mode.")
-                )
-        except Exception:
-            pass
-        try:
-            lock_note = "locked_field_auto_restore" if was_restored else "locked_field_blocked"
-            lock_msg = "Locked field edit restored" if was_restored else "Locked field edit blocked"
-            marker = type("E", (), {"msg": lock_msg, "lineno": int(anchor_line), "colno": 1})
-            self._log_json_error(marker, int(anchor_line), note=lock_note)
-        except Exception:
-            pass
-        return False
+        # Orange lock system now runs as label-only guidance:
+        # keep highlight tags, but do not block/restore edits or show lock overlays.
+        _ = (path, new_value, show_feedback, auto_restore)
+        return True
 
     def _is_edit_allowed(self, path, new_value):
+        # One-shot bypass used only after explicit "Continue" on highlight warning.
+        if bool(getattr(self, "_allow_highlight_key_change_once", False)):
+            self._allow_highlight_key_change_once = False
+            return True
         try:
             current_value = self._get_value(path)
         except Exception:
             current_value = None
-        payload = edit_guard_service.edit_allowed_payload(
+        payload = highlight_label_service.edit_allowed_payload(
             path=path,
             current_value=current_value,
             new_value=new_value,
@@ -16466,18 +16867,129 @@ if not install_started:
         if payload.get("allowed", False):
             return True
         self._error_visual_mode = "guide"
+        recommended_name = str(payload.get("recommended_name") or "").strip() or str(
+            payload.get("path_label", "highlighted field")
+        )
+        entered_name = str(payload.get("entered_name") or "").strip()
+
+        def _overlay_autofix():
+            restore_index = ""
+            try:
+                restore_index = str(self.text.index("insert") or "")
+            except Exception:
+                restore_index = ""
+            try:
+                self._destroy_error_overlay()
+            except Exception:
+                pass
+            try:
+                self._show_value(current_value, path=path)
+            except Exception:
+                return
+            if restore_index:
+                try:
+                    line_text = str(restore_index).split(".", 1)
+                    line_no = max(1, int(line_text[0]))
+                    col_no = max(0, int(line_text[1]))
+                    max_line = max(1, int(str(self.text.index("end-1c")).split(".", 1)[0]))
+                    line_no = min(line_no, max_line)
+                    live_line_text = str(self._line_text(line_no) or "")
+                    col_no = min(col_no, len(live_line_text))
+                    restore_index = f"{line_no}.{col_no}"
+                    self.text.mark_set("insert", restore_index)
+                    self.text.see(restore_index)
+                except Exception:
+                    pass
+            try:
+                self.set_status(f'Auto-fixed: restored highlighted field "{recommended_name}".')
+            except Exception:
+                pass
+
+        def _overlay_continue():
+            try:
+                self._destroy_error_overlay()
+            except Exception:
+                pass
+            self._allow_highlight_key_change_once = True
+            try:
+                self.set_status("Warning acknowledged: continuing highlighted field edit.")
+            except Exception:
+                pass
+            try:
+                self.apply_edit()
+            except Exception:
+                self._allow_highlight_key_change_once = False
+
         self._show_error_overlay(
-            "Invalid Entry",
-            f"Key edits are blocked at `{payload.get('path_label', 'root')}`.\n\n{payload.get('detail', '')}",
+            "Warning",
+            (
+                "Warning : Editing Highlighted Columns Could Corrupt Game Data\n\n"
+                f"Recommended : {recommended_name}"
+            ),
+            actions=(
+                ("Auto-Fix", _overlay_autofix),
+                ("Continue", _overlay_continue),
+            ),
         )
         try:
-            self.set_status("Blocked: key rename/change is not allowed.")
+            preferred_index = str(self.text.index("insert") or "")
+        except Exception:
+            preferred_index = ""
+        # Warning anchor priority:
+        # 1) exact changed-key token near caret (for example `"":` after deleting `x`)
+        # 2) recommended/entered key fallback lookup
+        anchor_index = ""
+        if not entered_name:
+            try:
+                changed_token = '""'
+                backward_hit = self.text.search(
+                    changed_token,
+                    preferred_index or "insert",
+                    stopindex="1.0",
+                    nocase=False,
+                    backwards=True,
+                )
+                if backward_hit:
+                    anchor_index = str(backward_hit)
+                else:
+                    forward_hit = self.text.search(
+                        changed_token,
+                        preferred_index or "1.0",
+                        stopindex="end",
+                        nocase=False,
+                    )
+                    if forward_hit:
+                        anchor_index = str(forward_hit)
+            except Exception:
+                anchor_index = ""
+        try:
+            if not anchor_index:
+                anchor_index = self._find_lock_anchor_index(recommended_name, preferred_index=preferred_index) or ""
+        except Exception:
+            anchor_index = ""
+        if not anchor_index and entered_name:
+            try:
+                anchor_index = self._find_lock_anchor_index(entered_name, preferred_index=preferred_index) or ""
+            except Exception:
+                anchor_index = ""
+        if not anchor_index:
+            anchor_index = preferred_index or "1.0"
+        try:
+            self._error_focus_index = anchor_index
+            self._position_error_overlay(self._line_number_from_index(anchor_index) or 1)
+        except Exception:
+            pass
+        try:
+            status_text = "Warning: highlighted field key change detected."
+            if entered_name:
+                status_text = f'Warning: highlighted key "{entered_name}" differs from "{recommended_name}".'
+            self.set_status(status_text)
         except Exception:
             pass
         return False
 
     def _network_context(self, path):
-        return edit_guard_service.network_context(
+        return highlight_label_service.network_context(
             path=path,
             value_getter=self._get_value,
             network_types_set=self.network_types_set,
@@ -16498,4 +17010,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

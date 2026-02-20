@@ -2,6 +2,26 @@ import tkinter as tk
 import tkinter.font as tkfont
 
 
+def _overlay_scale_metrics(owner, title):
+    """Return warning-overlay sizing metrics that follow active editor font size."""
+    is_warning_overlay = str(title or "").strip().lower() == "warning"
+    scale_down = 1 if is_warning_overlay else 0
+    base_font = max(6, int(getattr(owner, "_font_size", 10) or 10))
+    text_font_size = max(8, base_font - scale_down)
+    button_font_size = max(8, base_font - 1 - scale_down)
+    pad_x = max(4, 10 - scale_down)
+    pad_y = max(2, 8 - scale_down)
+    button_pad_x = max(4, 8 - scale_down)
+    return {
+        "is_warning": is_warning_overlay,
+        "text_font_size": text_font_size,
+        "button_font_size": button_font_size,
+        "pad_x": pad_x,
+        "pad_y": pad_y,
+        "button_pad_x": button_pad_x,
+    }
+
+
 def place_error_pin(owner, index):
     # Place a narrow marker at the current fix/insertion index.
     try:
@@ -46,12 +66,15 @@ def clear_error_pin(owner):
 
 def show_error_overlay(owner, title, message):
     # Build the floating error card and apply error tint to editor content.
+    pending_actions = getattr(owner, "_error_overlay_actions", None)
     owner._destroy_error_overlay()
     owner._last_error_overlay_message = str(message or "")
     owner._apply_error_tint()
     palette = owner._current_error_palette()
     overlay_bg = palette.get("overlay_bg", "#11161f")
     overlay_fg = palette.get("overlay_fg", "#ffffff")
+    metrics = _overlay_scale_metrics(owner, title)
+    owner._last_error_overlay_title = str(title or "")
     overlay = tk.Frame(
         owner.text,
         bg=overlay_bg,
@@ -67,14 +90,65 @@ def show_error_overlay(owner, title, message):
         text=message,
         bg=overlay_bg,
         fg=overlay_fg,
-        font=(owner._preferred_mono_family(), owner._font_size),
+        font=(owner._preferred_mono_family(), metrics["text_font_size"]),
         anchor="w",
         justify="left",
     )
-    msg_label.pack(fill="both", padx=10, pady=(8, 8))
+    msg_label._hh_overlay_role = "message_label"
+    msg_label.pack(fill="both", padx=metrics["pad_x"], pady=(metrics["pad_y"], metrics["pad_y"]))
 
-    overlay.bind("<Button-1>", lambda _evt: owner._destroy_error_overlay())
-    msg_label.bind("<Button-1>", lambda _evt: owner._destroy_error_overlay())
+    actions = pending_actions
+    if actions:
+        button_row = tk.Frame(overlay, bg=overlay_bg, bd=0, highlightthickness=0)
+        button_row._hh_overlay_role = "button_row"
+        button_row.pack(fill="x", padx=metrics["pad_x"], pady=(0, metrics["pad_y"]))
+        button_host = tk.Frame(button_row, bg=overlay_bg, bd=0, highlightthickness=0)
+        button_host._hh_overlay_role = "button_host"
+        button_host.pack(side="right")
+        button_font = (owner._preferred_mono_family(), metrics["button_font_size"], "bold")
+        button_border = "#e6edf7"
+        button_fill = overlay_bg
+        button_text = overlay_fg
+        button_active = palette.get("line_bg", overlay_bg)
+        for action in tuple(actions):
+            if not isinstance(action, (tuple, list)) or len(action) < 2:
+                continue
+            action_label = str(action[0] or "").strip()
+            action_callback = action[1]
+            if not action_label or not callable(action_callback):
+                continue
+            btn_border_wrap = tk.Frame(
+                button_host,
+                bg=button_border,
+                bd=0,
+                highlightthickness=0,
+            )
+            btn_border_wrap._hh_overlay_role = "button_wrap"
+            btn_border_wrap.pack(side="left", padx=(0, 6))
+            btn = tk.Button(
+                btn_border_wrap,
+                text=action_label,
+                command=action_callback,
+                bd=0,
+                padx=metrics["button_pad_x"],
+                pady=0,
+                relief="flat",
+                activebackground=button_active,
+                activeforeground=button_text,
+                highlightthickness=0,
+                borderwidth=0,
+                highlightbackground=button_border,
+                highlightcolor=button_border,
+                bg=button_fill,
+                fg=button_text,
+                font=button_font,
+                cursor="hand2",
+            )
+            btn._hh_overlay_role = "action_button"
+            btn.pack(side="left", padx=1, pady=1)
+    else:
+        overlay.bind("<Button-1>", lambda _evt: owner._destroy_error_overlay())
+        msg_label.bind("<Button-1>", lambda _evt: owner._destroy_error_overlay())
 
     owner.error_overlay = overlay
 
@@ -88,6 +162,8 @@ def destroy_error_overlay(owner):
             pass
         owner.error_overlay = None
     owner._last_error_overlay_message = ""
+    owner._last_error_overlay_title = ""
+    owner._error_overlay_actions = None
     owner._clear_error_tint()
     owner._clear_error_pin()
 
@@ -174,19 +250,57 @@ def refresh_active_error_theme(owner):
         try:
             overlay_bg = palette.get("overlay_bg", "#11161f")
             overlay_fg = palette.get("overlay_fg", "#ffffff")
+            metrics = _overlay_scale_metrics(owner, getattr(owner, "_last_error_overlay_title", ""))
+            def _refresh_widget(widget):
+                role = str(getattr(widget, "_hh_overlay_role", "") or "")
+                try:
+                    if role == "message_label" and isinstance(widget, tk.Label):
+                        widget.configure(
+                            bg=overlay_bg,
+                            fg=overlay_fg,
+                            font=(owner._preferred_mono_family(), metrics["text_font_size"]),
+                        )
+                    elif role == "action_button" and isinstance(widget, tk.Button):
+                        widget.configure(
+                            bg=overlay_bg,
+                            fg=overlay_fg,
+                            activebackground=palette.get("line_bg", overlay_bg),
+                            activeforeground=overlay_fg,
+                            relief="flat",
+                            bd=0,
+                            borderwidth=0,
+                            highlightthickness=0,
+                            highlightbackground="#e6edf7",
+                            highlightcolor="#e6edf7",
+                            font=(owner._preferred_mono_family(), metrics["button_font_size"], "bold"),
+                            padx=metrics["button_pad_x"],
+                        )
+                    elif role == "button_wrap":
+                        widget.configure(bg="#e6edf7")
+                    elif role in ("button_row", "button_host"):
+                        widget.configure(bg=overlay_bg)
+                    else:
+                        widget.configure(bg=overlay_bg)
+                except Exception:
+                    pass
+                try:
+                    for child in widget.winfo_children():
+                        _refresh_widget(child)
+                except Exception:
+                    return
             owner.error_overlay.configure(
                 bg=overlay_bg,
                 highlightbackground=palette["border"],
                 highlightcolor=palette["border"],
             )
             for child in owner.error_overlay.winfo_children():
-                try:
-                    if isinstance(child, tk.Label):
-                        child.configure(bg=overlay_bg, fg=overlay_fg)
-                    else:
-                        child.configure(bg=overlay_bg)
-                except Exception:
-                    continue
+                _refresh_widget(child)
+            for child in owner.error_overlay.winfo_children():
+                role = str(getattr(child, "_hh_overlay_role", "") or "")
+                if role == "message_label":
+                    child.pack_configure(padx=metrics["pad_x"], pady=(metrics["pad_y"], metrics["pad_y"]))
+                elif role == "button_row":
+                    child.pack_configure(padx=metrics["pad_x"], pady=(0, metrics["pad_y"]))
         except Exception:
             pass
         try:
@@ -295,7 +409,8 @@ def position_error_overlay(owner, line):
         ow = overlay.winfo_width()
         oh = overlay.winfo_height()
 
-        gap = 6
+        is_warning_overlay = str(getattr(owner, "_last_error_overlay_title", "") or "").strip().lower() == "warning"
+        gap = 2 if is_warning_overlay else 6
         try:
             anchor_font = tkfont.Font(font=owner.text.cget("font"))
             tab_shift_x = int(anchor_font.measure("    "))
@@ -303,9 +418,15 @@ def position_error_overlay(owner, line):
         except Exception:
             tab_shift_x = 28
             line_px = 16
-        tab_shift_x = max(18, min(72, tab_shift_x))
-        nudge_y = max(6, min(20, int(round(max(10, line_px) * 0.45))))
-        nx = _first_content_x(anchor_line, x)
+        if is_warning_overlay:
+            # Keep warning cards close to the edited highlighted key/token.
+            tab_shift_x = max(4, min(16, int(anchor_font.measure(" ")))) if 'anchor_font' in locals() else 6
+            nudge_y = max(0, min(6, int(round(max(10, line_px) * 0.15))))
+            nx = int(x)
+        else:
+            tab_shift_x = max(18, min(72, tab_shift_x))
+            nudge_y = max(6, min(20, int(round(max(10, line_px) * 0.45))))
+            nx = _first_content_x(anchor_line, x)
         below_y = y + h + gap
         above_y = y - oh - gap
         can_place_below = (below_y + oh) <= (text_h - gap)
