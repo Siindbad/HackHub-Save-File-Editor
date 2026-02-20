@@ -28,6 +28,9 @@
 |---|
 | **[ Version 1.3.4 ]**<br>- Added targeted key-quote repair path.<br>- Updated diagnostics to daily files and retained only today and yesterday logs.<br>- Updated right-click menu to open above near bottom editor/app bounds for better.<br>- Added magic-byte format verification and blocked extension/content mismatch uploads.<br>- Updated dialog labels/layout.<br>- Added browser fallback prompt to open direct update download page.<br>- Added clearer Windows-friendly update errors for access denied.<br>- Added install and restart hold timing for smoother update handoff visibility.<br>- Added structured update failure logging with details to diagnostics logs.<br>- HOTFIX: Added clear download/install/restart status and persistent update overlay.<br>- HOTFIX: Updated version/changelog/disclaimer to include missed 1.3.2 items.<br>- Updated sub marker nudge logic with fractional offsets for micro vertical centering. |
 
+| <img align="left" alt="VERIFICATION SUITE" src="https://img.shields.io/badge/VERIFICATION%20SUITE-PASSING-16A34A?style=for-the-badge&labelColor=0F172A"> |
+|---|
+| `pytest` regression tests<br>`ruff` quality lint checks<br>`semgrep` static security analysis<br>`trufflehog` secret scanning<br>`bandit` Python security scan<br>`safety` dependency vulnerability scan<br>Microsoft Defender CLI preflight for release artifacts<br>VirusTotal release evidence (hash-first with upload fallback)<br>Published `SHA256` checksum + `security-report.txt` release artifact evidence<br><br>These checks reduce risk and improve transparency, but do not guarantee zero vulnerabilities or false positives. |
 
 
 
