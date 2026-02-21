@@ -100,6 +100,7 @@ jobs:
           repo = (os.getenv("REPO_NAME") or "").strip()
           actor = (os.getenv("ACTOR_NAME") or "").strip()
           run_url = (os.getenv("RUN_URL") or "").strip()
+          releases_url = f"https://github.com/{repo}/releases" if repo else ""
 
           version_label = tag or title or "N/A"
           embed_title = f"SINS SAVE EDITOR {version_label}"
@@ -133,6 +134,20 @@ jobs:
               "embeds": [embed],
               "allowed_mentions": {"parse": []},
           }
+          if releases_url:
+              payload["components"] = [
+                  {
+                      "type": 1,
+                      "components": [
+                          {
+                              "type": 2,
+                              "style": 5,
+                              "label": "Download",
+                              "url": releases_url,
+                          }
+                      ],
+                  }
+              ]
 
           username = (os.getenv("DISCORD_USERNAME") or "").strip()
           avatar = (os.getenv("DISCORD_AVATAR_URL") or "").strip()
