@@ -147,8 +147,6 @@ jobs:
 
           username = (os.getenv("DISCORD_USERNAME") or "").strip()
           avatar = (os.getenv("DISCORD_AVATAR_URL") or "").strip()
-          if not username:
-              username = "KAMUE RELEASE" if style == "KAMUE" else "SIN RELEASE"
           if username:
               payload["username"] = username
           if avatar:
