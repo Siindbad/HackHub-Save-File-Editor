@@ -1,7 +1,8 @@
+![Verification Suite](https://img.shields.io/badge/Verification%20Suite-Passing-brightgreen)
+![License](https://img.shields.io/badge/License-MIT-8B0000)
 
- 
- 
- 
+
+
 | <img align="left" alt="DISCORD" src="https://img.shields.io/badge/DISCORD-5865F2?style=for-the-badge&labelColor=0F172A"> |
 |---|
 | [SIN.NETWORK](https://discord.gg/kpFXrtyr2Z) |
