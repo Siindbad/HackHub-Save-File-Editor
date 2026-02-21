@@ -21,6 +21,14 @@ on:
         description: "Release notes override (optional)"
         required: false
         type: string
+      style:
+        description: "Theme style (SIINDBAD or KAMUE)"
+        required: false
+        default: "SIINDBAD"
+        type: choice
+        options:
+          - SIINDBAD
+          - KAMUE
       prerelease:
         description: "Mark manual dispatch as prerelease"
         required: false
@@ -47,8 +55,10 @@ jobs:
           MANUAL_TITLE: ${{ inputs.title }}
           MANUAL_URL: ${{ inputs.url }}
           MANUAL_NOTES: ${{ inputs.notes }}
+          MANUAL_STYLE: ${{ inputs.style }}
           MANUAL_PRERELEASE: ${{ inputs.prerelease }}
           REPO_NAME: ${{ github.repository }}
+          DEFAULT_STYLE: ${{ vars.DISCORD_RELEASE_STYLE }}
           DISCORD_USERNAME: ${{ vars.DISCORD_RELEASE_USERNAME }}
           DISCORD_AVATAR_URL: ${{ vars.DISCORD_RELEASE_AVATAR_URL }}
           DISCORD_MENTION: ${{ vars.DISCORD_RELEASE_MENTION }}
@@ -85,13 +95,21 @@ jobs:
           manual_pre = (os.getenv("MANUAL_PRERELEASE") or "").strip().lower() in {"1", "true", "yes", "on"}
           event_pre = (os.getenv("RELEASE_IS_PRERELEASE") or "").strip().lower() in {"1", "true", "yes", "on"}
           is_prerelease = manual_pre if event_name == "workflow_dispatch" else event_pre
+          style = _pick(os.getenv("MANUAL_STYLE"), os.getenv("DEFAULT_STYLE"), "SIINDBAD").upper()
+          if style not in {"SIINDBAD", "KAMUE"}:
+              style = "SIINDBAD"
 
           mention = (os.getenv("DISCORD_MENTION") or "").strip()
           content = mention if mention else ""
 
           color_text = (os.getenv("DISCORD_COLOR") or "").strip()
           try:
-              color = int(color_text) if color_text else (16753920 if is_prerelease else 5814783)
+              if color_text:
+                  color = int(color_text)
+              elif style == "KAMUE":
+                  color = 12336895
+              else:
+                  color = 16753920 if is_prerelease else 5814783
           except Exception:
               color = 5814783
 
@@ -129,6 +147,8 @@ jobs:
 
           username = (os.getenv("DISCORD_USERNAME") or "").strip()
           avatar = (os.getenv("DISCORD_AVATAR_URL") or "").strip()
+          if not username:
+              username = "KAMUE RELEASE" if style == "KAMUE" else "SIN RELEASE"
           if username:
               payload["username"] = username
           if avatar:
