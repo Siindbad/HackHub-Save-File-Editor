@@ -122,14 +122,12 @@ jobs:
           notes_text = (notes or "").strip()
           if len(notes_text) > 3850:
               notes_text = notes_text[:3847] + "..."
+          changelog_text = notes_text if notes_text else "- No changelog notes provided."
           download_line = f"[Download Latest Release]({url or releases_url})" if (url or releases_url) else ""
-          if notes_text:
-              if download_line:
-                  description = f"New Release!\n\n{download_line}\n\n{notes_text}"
-              else:
-                  description = f"New Release!\n\n{notes_text}"
+          if download_line:
+              description = f"New Release!\n\n{download_line}\n\n**Changelog**\n{changelog_text}"
           else:
-              description = f"New Release!\n\n{download_line}" if download_line else "New Release!"
+              description = f"New Release!\n\n**Changelog**\n{changelog_text}"
 
           embed = {
               "title": embed_title,
