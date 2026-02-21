@@ -109,7 +109,8 @@ jobs:
               elif style == "KAMUE":
                   color = 12336895
               else:
-                  color = 16753920 if is_prerelease else 5814783
+                  # Darker cyan accent for SIINDBAD release embeds.
+                  color = 16753920 if is_prerelease else 757408
           except Exception:
               color = 5814783
 
