@@ -12,6 +12,10 @@
 |---|
 | [Download latest release](https://github.com/Siindbad/HackHub-Save-File-Editor/releases/latest) |
 
+| <img align="left" alt="RELEASE ASSETS" src="https://img.shields.io/badge/RELEASE%20ASSETS-0EA5E9?style=for-the-badge&labelColor=0F172A"> |
+|---|
+| 1. **Download**<br>`sins_editor.exe` (main app)<br>`sins_editor-onedir.zip` (portable fallback)<br><br>2. **Verify**<br>`sins_editor.exe.sha256`<br>`sigstore-proofs.zip`<br><br>3. **Release Metadata**<br>`version.txt`<br>`security-report.txt`<br><br>4. **Changelog Information**<br>See the **CHANGE LOGS** section below for latest release notes. |
+
 
 
 | <img align="left" alt="REMINDER" src="https://img.shields.io/badge/REMINDER-0D9488?style=for-the-badge&labelColor=0F172A"> |
@@ -35,6 +39,5 @@
 | <img align="left" alt="LICENSE" src="https://img.shields.io/badge/LICENSE-MIT-8B0000?style=for-the-badge&labelColor=0F172A"> |
 |---|
 | MIT License. Copyright (c) 2026 Siindbad. |
-
 
 
