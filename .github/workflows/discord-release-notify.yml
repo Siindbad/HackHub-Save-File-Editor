@@ -110,11 +110,11 @@ jobs:
           download_line = f"[Download Latest Release]({url or releases_url})" if (url or releases_url) else ""
           if notes_text:
               if download_line:
-                  description = f"New Release!\n{download_line}\n\n{notes_text}"
+                  description = f"New Release!\n\n{download_line}\n\n{notes_text}"
               else:
                   description = f"New Release!\n\n{notes_text}"
           else:
-              description = f"New Release!\n{download_line}" if download_line else "New Release!"
+              description = f"New Release!\n\n{download_line}" if download_line else "New Release!"
 
           embed = {
               "title": embed_title,
