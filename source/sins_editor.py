@@ -33,7 +33,11 @@ from services import error_service
 from services import footer_service
 from services import highlight_label_service
 from services import input_bank_style_service
+from services import input_database_style_service
 from services import input_mode_service
+from services import input_network_firewall_style_service
+from services import input_network_router_style_service
+from services import input_suspicion_phone_style_service
 from services import json_error_diag_service
 from services import json_error_highlight_render_service
 from services import json_view_service
@@ -206,8 +210,14 @@ class JsonEditor:
     INPUT_MODE_DISABLED_ROOT_KEYS = app_constants.INPUT_MODE_DISABLED_ROOT_KEYS
     INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES = app_constants.INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES
     INPUT_MODE_NO_EXPAND_ROOT_KEYS = app_constants.INPUT_MODE_NO_EXPAND_ROOT_KEYS
+    INPUT_MODE_NETWORK_NO_EXPAND_GROUPS = app_constants.INPUT_MODE_NETWORK_NO_EXPAND_GROUPS
+    INPUT_MODE_NETWORK_NO_EXPAND_GROUP_KEYS = app_constants.INPUT_MODE_NETWORK_NO_EXPAND_GROUP_KEYS
+    INPUT_MODE_NETWORK_HIDDEN_GROUPS = app_constants.INPUT_MODE_NETWORK_HIDDEN_GROUPS
+    INPUT_MODE_NETWORK_HIDDEN_GROUP_KEYS = app_constants.INPUT_MODE_NETWORK_HIDDEN_GROUP_KEYS
     INPUT_MODE_RED_ARROW_ROOT_CATEGORIES = app_constants.INPUT_MODE_RED_ARROW_ROOT_CATEGORIES
     INPUT_MODE_RED_ARROW_ROOT_KEYS = app_constants.INPUT_MODE_RED_ARROW_ROOT_KEYS
+    INPUT_MODE_RED_ARROW_NETWORK_GROUPS = app_constants.INPUT_MODE_RED_ARROW_NETWORK_GROUPS
+    INPUT_MODE_RED_ARROW_NETWORK_GROUP_KEYS = app_constants.INPUT_MODE_RED_ARROW_NETWORK_GROUP_KEYS
     INPUT_MODE_DISABLED_CATEGORY_MESSAGE = (
         "Category Is Still Under Developement"
     )
@@ -562,6 +572,91 @@ if not install_started:
             row_defs,
         )
 
+    @staticmethod
+    def _is_database_input_style_path(path):
+        normalized = list(path or [])
+        if not normalized:
+            return False
+        if str(normalized[0]) != "Database":
+            return False
+        # Render from root Database click and direct tables->Grades path.
+        if len(normalized) == 1:
+            return True
+        return len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]) == "Grades"
+
+    def _collect_database_grades_matrix(self, value, max_rows=40):
+        return input_database_style_service.collect_database_grades_matrix(
+            value,
+            max_rows=max_rows,
+        )
+
+    def _render_database_grades_input_matrix(self, host, normalized_path, matrix_payload):
+        input_database_style_service.render_database_grades_matrix(
+            self,
+            host,
+            normalized_path,
+            matrix_payload,
+        )
+
+    def _is_network_router_input_style_payload(self, path, value):
+        return input_network_router_style_service.is_network_router_group_payload(self, path, value)
+
+    def _is_suspicion_input_style_path(self, path):
+        return input_suspicion_phone_style_service.is_suspicion_input_path(self, path)
+
+    def _render_suspicion_phone_input(self, host, normalized_path, value):
+        return input_suspicion_phone_style_service.render_suspicion_phone_input(
+            self,
+            host,
+            normalized_path,
+            value,
+        )
+
+    def _is_network_device_input_style_payload(self, path, value):
+        normalized = list(path or [])
+        if len(normalized) != 1:
+            return False
+        if self._input_mode_root_key_for_path(normalized) != "network":
+            return False
+        if not isinstance(value, list) or not value:
+            return False
+        return all(isinstance(item, dict) and str(item.get("type", "")).upper() == "DEVICE" for item in value)
+
+    def _is_network_firewall_input_style_payload(self, path, value):
+        return input_network_firewall_style_service.is_network_firewall_group_payload(self, path, value)
+
+    def _collect_network_firewall_input_rows(self, normalized_path, firewalls, max_rows=40):
+        return input_network_firewall_style_service.collect_firewall_input_rows(
+            self,
+            normalized_path,
+            firewalls,
+            max_rows=max_rows,
+        )
+
+    def _render_network_firewall_input_rows(self, host, normalized_path, row_defs):
+        input_network_firewall_style_service.render_firewall_input_rows(
+            self,
+            host,
+            normalized_path,
+            row_defs,
+        )
+
+    def _collect_network_router_input_rows(self, normalized_path, routers, max_rows=60):
+        return input_network_router_style_service.collect_router_input_rows(
+            self,
+            normalized_path,
+            routers,
+            max_rows=max_rows,
+        )
+
+    def _render_network_router_input_rows(self, host, normalized_path, row_defs):
+        input_network_router_style_service.render_router_input_rows(
+            self,
+            host,
+            normalized_path,
+            row_defs,
+        )
+
     def _refresh_input_mode_fields(self, path, value):
         host = getattr(self, "_input_mode_fields_host", None)
         if host is None:
@@ -575,6 +670,9 @@ if not install_started:
         panel_bg = theme.get("panel", "#161b24")
         host.configure(bg=panel_bg)
         normalized_path = list(path or [])
+        is_network_router_payload = self._is_network_router_input_style_payload(normalized_path, value)
+        is_network_device_payload = self._is_network_device_input_style_payload(normalized_path, value)
+        is_network_firewall_payload = self._is_network_firewall_input_style_payload(normalized_path, value)
         if self._is_input_mode_category_disabled(normalized_path):
             variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
             fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
@@ -619,25 +717,30 @@ if not install_started:
             len(normalized_path) == 1
             and self._input_mode_root_key_for_path(normalized_path) == "network"
         ):
-            variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-            fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
-            empty = tk.Label(
-                host,
-                text="Select A Sub Category To View Input Fields",
-                bg=panel_bg,
-                fg=fg,
-                anchor="w",
-                justify="left",
-                padx=12,
-                pady=12,
-                font=(self._credit_name_font()[0], 11, "bold"),
-            )
-            empty.pack(fill="x", expand=False)
-            self._input_mode_no_fields_label = empty
-            self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-            self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-            self._input_mode_force_refresh = False
-            return
+            # Keep generic Network root placeholder, but allow custom subgroup payload renderers
+            # (e.g., ROUTER/DEVICE/FIREWALL grouped selection routed through list_path) to proceed.
+            if is_network_router_payload or is_network_device_payload or is_network_firewall_payload:
+                pass
+            else:
+                variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+                fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
+                empty = tk.Label(
+                    host,
+                    text="Select A Sub Category To View Input Fields",
+                    bg=panel_bg,
+                    fg=fg,
+                    anchor="w",
+                    justify="left",
+                    padx=12,
+                    pady=12,
+                    font=(self._credit_name_font()[0], 11, "bold"),
+                )
+                empty.pack(fill="x", expand=False)
+                self._input_mode_no_fields_label = empty
+                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+                self._input_mode_force_refresh = False
+                return
         if self._is_bank_input_style_path(normalized_path):
             bank_rows = self._collect_bank_input_rows(value)
             if bank_rows:
@@ -654,6 +757,88 @@ if not install_started:
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
                 self._input_mode_force_refresh = False
                 return
+        if self._is_database_input_style_path(normalized_path):
+            grades_matrix = self._collect_database_grades_matrix(value)
+            if grades_matrix:
+                self._render_database_grades_input_matrix(host, normalized_path, grades_matrix)
+                host.update_idletasks()
+                canvas = getattr(self, "_input_mode_canvas", None)
+                if canvas is not None:
+                    try:
+                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
+                        canvas.yview_moveto(0.0)
+                    except Exception:
+                        pass
+                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+                self._input_mode_force_refresh = False
+                return
+        if self._is_suspicion_input_style_path(normalized_path):
+            if self._render_suspicion_phone_input(host, normalized_path, value):
+                host.update_idletasks()
+                canvas = getattr(self, "_input_mode_canvas", None)
+                if canvas is not None:
+                    try:
+                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
+                        canvas.yview_moveto(0.0)
+                    except Exception:
+                        pass
+                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+                self._input_mode_force_refresh = False
+                return
+        if is_network_router_payload:
+            router_rows = self._collect_network_router_input_rows(normalized_path, value)
+            if router_rows:
+                self._render_network_router_input_rows(host, normalized_path, router_rows)
+                host.update_idletasks()
+                canvas = getattr(self, "_input_mode_canvas", None)
+                if canvas is not None:
+                    try:
+                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
+                        canvas.yview_moveto(0.0)
+                    except Exception:
+                        pass
+                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+                self._input_mode_force_refresh = False
+                return
+        if is_network_firewall_payload:
+            firewall_rows = self._collect_network_firewall_input_rows(normalized_path, value)
+            if firewall_rows:
+                self._render_network_firewall_input_rows(host, normalized_path, firewall_rows)
+                host.update_idletasks()
+                canvas = getattr(self, "_input_mode_canvas", None)
+                if canvas is not None:
+                    try:
+                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
+                        canvas.yview_moveto(0.0)
+                    except Exception:
+                        pass
+                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+                self._input_mode_force_refresh = False
+                return
+        if is_network_device_payload:
+            variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+            fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
+            disabled = tk.Label(
+                host,
+                text=self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
+                bg=panel_bg,
+                fg=fg,
+                anchor="w",
+                justify="left",
+                padx=12,
+                pady=12,
+                font=(self._credit_name_font()[0], 11, "bold"),
+            )
+            disabled.pack(fill="x", expand=False)
+            self._input_mode_no_fields_label = disabled
+            self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+            self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+            self._input_mode_force_refresh = False
+            return
         specs = self._collect_input_field_specs(value, normalized_path)
         if not specs:
             variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -816,8 +1001,9 @@ if not install_started:
             return
         path = self.item_to_path.get(item_id, [])
         if isinstance(path, tuple) and path[0] == "__group__":
-            messagebox.showwarning("Not editable", "Select a specific item to edit.")
-            return
+            # Allow INPUT edits for grouped selections by writing against the source list path.
+            _, list_path, _group = path
+            path = list(list_path or [])
         if self._is_input_mode_category_disabled(path):
             messagebox.showwarning("Not editable", self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE)
             return
@@ -1012,6 +1198,20 @@ if not install_started:
                     notice.configure(bg=panel_bg, fg=notice_fg)
             except Exception:
                 pass
+        # Theme switch must repaint custom INPUT renderers (Bank/Database) so variant palettes apply.
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return
+        path = list(getattr(self, "_input_mode_current_path", []) or [])
+        if not path:
+            return
+        try:
+            value = self._get_value(path)
+        except Exception:
+            return
+        try:
+            self._refresh_input_mode_fields(path, value)
+        except Exception:
+            pass
 
     def _reset_toolbar_runtime_refs(self):
         self._toolbar_buttons = {}
@@ -9926,6 +10126,8 @@ if not install_started:
                 ordered_groups.append(group)
 
             for group in ordered_groups:
+                if tree_policy_service.is_network_group_hidden_for_mode(self, path, group):
+                    continue
                 items = groups[group]
                 group_label = f"{group} ({len(items)})"
                 entries.append((("__group__", list(path), group), group_label.casefold()))
@@ -10136,7 +10338,7 @@ if not install_started:
                     self.root.after_idle(lambda iid=item_id: self.tree.item(iid, open=False))
                 except Exception:
                     pass
-                self.set_status("INPUT mode: Bank subcategories are disabled.")
+                self.set_status("INPUT mode: selected subcategory is locked.")
                 return "break"
             self._populate_children(item_id)
 

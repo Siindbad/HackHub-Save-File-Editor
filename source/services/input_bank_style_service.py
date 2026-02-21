@@ -98,7 +98,7 @@ def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
     # Render style-4 inspired Bank INPUT rows with provider pill + balance editor.
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
-    name_fg = "#f2ad5e"
+    name_fg = "#C8A8FF" if variant == "KAMUE" else "#f2ad5e"
     iban_fg = "#9ab0c2" if variant != "KAMUE" else "#bbaed0"
     iban_label_fg = "#4fd5ff"
     row_edge = "#4f356f" if variant == "KAMUE" else "#254b6b"

@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-21 (added centralized mode-scoped tree policy constants for JSON/INPUT hide, disable, expand-block, and red-arrow rules).
+Last sync: 2026-02-21 (added centralized mode-scoped tree policy constants including INPUT Network subgroup hide controls).
 
 | Module | Purpose |
 | --- | --- |

@@ -72,6 +72,8 @@ HIDDEN_ROOT_TREE_CATEGORIES_INPUT = tuple(HIDDEN_ROOT_TREE_CATEGORIES) + (
     "Installed.Apps",
     "InstalledApps",
     "Kisscord",
+    "Mail.Accounts",
+    "MailAccounts",
     "Mails",
     "Personal.Info",
     "PersonalInfo",
@@ -98,15 +100,7 @@ HIDDEN_ROOT_TREE_KEYS_JSON = {str(name).strip().casefold() for name in HIDDEN_RO
 HIDDEN_ROOT_TREE_KEYS_INPUT = {str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES_INPUT}
 
 # Add root category names here to disable INPUT-mode editing for that branch.
-INPUT_MODE_DISABLED_ROOT_CATEGORIES = (
-    "Database",
-    "Mail.Accounts",
-    "MailAccounts",
-    "Network",
-    "Phone",
-    "Skypersky",
-    "Suspicion",
-)
+INPUT_MODE_DISABLED_ROOT_CATEGORIES = ()
 INPUT_MODE_DISABLED_ROOT_KEYS = {
     str(name).strip().casefold() for name in INPUT_MODE_DISABLED_ROOT_CATEGORIES
 }
@@ -125,6 +119,27 @@ INPUT_MODE_NO_EXPAND_ROOT_KEYS = {
     str(name).strip().casefold() for name in INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES
 }
 
+# INPUT Network subgroup policy:
+# Keep these Network type buckets collapsed in INPUT mode while still showing them.
+INPUT_MODE_NETWORK_NO_EXPAND_GROUPS = (
+    "ROUTER",
+    "DEVICE",
+    "FIREWALL",
+    "SPLITTER",
+)
+INPUT_MODE_NETWORK_NO_EXPAND_GROUP_KEYS = {
+    str(name).strip().casefold() for name in INPUT_MODE_NETWORK_NO_EXPAND_GROUPS
+}
+
+# INPUT Network subgroup hide policy:
+# Hide these Network type buckets in INPUT mode while keeping JSON mode unchanged.
+INPUT_MODE_NETWORK_HIDDEN_GROUPS = (
+    "SPLITTER",
+)
+INPUT_MODE_NETWORK_HIDDEN_GROUP_KEYS = {
+    str(name).strip().casefold() for name in INPUT_MODE_NETWORK_HIDDEN_GROUPS
+}
+
 # INPUT marker override policy:
 # Render red main arrows for selected root categories in INPUT mode only.
 INPUT_MODE_RED_ARROW_ROOT_CATEGORIES = (
@@ -138,6 +153,12 @@ INPUT_MODE_RED_ARROW_ROOT_CATEGORIES = (
 )
 INPUT_MODE_RED_ARROW_ROOT_KEYS = {
     str(name).strip().casefold() for name in INPUT_MODE_RED_ARROW_ROOT_CATEGORIES
+}
+
+# INPUT marker override for Network subgroup buckets.
+INPUT_MODE_RED_ARROW_NETWORK_GROUPS = tuple(INPUT_MODE_NETWORK_NO_EXPAND_GROUPS)
+INPUT_MODE_RED_ARROW_NETWORK_GROUP_KEYS = {
+    str(name).strip().casefold() for name in INPUT_MODE_RED_ARROW_NETWORK_GROUPS
 }
 
 TREE_B_SAFE_DISPLAY_LABELS = {

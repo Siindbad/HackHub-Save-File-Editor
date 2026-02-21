@@ -99,14 +99,19 @@ def coerce_input_field_value(spec):
     var = spec.get("var")
     if var is None:
         return spec.get("initial")
+    raw_display = strip_input_display_prefix(var.get())
+    placeholder = spec.get("display_placeholder")
+    if spec.get("placeholder_as_empty") and placeholder is not None:
+        if str(raw_display).strip() == str(placeholder):
+            raw_display = ""
     if expected_type is bool:
-        raw = strip_input_display_prefix(var.get()).strip().lower()
+        raw = str(raw_display).strip().lower()
         if raw in ("true", "1", "yes", "on"):
             return True
         if raw in ("false", "0", "no", "off"):
             return False
         raise ValueError("boolean must be true/false")
-    raw = strip_input_display_prefix(var.get())
+    raw = raw_display
     if expected_type is int:
         return int(raw)
     if expected_type is float:

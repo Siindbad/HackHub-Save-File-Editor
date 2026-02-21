@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-21 (added editor mode-switch + tree engine services, mode-scoped tree policy routing, and editor mode/theme/header/input panel UI build extractions).
+Last sync: 2026-02-21 (added Network FIREWALL Input style service plus prior editor mode/tree/ui service extractions).
 
 | Module | Purpose |
 | --- | --- |
@@ -14,7 +14,11 @@ Last sync: 2026-02-21 (added editor mode-switch + tree engine services, mode-sco
 | `footer_service.py` | Provides bottom-footer style and visual spec helpers used by badge/chip layout rendering. |
 | `highlight_label_service.py` | Provides edit-safety helpers for network list/context detection, key-rename guard payload shaping, and global JSON key/value label-policy detection/restore/highlight rules. |
 | `input_bank_style_service.py` | Provides Bank-specific Input-mode row discovery and themed style rendering (account/IBAN labels, provider pill, rounded balance input). |
+| `input_database_style_service.py` | Provides Database Grades Input-mode matrix detection/rendering with editability-aware cells (editable inputs vs centered read-only values). |
 | `input_mode_service.py` | Provides Input-mode helper logic for scalar detection, field-spec collection, value coercion, and nested path writes. |
+| `input_network_firewall_style_service.py` | Provides Network FIREWALL Input-mode Concept-2 styled row detection/rendering with non-editable identity fields and editable rule Port/Allowed inputs. |
+| `input_network_router_style_service.py` | Provides Network ROUTER Input-mode Concept-2 styled row detection/rendering with framed sections and editable port/state fields. |
+| `input_suspicion_phone_style_service.py` | Provides Suspicion Input-mode phone-art renderer with one centered editable value field anchored on theme-specific SIN/KAMUE phone PNG assets. |
 | `json_error_diag_service.py` | Provides diagnostic note-to-system mapping and normalized diagnostics log entry writing helpers used by editor wrappers. |
 | `json_error_highlight_render_service.py` | Provides JSON highlight render callbacks used by core decision logic to apply editor highlight tags and diagnostic log writes. |
 | `json_view_service.py` | Provides JSON-view helper behavior such as default no-file message rendering in the editor text widget. |
@@ -27,7 +31,7 @@ Last sync: 2026-02-21 (added editor mode-switch + tree engine services, mode-sco
 | `toolbar_service.py` | Provides toolbar helper logic for style resolution, button symbols, display labels, and width presets. |
 | `tree_engine_service.py` | Provides shared tree engine mechanics for child population, marker refresh, and click/double-click toggle behavior used by both JSON and INPUT modes. |
 | `tree_mode_service.py` | Provides mode-scoped tree style application helpers so INPUT and JSON tree visuals can evolve independently with shared selection/data behavior. |
-| `tree_policy_service.py` | Provides mode-scoped tree behavior policy helpers for hidden roots, INPUT disable/no-expand rules, and INPUT-only red-arrow markers while JSON remains fully expandable without red markers. |
+| `tree_policy_service.py` | Provides mode-scoped tree behavior policy helpers for hidden roots, INPUT disable/no-expand rules (including Network subgroup locks), and INPUT-only red-arrow markers while JSON remains fully expandable without red markers. |
 | `tree_view_service.py` | Provides tree-view helper logic for label mapping, path formatting, selected-path text, and value-based toggle eligibility checks. |
 | `ui_build_service.py` | Provides main editor UI composition/wiring for tree pane, editor pane, footer controls, startup-prewarm bootstrap hooks, and editor mode/theme/header/input panel builder construction. |
 | `update_orchestrator_service.py` | Provides updater orchestration flow for demo/update checks while reusing owner callbacks and existing update helpers. |

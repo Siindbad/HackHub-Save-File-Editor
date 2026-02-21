@@ -1,5 +1,6 @@
 """Shared tree engine helpers used by JSON and INPUT modes."""
 
+from services import tree_policy_service
 from services import tree_view_service
 
 
@@ -61,6 +62,8 @@ def populate_children(owner, item_id):
             ordered_groups.append(group)
 
         for group in ordered_groups:
+            if tree_policy_service.is_network_group_hidden_for_mode(owner, path, group):
+                continue
             items = groups[group]
             group_id = owner.tree.insert(
                 item_id,
@@ -291,5 +294,5 @@ def on_tree_double_click_guard(owner, event):
         owner.root.after_idle(lambda iid=item_id: owner.tree.item(iid, open=False))
     except Exception:
         return "break"
-    owner.set_status("INPUT mode: Bank subcategories are disabled.")
+    owner.set_status("INPUT mode: selected subcategory is locked.")
     return "break"
