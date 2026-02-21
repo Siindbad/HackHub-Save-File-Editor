@@ -114,7 +114,7 @@ def check_for_updates(owner, auto=False, messagebox=None):
                 owner._set_status("")
                 if not auto:
                     owner._ui_call(
-                        messagebox.showwarning,
+                        owner._show_themed_update_info,
                         "Update",
                         "Release version is older than this build.\n"
                         f"Release: v{owner._format_version(latest_version)}\n"
@@ -203,5 +203,4 @@ def check_for_updates(owner, auto=False, messagebox=None):
                 owner._ui_call(owner._close_update_overlay)
 
     threading.Thread(target=worker, daemon=True).start()
-
 
