@@ -25,10 +25,6 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
     def _s(value, minimum=1):
         return max(int(minimum), int(round(float(value) * loader_scale)))
 
-    theme = getattr(owner, "_theme", {}) or owner._theme_palette_for_variant(
-        getattr(owner, "_app_theme_variant", "SIINDBAD")
-    )
-
     def _rgb_to_hex(rgb):
         r, g, b = [max(0, min(255, int(round(v)))) for v in rgb]
         return f"#{r:02x}{g:02x}{b:02x}"
@@ -45,7 +41,6 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
             )
         )
 
-    logo_outer = theme.get("logo_border_outer", "#349fc7")
     # Restore original loader palette.
     card_bg = "#020812"
     overlay_bg = "#040d1b" if bool(getattr(owner, "_startup_loader_window_mode", False)) else "#02050c"
@@ -298,5 +293,3 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
     owner._update_startup_loader_progress()
     owner._tick_startup_loader_progress()
     owner._tick_startup_loader_statement()
-
-

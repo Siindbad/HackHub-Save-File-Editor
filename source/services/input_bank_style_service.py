@@ -96,7 +96,6 @@ def _draw_rounded(canvas, x1, y1, x2, y2, radius, color, splinesteps=24):
 
 def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
     # Render style-4 inspired Bank INPUT rows with provider pill + balance editor.
-    theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     name_fg = "#C8A8FF" if variant == "KAMUE" else "#f2ad5e"
     iban_fg = "#9ab0c2" if variant != "KAMUE" else "#bbaed0"

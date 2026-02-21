@@ -6,9 +6,7 @@ import importlib
 import json
 import os
 import platform
-import random
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -71,21 +69,6 @@ except Exception:
 
 # Backward-compatible module alias for older tests/integrations.
 edit_guard_service = highlight_label_service
-
-
-# Module-level helper to locate 7z executable. Used during initialization
-def _module_find_7z():
-    candidate = shutil.which("7z")
-    if candidate:
-        return candidate
-    common_paths = [
-        r"C:\Program Files\7-Zip\7z.exe",
-        r"C:\Program Files (x86)\7-Zip\7z.exe",
-    ]
-    for path in common_paths:
-        if os.path.isfile(path):
-            return path
-    return None
 
 
 def _strip_invalid_trailing_chars(value_str):
@@ -243,8 +226,6 @@ if not install_started:
         self.root.title(f"SIINDBAD's HackHub Editor - v{self.APP_VERSION}")
         self.data = None
         self.path = None
-        # Use module-level helper to ensure availability during init
-        self.seven_zip_path = _module_find_7z()
         self.item_to_path = {}
         self._init_chrome_runtime_state()
         self._init_footer_bugreport_runtime_state()
@@ -960,96 +941,27 @@ if not install_started:
             self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
             self._input_mode_force_refresh = False
             return
-        specs = self._collect_input_field_specs(value, normalized_path)
-        if not specs:
-            variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-            fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
-            empty = tk.Label(
-                host,
-                text="No direct value fields here. Select a specific item node to edit.",
-                bg=panel_bg,
-                fg=fg,
-                anchor="w",
-                justify="left",
-                padx=12,
-                pady=12,
-                font=(self._credit_name_font()[0], self._input_mode_font_size(9, min_size=8, max_size=18), "bold"),
-            )
-            empty.pack(fill="x", expand=False)
-            self._input_mode_no_fields_label = empty
-            return
-
+        # Generic INPUT fallback rows are retired; unsupported paths should
+        # consistently show the development template until a custom layout is added.
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        row_divider = "#4f356f" if variant == "KAMUE" else "#254b6b"
-        bool_true_fg = "#70e58a" if variant == "KAMUE" else "#62d67a"
-        bool_false_fg = "#f3a1ad" if variant == "KAMUE" else "#ff9ea1"
-        labels = [self._format_input_path_label(spec["rel_path"]) for spec in specs]
-        max_label_chars = max((len(text) for text in labels), default=8)
-        label_width_chars = max(14, min(30, max_label_chars + 1))
-        for spec in specs:
-            row = tk.Frame(host, bg=panel_bg, bd=0, highlightthickness=0)
-            row.pack(fill="x", padx=8, pady=(6, 0))
-            row.grid_columnconfigure(1, weight=1)
-
-            label = tk.Label(
-                row,
-                text=self._format_input_path_label(spec["rel_path"]),
-                anchor="w",
-                justify="left",
-                padx=0,
-                pady=0,
-                width=label_width_chars,
-                font=(self._credit_name_font()[0], self._input_mode_font_size(8, min_size=7, max_size=16), "bold"),
-            )
-            label.grid(row=0, column=0, sticky="w", padx=(0, 10))
-
-            value_container = tk.Frame(row, bg=panel_bg, bd=0, highlightthickness=0)
-            value_container.grid(row=0, column=1, sticky="ew")
-            value_container.grid_columnconfigure(0, weight=1)
-
-            initial = spec["initial"]
-            if isinstance(initial, bool):
-                # Keep boolean tokens consistent with JSON semantics in INPUT mode.
-                text_value = f"  {'true' if initial else 'false'}"
-            else:
-                text_value = "" if initial is None else f"  {initial}"
-            var = tk.StringVar(value=text_value)
-            widget = tk.Entry(
-                value_container,
-                textvariable=var,
-                font=(self._credit_name_font()[0], self._input_mode_font_size(8, min_size=7, max_size=16), "bold"),
-            )
-            self._style_input_mode_row_widgets(label, widget, input_container=value_container)
-            initial_token = str(initial).strip().lower()
-            is_true_like = isinstance(initial, bool) and initial is True or initial_token == "true"
-            is_false_like = isinstance(initial, bool) and initial is False or initial_token == "false"
-            if is_true_like or is_false_like:
-                value_fg = bool_true_fg if is_true_like else bool_false_fg
-                try:
-                    widget.configure(fg=value_fg, insertbackground=value_fg)
-                except Exception:
-                    pass
-            widget.grid(row=0, column=0, sticky="ew", padx=4, pady=2, ipady=2)
-
-            divider = tk.Frame(row, bg=row_divider, height=1, bd=0, highlightthickness=0)
-            divider.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
-
-            spec["var"] = var
-            spec["widget"] = widget
-            self._input_mode_field_specs.append(spec)
-
-        host.update_idletasks()
-        self._refresh_input_mode_bool_widget_colors()
-        canvas = getattr(self, "_input_mode_canvas", None)
-        if canvas is not None:
-            try:
-                canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-                canvas.yview_moveto(0.0)
-            except Exception:
-                pass
+        fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
+        disabled = tk.Label(
+            host,
+            text=self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
+            bg=panel_bg,
+            fg=fg,
+            anchor="w",
+            justify="left",
+            padx=12,
+            pady=12,
+            font=(self._credit_name_font()[0], self._input_mode_font_size(11, min_size=8, max_size=20), "bold"),
+        )
+        disabled.pack(fill="x", expand=False)
+        self._input_mode_no_fields_label = disabled
         self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
         self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
         self._input_mode_force_refresh = False
+        return
 
     def _input_mode_path_key(self, path):
         if isinstance(path, list):
@@ -1625,7 +1537,6 @@ if not install_started:
         self._build_toolbar_structure(top, inter_button_pad=(3 if style == "A" else 2))
 
     def _build_toolbar_structure(self, top, inter_button_pad):
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
         style = self._siindbad_effective_style()
         is_variant_b = style == "B"
         find_host_pad = (2, 0) if is_variant_b else (4, 2)
@@ -15369,31 +15280,6 @@ if not install_started:
             return
         self.set_status("Exported .hhsav")
 
-    def _find_7z(self):
-        candidate = shutil.which("7z")
-        if candidate:
-            return candidate
-        common_paths = [
-            r"C:\Program Files\7-Zip\7z.exe",
-            r"C:\Program Files (x86)\7-Zip\7z.exe",
-        ]
-        for path in common_paths:
-            if os.path.isfile(path):
-                return path
-        return None
-
-    def _ensure_7z(self):
-        if self.seven_zip_path and os.path.isfile(self.seven_zip_path):
-            return self.seven_zip_path
-        path = filedialog.askopenfilename(
-            title="Locate 7z.exe",
-            filetypes=[("7-Zip", "7z.exe"), ("All Files", "*.*")],
-        )
-        if not path:
-            raise FileNotFoundError("7z not selected")
-        self.seven_zip_path = path
-        return path
-
     def _get_value(self, path):
         value = self.data
         for key in path:
@@ -15635,7 +15521,7 @@ def main():
     root = tk.Tk()
     root._hh_use_startup_loader_window = True
     root.withdraw()
-    app = JsonEditor(root, path)
+    JsonEditor(root, path)
     root.mainloop()
 
 
