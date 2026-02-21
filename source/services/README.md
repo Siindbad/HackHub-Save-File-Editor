@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-21 (added Network FIREWALL Input style service plus prior editor mode/tree/ui service extractions).
+Last sync: 2026-02-21 (added Network FIREWALL Input style service plus prior editor mode/tree/ui service extractions, and INPUT nested write/boolean render behavior sync).
 
 | Module | Purpose |
 | --- | --- |

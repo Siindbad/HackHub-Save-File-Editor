@@ -75,14 +75,50 @@ def collect_input_field_specs(value, base_path, max_fields=24):
 
 def set_nested_value(container, rel_path, new_value):
     # Apply a coerced value back into a nested dict/list path.
-    target = container
-    for token in rel_path[:-1]:
-        target = target[token]
-    if rel_path:
-        target[rel_path[-1]] = new_value
-    else:
+    # Raise ValueError for stale/invalid paths so INPUT Apply can show a safe warning.
+    if not rel_path:
         return new_value
-    return container
+
+    target = container
+    walked = []
+    for idx, token in enumerate(rel_path[:-1]):
+        walked.append(token)
+        if isinstance(target, dict):
+            if token not in target:
+                raise ValueError(f"path not found at {walked!r}")
+            target = target[token]
+            continue
+        if isinstance(target, list):
+            if not isinstance(token, int) or token < 0:
+                raise ValueError(f"list index out of range at {walked!r}")
+            if token >= len(target):
+                # INPUT-mode convenience: allow creating missing nested list slots
+                # for child collections (for example empty ports -> ports[0].* fields).
+                # Do not auto-grow at root-level list access to avoid stale-path writes.
+                if idx == 0:
+                    raise ValueError(f"list index out of range at {walked!r}")
+                next_token = rel_path[idx + 1] if idx + 1 < len(rel_path) else None
+                fill_value = {} if isinstance(next_token, str) else []
+                while len(target) <= token:
+                    target.append(fill_value.copy() if isinstance(fill_value, dict) else list(fill_value))
+            target = target[token]
+            continue
+        raise ValueError(f"path type mismatch at {walked!r}")
+
+    leaf = rel_path[-1]
+    if isinstance(target, dict):
+        # Dict leafs are allowed to be created on apply (e.g. missing ROUTER version).
+        target[leaf] = new_value
+        return container
+    if isinstance(target, list):
+        if not isinstance(leaf, int) or leaf < 0:
+            raise ValueError(f"list index out of range at {list(rel_path)!r}")
+        if leaf >= len(target):
+            while len(target) <= leaf:
+                target.append(None)
+        target[leaf] = new_value
+        return container
+    raise ValueError(f"path type mismatch at {list(rel_path)!r}")
 
 
 def strip_input_display_prefix(raw):

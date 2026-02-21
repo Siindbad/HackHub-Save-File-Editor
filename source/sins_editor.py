@@ -485,7 +485,91 @@ if not install_started:
         return ui_build_service.build_editor_mode_toggle(self, parent, tk=tk)
 
     def _build_input_mode_panel(self, parent, scroll_style):
-        return ui_build_service.build_input_mode_panel(self, parent, scroll_style, tk=tk, ttk=ttk)
+        result = ui_build_service.build_input_mode_panel(self, parent, scroll_style, tk=tk, ttk=ttk)
+        self._bind_input_mode_mousewheel()
+        return result
+
+    def _bind_input_mode_mousewheel(self):
+        # INPUT canvas should respond to wheel scrolling like JSON text view.
+        if bool(getattr(self, "_input_mode_mousewheel_bound", False)):
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.bind_all("<MouseWheel>", self._on_input_mode_mousewheel, add="+")
+            root.bind_all("<Button-4>", self._on_input_mode_mousewheel_linux_up, add="+")
+            root.bind_all("<Button-5>", self._on_input_mode_mousewheel_linux_down, add="+")
+            self._input_mode_mousewheel_bound = True
+        except Exception:
+            self._input_mode_mousewheel_bound = False
+
+    @staticmethod
+    def _is_descendant_widget(widget, ancestor):
+        current = widget
+        while current is not None:
+            if current == ancestor:
+                return True
+            current = getattr(current, "master", None)
+        return False
+
+    def _can_scroll_input_mode_canvas_for_event(self):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return False
+        root = getattr(self, "root", None)
+        canvas = getattr(self, "_input_mode_canvas", None)
+        if root is None or canvas is None:
+            return False
+        try:
+            if not canvas.winfo_exists():
+                return False
+            px, py = root.winfo_pointerxy()
+            target = root.winfo_containing(px, py)
+        except Exception:
+            return False
+        if target is None:
+            return False
+        return self._is_descendant_widget(target, canvas)
+
+    def _on_input_mode_mousewheel(self, event):
+        if not self._can_scroll_input_mode_canvas_for_event():
+            return
+        canvas = getattr(self, "_input_mode_canvas", None)
+        if canvas is None:
+            return
+        try:
+            delta = int(getattr(event, "delta", 0))
+            if delta == 0:
+                return "break"
+            units = -1 if delta > 0 else 1
+            canvas.yview_scroll(units, "units")
+            return "break"
+        except Exception:
+            return
+
+    def _on_input_mode_mousewheel_linux_up(self, _event):
+        if not self._can_scroll_input_mode_canvas_for_event():
+            return
+        canvas = getattr(self, "_input_mode_canvas", None)
+        if canvas is None:
+            return
+        try:
+            canvas.yview_scroll(-1, "units")
+            return "break"
+        except Exception:
+            return
+
+    def _on_input_mode_mousewheel_linux_down(self, _event):
+        if not self._can_scroll_input_mode_canvas_for_event():
+            return
+        canvas = getattr(self, "_input_mode_canvas", None)
+        if canvas is None:
+            return
+        try:
+            canvas.yview_scroll(1, "units")
+            return "break"
+        except Exception:
+            return
 
     @staticmethod
     def _is_input_scalar(value):
@@ -661,6 +745,8 @@ if not install_started:
         host = getattr(self, "_input_mode_fields_host", None)
         if host is None:
             return
+        self._cancel_pending_router_input_batches()
+        self._input_mode_render_token = int(getattr(self, "_input_mode_render_token", 0) or 0) + 1
         for child in host.winfo_children():
             child.destroy()
         self._input_mode_field_specs = []
@@ -745,6 +831,7 @@ if not install_started:
             bank_rows = self._collect_bank_input_rows(value)
             if bank_rows:
                 self._render_bank_input_style_rows(host, normalized_path, bank_rows)
+                self._refresh_input_mode_bool_widget_colors()
                 host.update_idletasks()
                 canvas = getattr(self, "_input_mode_canvas", None)
                 if canvas is not None:
@@ -761,6 +848,7 @@ if not install_started:
             grades_matrix = self._collect_database_grades_matrix(value)
             if grades_matrix:
                 self._render_database_grades_input_matrix(host, normalized_path, grades_matrix)
+                self._refresh_input_mode_bool_widget_colors()
                 host.update_idletasks()
                 canvas = getattr(self, "_input_mode_canvas", None)
                 if canvas is not None:
@@ -775,6 +863,7 @@ if not install_started:
                 return
         if self._is_suspicion_input_style_path(normalized_path):
             if self._render_suspicion_phone_input(host, normalized_path, value):
+                self._refresh_input_mode_bool_widget_colors()
                 host.update_idletasks()
                 canvas = getattr(self, "_input_mode_canvas", None)
                 if canvas is not None:
@@ -790,7 +879,20 @@ if not install_started:
         if is_network_router_payload:
             router_rows = self._collect_network_router_input_rows(normalized_path, value)
             if router_rows:
-                self._render_network_router_input_rows(host, normalized_path, router_rows)
+                # Progressive render keeps category-click latency low on large ROUTER datasets.
+                first_chunk_size = 10
+                first_chunk = router_rows[:first_chunk_size]
+                remaining = router_rows[first_chunk_size:]
+                self._render_network_router_input_rows(host, normalized_path, first_chunk)
+                if remaining:
+                    self._schedule_router_input_render_batches(
+                        host,
+                        normalized_path,
+                        remaining,
+                        render_token=self._input_mode_render_token,
+                        chunk_size=8,
+                    )
+                self._refresh_input_mode_bool_widget_colors()
                 host.update_idletasks()
                 canvas = getattr(self, "_input_mode_canvas", None)
                 if canvas is not None:
@@ -807,6 +909,7 @@ if not install_started:
             firewall_rows = self._collect_network_firewall_input_rows(normalized_path, value)
             if firewall_rows:
                 self._render_network_firewall_input_rows(host, normalized_path, firewall_rows)
+                self._refresh_input_mode_bool_widget_colors()
                 host.update_idletasks()
                 canvas = getattr(self, "_input_mode_canvas", None)
                 if canvas is not None:
@@ -860,6 +963,8 @@ if not install_started:
 
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
         row_divider = "#4f356f" if variant == "KAMUE" else "#254b6b"
+        bool_true_fg = "#70e58a" if variant == "KAMUE" else "#62d67a"
+        bool_false_fg = "#f3a1ad" if variant == "KAMUE" else "#ff9ea1"
         labels = [self._format_input_path_label(spec["rel_path"]) for spec in specs]
         max_label_chars = max((len(text) for text in labels), default=8)
         label_width_chars = max(14, min(30, max_label_chars + 1))
@@ -885,7 +990,11 @@ if not install_started:
             value_container.grid_columnconfigure(0, weight=1)
 
             initial = spec["initial"]
-            text_value = "" if initial is None else f"  {initial}"
+            if isinstance(initial, bool):
+                # Keep boolean tokens consistent with JSON semantics in INPUT mode.
+                text_value = f"  {'true' if initial else 'false'}"
+            else:
+                text_value = "" if initial is None else f"  {initial}"
             var = tk.StringVar(value=text_value)
             widget = tk.Entry(
                 value_container,
@@ -893,6 +1002,15 @@ if not install_started:
                 font=(self._credit_name_font()[0], 8, "bold"),
             )
             self._style_input_mode_row_widgets(label, widget, input_container=value_container)
+            initial_token = str(initial).strip().lower()
+            is_true_like = isinstance(initial, bool) and initial is True or initial_token == "true"
+            is_false_like = isinstance(initial, bool) and initial is False or initial_token == "false"
+            if is_true_like or is_false_like:
+                value_fg = bool_true_fg if is_true_like else bool_false_fg
+                try:
+                    widget.configure(fg=value_fg, insertbackground=value_fg)
+                except Exception:
+                    pass
             widget.grid(row=0, column=0, sticky="ew", padx=4, pady=2, ipady=2)
 
             divider = tk.Frame(row, bg=row_divider, height=1, bd=0, highlightthickness=0)
@@ -903,6 +1021,7 @@ if not install_started:
             self._input_mode_field_specs.append(spec)
 
         host.update_idletasks()
+        self._refresh_input_mode_bool_widget_colors()
         canvas = getattr(self, "_input_mode_canvas", None)
         if canvas is not None:
             try:
@@ -921,8 +1040,164 @@ if not install_started:
             return tuple(self._input_mode_path_key(token) for token in path)
         return path
 
+    def _refresh_input_mode_bool_widget_colors(self):
+        # Keep INPUT boolean visuals deterministic across renderer/type variations.
+        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+        bool_true_fg = "#70e58a" if variant == "KAMUE" else "#62d67a"
+        bool_false_fg = "#f3a1ad" if variant == "KAMUE" else "#ff9ea1"
+        specs = list(getattr(self, "_input_mode_field_specs", []) or [])
+        for spec in specs:
+            widget = spec.get("widget")
+            var = spec.get("var")
+            if widget is None or var is None:
+                continue
+            try:
+                token = str(var.get() or "").strip().lower()
+            except Exception:
+                continue
+            if token not in ("true", "false"):
+                continue
+            value_fg = bool_true_fg if token == "true" else bool_false_fg
+            try:
+                widget.configure(fg=value_fg, insertbackground=value_fg)
+            except Exception:
+                continue
+
     def _can_skip_input_mode_refresh(self, item_id, target_path):
         return editor_mode_switch_service.can_skip_input_mode_refresh(self, item_id, target_path)
+
+    def _cancel_pending_input_mode_refresh(self):
+        after_id = getattr(self, "_input_mode_refresh_after_id", None)
+        self._input_mode_refresh_after_id = None
+        if not after_id:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.after_cancel(after_id)
+        except Exception:
+            return
+
+    def _cancel_pending_router_input_batches(self):
+        after_id = getattr(self, "_input_mode_router_batch_after_id", None)
+        self._input_mode_router_batch_after_id = None
+        if not after_id:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.after_cancel(after_id)
+        except Exception:
+            return
+
+    def _schedule_router_input_render_batches(self, host, normalized_path, pending_rows, render_token, chunk_size=10):
+        if not pending_rows:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+
+        def _run_next_batch():
+            self._input_mode_router_batch_after_id = None
+            if render_token != int(getattr(self, "_input_mode_render_token", 0) or 0):
+                return
+            if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+                return
+            rows = list(pending_rows or [])
+            if not rows:
+                return
+            chunk = rows[:chunk_size]
+            rest = rows[chunk_size:]
+            self._render_network_router_input_rows(host, normalized_path, chunk)
+            if rest and render_token == int(getattr(self, "_input_mode_render_token", 0) or 0):
+                self._schedule_router_input_render_batches(
+                    host,
+                    normalized_path,
+                    rest,
+                    render_token,
+                    chunk_size=chunk_size,
+                )
+                return
+            # Finalize once at the end to avoid repeated full-host relayout cost.
+            self._refresh_input_mode_bool_widget_colors()
+            try:
+                host.update_idletasks()
+            except Exception:
+                pass
+            canvas = getattr(self, "_input_mode_canvas", None)
+            if canvas is not None:
+                try:
+                    canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
+                except Exception:
+                    pass
+
+        try:
+            self._input_mode_router_batch_after_id = root.after_idle(_run_next_batch)
+        except Exception:
+            self._input_mode_router_batch_after_id = None
+
+    def _resolve_input_mode_selection_payload(self, item_id):
+        if not item_id:
+            return [], {}, ""
+        path = self.item_to_path.get(item_id, [])
+        if isinstance(path, tuple) and path[0] == "__group__":
+            _, list_path, group = path
+            value = self._get_value(list_path)
+            group_items = [
+                item for item in value
+                if isinstance(item, dict) and item.get("type") == group
+            ]
+            return list_path, group_items, f"group {group} ({len(group_items)})"
+        try:
+            value = self._get_value(path)
+        except Exception:
+            value = {}
+        return path, value, self._describe(value)
+
+    def _run_pending_input_mode_refresh(self):
+        self._input_mode_refresh_after_id = None
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return
+        item_id = getattr(self, "_input_mode_pending_item_id", None)
+        if not item_id:
+            item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
+        self._input_mode_pending_item_id = None
+        if not item_id:
+            return
+        try:
+            render_path, render_value, status_text = self._resolve_input_mode_selection_payload(item_id)
+            if self._can_skip_input_mode_refresh(item_id, render_path):
+                if status_text:
+                    self.set_status(status_text)
+                self._update_find_controls_for_mode()
+                return
+            self._refresh_input_mode_fields(render_path, render_value)
+            self._update_find_controls_for_mode()
+            if status_text:
+                self.set_status(status_text)
+        except Exception:
+            return
+
+    def _schedule_input_mode_refresh(self, item_id=None, immediate=False):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return
+        if item_id:
+            self._input_mode_pending_item_id = item_id
+        self._cancel_pending_input_mode_refresh()
+        if bool(immediate):
+            self._run_pending_input_mode_refresh()
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            self._run_pending_input_mode_refresh()
+            return
+        try:
+            self._input_mode_refresh_after_id = root.after_idle(self._run_pending_input_mode_refresh)
+        except Exception:
+            self._input_mode_refresh_after_id = None
+            self._run_pending_input_mode_refresh()
 
     def _refresh_editor_mode_view(self):
         text = getattr(self, "text", None)
@@ -943,24 +1218,12 @@ if not install_started:
             if not input_container.winfo_ismapped():
                 input_container.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
             item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
-            path = self.item_to_path.get(item_id, []) if item_id else []
-            if isinstance(path, tuple) and path[0] == "__group__":
-                _, list_path, group = path
-                value = self._get_value(list_path)
-                group_items = [
-                    item for item in value
-                    if isinstance(item, dict) and item.get("type") == group
-                ]
-                self._refresh_input_mode_fields(list_path, group_items)
-            else:
-                try:
-                    value = self._get_value(path) if item_id else {}
-                except Exception:
-                    value = {}
-                self._refresh_input_mode_fields(path, value)
+            self._schedule_input_mode_refresh(item_id=item_id, immediate=True)
             return
 
         try:
+            self._cancel_pending_input_mode_refresh()
+            self._cancel_pending_router_input_batches()
             input_container.pack_forget()
         except Exception:
             pass
@@ -997,43 +1260,85 @@ if not install_started:
     def _apply_input_edit(self):
         item_id = self.tree.focus()
         if not item_id:
+            self._log_input_mode_apply_trace("no_selection", [], 0)
             messagebox.showwarning("No selection", "Select a node in the tree.")
             return
-        path = self.item_to_path.get(item_id, [])
+        tree_path = self.item_to_path.get(item_id, [])
+        # Grouped INPUT edits (e.g. Network ROUTER/FIREWALL buckets) must always
+        # write against the group source list path from the selected tree tuple.
+        if isinstance(tree_path, tuple) and tree_path[0] == "__group__":
+            _, list_path, _group = tree_path
+            path = list(list_path or [])
+        else:
+            path = list(getattr(self, "_input_mode_current_path", []) or [])
+            if not path:
+                path = tree_path
         if isinstance(path, tuple) and path[0] == "__group__":
             # Allow INPUT edits for grouped selections by writing against the source list path.
             _, list_path, _group = path
             path = list(list_path or [])
         if self._is_input_mode_category_disabled(path):
+            self._log_input_mode_apply_trace("disabled_category", path, 0)
             messagebox.showwarning("Not editable", self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE)
             return
         specs = list(getattr(self, "_input_mode_field_specs", []) or [])
+        self._log_input_mode_apply_trace("start", path, len(specs))
         if not specs:
+            self._log_input_mode_apply_trace("no_fields", path, 0)
             messagebox.showwarning("No fields", "No editable scalar fields for this node.")
             return
         value = self._get_value(path)
         working = input_mode_service.deep_copy_json_compatible(value)
+        working_root = input_mode_service.deep_copy_json_compatible(getattr(self, "data", {}))
         try:
             for spec in specs:
                 coerced = self._coerce_input_field_value(spec)
+                abs_path = list(spec.get("abs_path", []) or [])
                 rel_path = list(spec.get("rel_path", []))
-                if rel_path:
+                if abs_path:
+                    self._set_nested_value(working_root, abs_path, coerced)
+                    if (
+                        isinstance(path, list)
+                        and len(abs_path) >= len(path)
+                        and abs_path[: len(path)] == path
+                    ):
+                        local_rel = abs_path[len(path) :]
+                        if local_rel:
+                            self._set_nested_value(working, local_rel, coerced)
+                        else:
+                            working = coerced
+                elif rel_path:
                     self._set_nested_value(working, rel_path, coerced)
+                    target_abs = list(path or []) + rel_path
+                    self._set_nested_value(working_root, target_abs, coerced)
                 else:
                     working = coerced
+                    if not path:
+                        working_root = coerced
+                    else:
+                        self._set_nested_value(working_root, list(path), coerced)
         except ValueError as exc:
-            messagebox.showwarning("Invalid Entry", f"Input value type mismatch: {exc}")
+            self._log_input_mode_edit_issue(path, exc)
+            self._log_input_mode_apply_trace("value_error", path, len(specs))
+            messagebox.showwarning("Invalid Entry", f"Could not apply INPUT edits: {exc}")
             return
 
-        if not self._is_edit_allowed(path, working):
-            return
-        self._set_value(path, working)
+        # INPUT mode should apply validated field edits directly; JSON warning-policy
+        # prompts are scoped to raw JSON key edits and can block INPUT writes silently.
+        changed = working != value
+        self.data = working_root
+        self._reset_find_state()
+        self._log_input_mode_apply_result(path, changed)
+        self._log_input_mode_apply_trace("applied", path, len(specs), changed=changed)
         if self._is_bank_input_style_path(path):
             # Bank INPUT rows already reflect the edited value; skip full repaint to avoid flicker.
             self._input_mode_last_render_item = item_id
             self._input_mode_last_render_path_key = self._input_mode_path_key(path)
             self._input_mode_force_refresh = False
         else:
+            # Ensure INPUT custom rows (ROUTER/FIREWALL/etc.) fully repaint so
+            # value-driven styles (for example true/false colors) update immediately.
+            self._input_mode_force_refresh = True
             self._populate_children(item_id)
             self.on_select(None)
         self.set_status("Edited")
@@ -1110,10 +1415,22 @@ if not install_started:
         if mode != previous_mode and self._mode_switch_requires_tree_rebuild(previous_mode, mode):
             self._rebuild_tree_for_mode_change()
         self._update_editor_mode_controls()
+        self._update_find_controls_for_mode()
         self._refresh_editor_mode_view()
         if mode == "JSON":
             try:
                 self.on_select(None)
+            except Exception:
+                pass
+
+    def _update_find_controls_for_mode(self):
+        # Keep find field visual style unchanged across modes; behavior gating
+        # is enforced in find_next() and context checks.
+        entry = getattr(self, "find_entry", None)
+        if entry is not None:
+            try:
+                if entry.winfo_exists():
+                    entry.configure(state="normal")
             except Exception:
                 pass
 
@@ -1274,6 +1591,7 @@ if not install_started:
                 self.find_entry.icursor("end")
             except Exception:
                 pass
+        self._update_find_controls_for_mode()
         self._update_find_entry_layout()
         self._schedule_topbar_alignment(delay_ms=0)
 
@@ -4935,6 +5253,10 @@ if not install_started:
         self._input_mode_last_render_item = None
         self._input_mode_last_render_path_key = None
         self._input_mode_force_refresh = True
+        self._input_mode_render_token = 0
+        self._input_mode_router_batch_after_id = None
+        self._input_mode_refresh_after_id = None
+        self._input_mode_pending_item_id = None
 
     def _init_tree_runtime_state(self):
         # Keep shared tree UI runtime state initialization grouped by tree subsystem.
@@ -10083,6 +10405,7 @@ if not install_started:
         return entries
 
     def _append_find_search_entries(self, path, value, entries):
+        mode_is_input = str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT"
         if isinstance(value, dict):
             hidden_keys_getter = getattr(self, "_hidden_root_tree_keys_for_mode", None)
             hidden_keys = (
@@ -10111,7 +10434,17 @@ if not install_started:
                             child_text = str(type_value)
                 entries.append((child_path, str(child_text).casefold()))
                 child_value = value.get(key)
-                if isinstance(child_value, (dict, list)) and len(child_value) > 0:
+                should_recurse = isinstance(child_value, (dict, list)) and len(child_value) > 0
+                if (
+                    should_recurse
+                    and mode_is_input
+                    and isinstance(path, list)
+                    and not path
+                    and self._normalize_root_tree_key(key) in set(getattr(self, "INPUT_MODE_NO_EXPAND_ROOT_KEYS", set()))
+                ):
+                    # INPUT mode keeps locked roots collapsed; Find index should not force deep expansion.
+                    should_recurse = False
+                if should_recurse:
                     self._append_find_search_entries(child_path, child_value, entries)
             return
 
@@ -10131,6 +10464,11 @@ if not install_started:
                 items = groups[group]
                 group_label = f"{group} ({len(items)})"
                 entries.append((("__group__", list(path), group), group_label.casefold()))
+                group_is_locked = (
+                    mode_is_input
+                    and str(path[0] if path else "").strip().casefold() == "network"
+                    and str(group or "").strip().casefold() in set(getattr(self, "INPUT_MODE_NETWORK_NO_EXPAND_GROUP_KEYS", set()))
+                )
                 for idx, item in items:
                     label = ""
                     if isinstance(item, dict):
@@ -10183,7 +10521,7 @@ if not install_started:
                         label = f"Item {idx + 1}"
                     child_path = path + [idx]
                     entries.append((child_path, str(label).casefold()))
-                    if isinstance(item, (dict, list)) and len(item) > 0:
+                    if not group_is_locked and isinstance(item, (dict, list)) and len(item) > 0:
                         self._append_find_search_entries(child_path, item, entries)
             return
 
@@ -10263,6 +10601,9 @@ if not install_started:
         return _find_group_item()
 
     def find_next(self, event=None):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+            self._find_next_input_mode()
+            return
         query = self.find_entry.get().strip()
         if not query:
             self.set_status("Find: enter text to search")
@@ -10291,10 +10632,163 @@ if not install_started:
             self._reset_find_state()
             return
         self._open_to_item(item_id)
-        self.tree.selection_set(item_id)
-        self.tree.see(item_id)
+        tree_widget = getattr(self, "tree", None)
+        if tree_widget is not None:
+            try:
+                focus_fn = getattr(tree_widget, "focus", None)
+                if callable(focus_fn):
+                    focus_fn(item_id)
+            except Exception:
+                pass
+            try:
+                select_fn = getattr(tree_widget, "selection_set", None)
+                if callable(select_fn):
+                    select_fn(item_id)
+            except Exception:
+                pass
+            try:
+                see_fn = getattr(tree_widget, "see", None)
+                if callable(see_fn):
+                    see_fn(item_id)
+            except Exception:
+                pass
         self.on_select(None)
+        focus_match_fn = getattr(self, "_focus_json_find_match", None)
+        if callable(focus_match_fn):
+            focus_match_fn(query)
         self.set_status(f'Find: {self.find_index}/{len(self.find_matches)}')
+
+    def _focus_json_find_match(self, query):
+        # After tree-level Find Next picks a node, also jump to the text match in JSON editor.
+        text_widget = getattr(self, "text", None)
+        if text_widget is None:
+            return
+        needle = str(query or "").strip()
+        if not needle:
+            return
+        try:
+            if not text_widget.winfo_exists():
+                return
+            text_widget.tag_remove("find_next_match", "1.0", "end")
+            start = text_widget.search(needle, "1.0", stopindex="end", nocase=1)
+            if not start:
+                return
+            end = f"{start}+{len(needle)}c"
+            text_widget.tag_add("find_next_match", start, end)
+            text_widget.tag_config(
+                "find_next_match",
+                background="#214a6a",
+                foreground="#e8f6ff",
+            )
+            text_widget.mark_set("insert", start)
+            text_widget.see(start)
+        except Exception:
+            return
+
+    def _find_next_input_mode(self):
+        query = self.find_entry.get().strip()
+        if not query:
+            self.set_status("Find: enter text to search")
+            return
+
+        query_lower = query.lower()
+        if (
+            query_lower != self.last_find_query
+            or not self.find_matches
+            or not isinstance(self.find_matches[0], dict)
+            or "widget" not in self.find_matches[0]
+        ):
+            entries = self._build_input_mode_search_entries()
+            self.find_matches = [entry[0] for entry in entries if query_lower in entry[1]]
+            self.find_index = 0
+            self.last_find_query = query_lower
+
+        if not self.find_matches:
+            self.set_status(f'Find: no matches for "{query}"')
+            return
+
+        match = self.find_matches[self.find_index]
+        self.find_index = (self.find_index + 1) % len(self.find_matches)
+        widget = match.get("widget")
+        if widget is not None:
+            self._scroll_input_widget_into_view(widget)
+            try:
+                focus_target = match.get("focus_widget") or widget
+                focus_target.focus_set()
+                if isinstance(focus_target, tk.Entry):
+                    focus_target.selection_range(0, "end")
+                    focus_target.icursor("end")
+            except Exception:
+                pass
+        self.set_status(f'Find: {self.find_index}/{len(self.find_matches)}')
+
+    def _build_input_mode_search_entries(self):
+        host = getattr(self, "_input_mode_fields_host", None)
+        if host is None:
+            return []
+        entries = []
+
+        def _walk(widget):
+            try:
+                children = list(widget.winfo_children())
+            except Exception:
+                children = []
+            for child in children:
+                _add_entry(child)
+                _walk(child)
+
+        def _add_entry(widget):
+            text = ""
+            focus_widget = None
+            try:
+                if isinstance(widget, tk.Entry):
+                    text = str(widget.get() or "")
+                    focus_widget = widget
+                elif isinstance(widget, tk.Label):
+                    text = str(widget.cget("text") or "")
+                    focus_widget = self._find_first_entry_descendant(widget.master)
+            except Exception:
+                return
+            text = text.strip()
+            if not text:
+                return
+            entries.append(({"widget": widget, "focus_widget": focus_widget}, text.casefold()))
+
+        _walk(host)
+        return entries
+
+    @staticmethod
+    def _find_first_entry_descendant(root_widget):
+        if root_widget is None:
+            return None
+        queue = [root_widget]
+        while queue:
+            current = queue.pop(0)
+            if isinstance(current, tk.Entry):
+                return current
+            try:
+                queue.extend(list(current.winfo_children()))
+            except Exception:
+                continue
+        return None
+
+    def _scroll_input_widget_into_view(self, widget):
+        canvas = getattr(self, "_input_mode_canvas", None)
+        host = getattr(self, "_input_mode_fields_host", None)
+        if canvas is None or host is None or widget is None:
+            return
+        try:
+            canvas.update_idletasks()
+            host.update_idletasks()
+            total_height = max(1, int(host.winfo_height()))
+            view_height = max(1, int(canvas.winfo_height()))
+            y_in_host = int(widget.winfo_rooty() - host.winfo_rooty())
+            target_y = max(0, y_in_host - int(view_height * 0.35))
+            denom = max(1, total_height - view_height)
+            fraction = max(0.0, min(1.0, float(target_y) / float(denom)))
+            canvas.yview_moveto(fraction)
+        except Exception:
+            return
 
     def _populate_children(self, item_id):
         tree_engine_service.populate_children(self, item_id)
@@ -10367,6 +10861,9 @@ if not install_started:
         self._destroy_error_overlay()
         self._clear_json_error_highlight()
         self._error_visual_mode = "guide"
+        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+            self._schedule_input_mode_refresh(item_id=item_id, immediate=False)
+            return
         path = self.item_to_path.get(item_id, [])
         if isinstance(path, tuple) and path[0] == "__group__":
             _, list_path, group = path
@@ -10388,8 +10885,10 @@ if not install_started:
         if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
             if self._can_skip_input_mode_refresh(item_id, path):
                 self.set_status(self._describe(value))
+                self._update_find_controls_for_mode()
                 return
             self._refresh_input_mode_fields(path, value)
+            self._update_find_controls_for_mode()
         else:
             self._show_value(value, path=path)
         self.set_status(self._describe(value))
@@ -10918,10 +11417,11 @@ if not install_started:
             messagebox.showwarning("No selection", "Select a node in the tree.")
             return
         path = self.item_to_path.get(item_id, [])
-        if isinstance(path, tuple) and path[0] == "__group__":
+        mode = str(getattr(self, "_editor_mode", "JSON")).upper()
+        if isinstance(path, tuple) and path[0] == "__group__" and mode != "INPUT":
             messagebox.showwarning("Not editable", "Select a specific item to edit.")
             return
-        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+        if mode == "INPUT":
             self._apply_input_edit()
             return
 
@@ -14486,6 +14986,71 @@ if not install_started:
 
     def _log_json_error(self, exc, target_line, note=""):
         return json_error_diag_service.log_json_error(self, exc, target_line, note=note)
+
+    def _log_input_mode_edit_issue(self, path, exc):
+        # INPUT apply diagnostics: capture invalid field/path writes for support triage.
+        try:
+            log_path = self._diag_log_path()
+            self._trim_text_file_for_append(log_path, self.DIAG_LOG_MAX_BYTES, self.DIAG_LOG_KEEP_BYTES)
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entry = (
+                "\n---\n"
+                f"time={stamp}\n"
+                "context=input_apply_failure\n"
+                f"action={str(getattr(self, '_diag_action', 'apply_edit:0'))}\n"
+                f"path={repr(list(path or []))}\n"
+                f"error={type(exc).__name__}: {str(exc).strip()}\n"
+            )
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(entry)
+        except Exception:
+            return
+
+    def _log_input_mode_apply_result(self, path, changed):
+        # INPUT apply diagnostics: confirm writes actually changed data.
+        try:
+            log_path = self._diag_log_path()
+            self._trim_text_file_for_append(log_path, self.DIAG_LOG_MAX_BYTES, self.DIAG_LOG_KEEP_BYTES)
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entry = (
+                "\n---\n"
+                f"time={stamp}\n"
+                "context=input_apply_result\n"
+                f"action={str(getattr(self, '_diag_action', 'apply_edit:0'))}\n"
+                f"path={repr(list(path or []))}\n"
+                f"changed={'true' if bool(changed) else 'false'}\n"
+            )
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(entry)
+        except Exception:
+            return
+
+    def _log_input_mode_apply_trace(self, stage, path, specs_count, changed=None):
+        # INPUT apply flow diagnostics: record the branch path taken for each Apply Edit click.
+        raw = str(os.environ.get("HACKHUB_INPUT_APPLY_TRACE", "0")).strip().lower()
+        if raw not in ("1", "true", "yes", "on"):
+            return
+        try:
+            log_path = self._diag_log_path()
+            self._trim_text_file_for_append(log_path, self.DIAG_LOG_MAX_BYTES, self.DIAG_LOG_KEEP_BYTES)
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            line_changed = ""
+            if changed is not None:
+                line_changed = f"changed={'true' if bool(changed) else 'false'}\n"
+            entry = (
+                "\n---\n"
+                f"time={stamp}\n"
+                "context=input_apply_trace\n"
+                f"action={str(getattr(self, '_diag_action', 'apply_edit:0'))}\n"
+                f"stage={str(stage or '').strip()}\n"
+                f"path={repr(list(path or []))}\n"
+                f"specs={int(specs_count or 0)}\n"
+                f"{line_changed}"
+            )
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(entry)
+        except Exception:
+            return
 
     def _begin_diag_action(self, action_name):
         self._diag_event_seq += 1

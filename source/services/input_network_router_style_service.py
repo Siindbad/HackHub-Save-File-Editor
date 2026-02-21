@@ -13,6 +13,12 @@ def _format_input_text(value):
     return "" if value is None else str(value)
 
 
+def _is_false_like(value):
+    if value is False:
+        return True
+    return str(value).strip().lower() == "false"
+
+
 def is_network_router_group_payload(owner, path, value):
     if not isinstance(path, list) or len(path) != 1:
         return False
@@ -117,6 +123,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
     input_edge = "#8a5bc4" if variant == "KAMUE" else "#2e8fd4"
     input_bg = "#1b1230" if variant == "KAMUE" else "#071322"
     input_fg = "#70e58a" if variant == "KAMUE" else "#62d67a"
+    bool_false_fg = "#f3a1ad" if variant == "KAMUE" else "#ff9ea1"
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
         owner._credit_name_font()[0],
@@ -135,6 +142,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
             highlightbackground=frame_edge,
         )
         row_frame.pack(fill="x", padx=8, pady=(5, 0))
+        row_frame.grid_rowconfigure(0, weight=1)
         # Keep the left identity panel compact so right-side inputs have room.
         row_frame.grid_columnconfigure(0, minsize=206, weight=0)
         row_frame.grid_columnconfigure(1, weight=1)
@@ -210,10 +218,11 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
 
         right = tk.Frame(row_frame, bg=panel_bg, bd=0, highlightthickness=0)
         right.grid(row=0, column=1, sticky="nsew", padx=(0, 6), pady=6)
+        right.grid_rowconfigure(0, weight=1)
         right.grid_columnconfigure(0, weight=1)
 
         edit_frame = tk.Frame(right, bg=right_bg, bd=0, highlightthickness=1, highlightbackground=frame_edge)
-        edit_frame.grid(row=0, column=0, sticky="ew")
+        edit_frame.grid(row=0, column=0, sticky="nsew")
         edit_frame.grid_rowconfigure(0, weight=1, minsize=46)
         edit_frame.grid_rowconfigure(1, weight=1, minsize=46)
         for idx in range(4):
@@ -248,14 +257,16 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
             text_value = _format_input_text(value)
             var = tk.StringVar(value=text_value)
             is_version = title == "Version"
+            # Booleans stay lowercase and use explicit true/false color cues in INPUT mode.
+            value_fg = bool_false_fg if _is_false_like(value) else input_fg
             entry = tk.Entry(
                 cell,
                 textvariable=var,
                 width=13 if is_version else 8,
                 justify="left" if is_version else "center",
                 bg=input_bg,
-                fg=input_fg,
-                insertbackground=input_fg,
+                fg=value_fg,
+                insertbackground=value_fg,
                 relief="flat",
                 bd=0,
                 highlightthickness=1,

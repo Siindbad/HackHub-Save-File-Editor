@@ -13,6 +13,12 @@ def _format_input_text(value):
     return "" if value is None else str(value)
 
 
+def _is_false_like(value):
+    if value is False:
+        return True
+    return str(value).strip().lower() == "false"
+
+
 def is_network_firewall_group_payload(owner, path, value):
     if not isinstance(path, list) or len(path) != 1:
         return False
@@ -97,6 +103,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
     input_edge = "#8a5bc4" if variant == "KAMUE" else "#2e8fd4"
     input_bg = "#1b1230" if variant == "KAMUE" else "#071322"
     input_fg = "#70e58a" if variant == "KAMUE" else "#62d67a"
+    bool_false_fg = "#f3a1ad" if variant == "KAMUE" else "#ff9ea1"
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
         owner._credit_name_font()[0],
@@ -181,7 +188,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
             cell.grid(row=0, column=col, sticky="nsew", padx=2, pady=2)
             tk.Label(
                 cell,
-                text=f"Port {col + 1}",
+                text="PORT",
                 bg=right_bg,
                 fg=label_fg,
                 anchor="center",
@@ -196,12 +203,13 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
                 input_family=input_family,
                 input_bg=input_bg,
                 input_fg=input_fg,
+                bool_false_fg=bool_false_fg,
                 input_edge=input_edge,
                 na_fg=na_fg,
             )
             tk.Label(
                 cell,
-                text=f"Allowed {col + 1}",
+                text="ALLOWED",
                 bg=right_bg,
                 fg=label_fg,
                 anchor="center",
@@ -216,6 +224,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
                 input_family=input_family,
                 input_bg=input_bg,
                 input_fg=input_fg,
+                bool_false_fg=bool_false_fg,
                 input_edge=input_edge,
                 na_fg=na_fg,
             )
@@ -229,6 +238,7 @@ def _render_field_input(
     input_family,
     input_bg,
     input_fg,
+    bool_false_fg,
     input_edge,
     na_fg,
 ):
@@ -237,14 +247,16 @@ def _render_field_input(
     var = tk.StringVar(value=text_value)
     rel_path = spec.get("rel_path")
     is_editable = isinstance(rel_path, list) and len(rel_path) > 0
+    # Booleans keep true/false semantics visible via foreground color in INPUT mode.
+    value_fg = bool_false_fg if _is_false_like(value) else input_fg
     entry = tk.Entry(
         container,
         textvariable=var,
         width=12,
         justify="center",
         bg=input_bg,
-        fg=input_fg,
-        insertbackground=input_fg,
+        fg=value_fg,
+        insertbackground=value_fg,
         relief="flat",
         bd=0,
         highlightthickness=1,
