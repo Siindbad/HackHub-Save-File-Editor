@@ -120,7 +120,6 @@ jobs:
               "title": embed_title,
               "description": description,
               "color": color,
-              "footer": {"text": "HackHub Release Notifications"},
               "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
           }
           if url:
