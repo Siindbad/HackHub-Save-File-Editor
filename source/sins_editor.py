@@ -30,6 +30,7 @@ from services import bug_report_ui_service
 from services import highlight_label_service
 from services import footer_service
 from services import input_mode_service
+from services import input_bank_style_service
 from services import json_error_diag_service
 from services import json_view_service
 from services import label_format_service
@@ -41,6 +42,7 @@ from services import runtime_log_service
 from services import startup_loader_ui_service
 from services import theme_asset_service
 from services import theme_service
+from services import tree_mode_service
 from services import toolbar_service
 from services import tree_view_service
 from services import update_ui_service
@@ -187,10 +189,58 @@ class JsonEditor:
     KNOWN_EMAIL_DOMAIN_ROOTS = {
         domain.split(".")[-2] for domain in KNOWN_EMAIL_DOMAINS if "." in domain
     }
-    # Add more root category names here to hide them from the tree view.
-    HIDDEN_ROOT_TREE_CATEGORIES = app_constants.HIDDEN_ROOT_TREE_CATEGORIES
-    HIDDEN_ROOT_TREE_KEYS = {
-        str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES
+    # Mode-scoped root tree hide lists:
+    # - JSON keeps the existing hidden categories.
+    # - INPUT can diverge without affecting JSON behavior.
+    HIDDEN_ROOT_TREE_CATEGORIES_JSON = app_constants.HIDDEN_ROOT_TREE_CATEGORIES
+    HIDDEN_ROOT_TREE_CATEGORIES_INPUT = tuple(HIDDEN_ROOT_TREE_CATEGORIES_JSON) + (
+        "App.Store",
+        "AppStore",
+        "BCC.News",
+        "BCCNews",
+        "Bookmarks",
+        "Browser.Session",
+        "BrowserSession",
+        "Computer",
+        "Files",
+        "Global.Store",
+        "GlobalStore",
+        "Esc.Menu",
+        "EscMenu",
+        "Global.Variables",
+        "GlobalVariables",
+        "Hacked",
+        "Hackhub",
+        "Installed.Apps",
+        "InstalledApps",
+        "Kisscord",
+        "Mails",
+        "Personal.Info",
+        "PersonalInfo",
+        "Phone.Call",
+        "PhoneCall",
+        "Phone.Messages",
+        "PhoneMessages",
+        "Process",
+        "Program.Sizes",
+        "ProgramSizes",
+        "Quests",
+        "Save",
+        "Scoutify",
+        "Skills",
+        "stats",
+        "Taskbar",
+        "Terminal",
+        "Twotter",
+        "Typewriter",
+        "Website.Templates",
+        "WebsiteTemplates",
+    )
+    HIDDEN_ROOT_TREE_KEYS_JSON = {
+        str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES_JSON
+    }
+    HIDDEN_ROOT_TREE_KEYS_INPUT = {
+        str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES_INPUT
     }
     TREE_B_SAFE_DISPLAY_LABELS = dict(app_constants.TREE_B_SAFE_DISPLAY_LABELS)
     # Snapshot for re-installing header A/B controls later with exact previous values.
@@ -199,12 +249,47 @@ class JsonEditor:
     TREE_MAIN_MARKER_SHA256 = dict(app_constants.TREE_MAIN_MARKER_SHA256)
     TREE_B2_MARKER_SHA256 = dict(app_constants.TREE_B2_MARKER_SHA256)
     # Add root category names here to disable INPUT-mode editing for that branch.
-    INPUT_MODE_DISABLED_ROOT_CATEGORIES = ()
+    INPUT_MODE_DISABLED_ROOT_CATEGORIES = (
+        "Database",
+        "Mail.Accounts",
+        "MailAccounts",
+        "Network",
+        "Phone",
+        "Skypersky",
+        "Suspicion",
+    )
     INPUT_MODE_DISABLED_ROOT_KEYS = {
         str(name).strip().casefold() for name in INPUT_MODE_DISABLED_ROOT_CATEGORIES
     }
+    # INPUT tree expand-block policy:
+    # Root categories listed here stay collapsed in INPUT mode (JSON mode unaffected).
+    INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES = (
+        "Bank",
+        "Phone",
+        "Skypersky",
+        "Database",
+        "Mail.Accounts",
+        "MailAccounts",
+    )
+    INPUT_MODE_NO_EXPAND_ROOT_KEYS = {
+        str(name).strip().casefold() for name in INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES
+    }
+    # INPUT marker override policy:
+    # Render red main arrows for selected root categories in INPUT mode only.
+    INPUT_MODE_RED_ARROW_ROOT_CATEGORIES = (
+        "Bank",
+        "Phone",
+        "Suspicion",
+        "Skypersky",
+        "Database",
+        "Mail.Accounts",
+        "MailAccounts",
+    )
+    INPUT_MODE_RED_ARROW_ROOT_KEYS = {
+        str(name).strip().casefold() for name in INPUT_MODE_RED_ARROW_ROOT_CATEGORIES
+    }
     INPUT_MODE_DISABLED_CATEGORY_MESSAGE = (
-        "This Category Is Not Editable In INPUT Mode Due To Core Game Information Could Get Corrupted"
+        "Category Is Still Under Developement"
     )
     # Update orchestration helpers keep these message templates visible in editor source.
     UPDATE_PREPARING_OVERLAY_MESSAGE = "Preparing update...\nThe app will restart automatically."
@@ -258,11 +343,11 @@ if not install_started:
         self._input_mode_field_specs = []
         self._input_mode_current_path = []
         self._input_mode_no_fields_label = None
-        # INPUT mode gate (locked by default): set HACKHUB_ENABLE_INPUT_MODE=1 to enable.
-        self._input_mode_public_enabled = (
-            str(os.environ.get("HACKHUB_ENABLE_INPUT_MODE", "0")).strip().lower()
-            in ("1", "true", "yes", "on")
-        )
+        self._input_mode_last_render_item = None
+        self._input_mode_last_render_path_key = None
+        self._input_mode_force_refresh = True
+        # INPUT mode is now public by default; keep flag for compatibility checks.
+        self._input_mode_public_enabled = True
         self._app_theme_variant = "SIINDBAD"
         self._app_theme_labels = {}
         self._toolbar_style_variant = "B"
@@ -449,6 +534,7 @@ if not install_started:
         self._font_size = 10  # Default font size
         self._auto_apply_pending = False
         self._auto_apply_in_progress = False
+        self._pending_insert_restore_index = ""
         self._diag_event_seq = 0
         self._diag_action = "startup:0"
         self._error_visual_mode = "guide"
@@ -878,6 +964,23 @@ if not install_started:
         except Exception:
             pass
 
+    def _is_bank_input_style_path(self, path):
+        normalized = list(path or [])
+        if len(normalized) != 1:
+            return False
+        return self._input_mode_root_key_for_path(normalized) == "bank"
+
+    def _collect_bank_input_rows(self, value, max_rows=40):
+        return input_bank_style_service.collect_bank_input_rows(value, max_rows=max_rows)
+
+    def _render_bank_input_style_rows(self, host, normalized_path, row_defs):
+        input_bank_style_service.render_bank_input_style_rows(
+            self,
+            host,
+            normalized_path,
+            row_defs,
+        )
+
     def _refresh_input_mode_fields(self, path, value):
         host = getattr(self, "_input_mode_fields_host", None)
         if host is None:
@@ -890,24 +993,6 @@ if not install_started:
         theme = getattr(self, "_theme", {})
         panel_bg = theme.get("panel", "#161b24")
         host.configure(bg=panel_bg)
-        if not bool(getattr(self, "_input_mode_public_enabled", False)):
-            notice = tk.Label(
-                host,
-                text=(
-                    "This feature is still being developed and will be released at a later time.\n\n"
-                    "Please use JSON mode for now."
-                ),
-                bg=panel_bg,
-                fg="#ffffff",
-                anchor="w",
-                justify="left",
-                padx=12,
-                pady=12,
-                font=("Bahnschrift", 12, "bold"),
-            )
-            notice.pack(fill="x", expand=False)
-            self._input_mode_no_fields_label = notice
-            return
         normalized_path = list(path or [])
         if self._is_input_mode_category_disabled(normalized_path):
             variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -921,7 +1006,7 @@ if not install_started:
                 justify="left",
                 padx=12,
                 pady=12,
-                font=(self._credit_name_font()[0], 9, "bold"),
+                font=(self._credit_name_font()[0], 11, "bold"),
             )
             disabled.pack(fill="x", expand=False)
             self._input_mode_no_fields_label = disabled
@@ -949,7 +1034,10 @@ if not install_started:
             empty.pack(fill="x", expand=False)
             self._input_mode_no_fields_label = empty
             return
-        if len(normalized_path) == 1:
+        if (
+            len(normalized_path) == 1
+            and self._input_mode_root_key_for_path(normalized_path) == "network"
+        ):
             variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
             fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
             empty = tk.Label(
@@ -961,12 +1049,30 @@ if not install_started:
                 justify="left",
                 padx=12,
                 pady=12,
-                font=(self._credit_name_font()[0], 9, "bold"),
+                font=(self._credit_name_font()[0], 11, "bold"),
             )
             empty.pack(fill="x", expand=False)
             self._input_mode_no_fields_label = empty
+            self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+            self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+            self._input_mode_force_refresh = False
             return
-
+        if self._is_bank_input_style_path(normalized_path):
+            bank_rows = self._collect_bank_input_rows(value)
+            if bank_rows:
+                self._render_bank_input_style_rows(host, normalized_path, bank_rows)
+                host.update_idletasks()
+                canvas = getattr(self, "_input_mode_canvas", None)
+                if canvas is not None:
+                    try:
+                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
+                        canvas.yview_moveto(0.0)
+                    except Exception:
+                        pass
+                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+                self._input_mode_force_refresh = False
+                return
         specs = self._collect_input_field_specs(value, normalized_path)
         if not specs:
             variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -1038,6 +1144,24 @@ if not install_started:
                 canvas.yview_moveto(0.0)
             except Exception:
                 pass
+        self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+        self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+        self._input_mode_force_refresh = False
+
+    def _input_mode_path_key(self, path):
+        if isinstance(path, list):
+            return tuple(self._input_mode_path_key(token) for token in path)
+        if isinstance(path, tuple):
+            return tuple(self._input_mode_path_key(token) for token in path)
+        return path
+
+    def _can_skip_input_mode_refresh(self, item_id, target_path):
+        if bool(getattr(self, "_input_mode_force_refresh", False)):
+            return False
+        last_item = getattr(self, "_input_mode_last_render_item", None)
+        last_key = getattr(self, "_input_mode_last_render_path_key", None)
+        next_key = self._input_mode_path_key(target_path)
+        return bool(item_id and item_id == last_item and next_key == last_key)
 
     def _refresh_editor_mode_view(self):
         text = getattr(self, "text", None)
@@ -1046,6 +1170,7 @@ if not install_started:
         if text is None or input_container is None or text_scroll is None:
             return
         mode = str(getattr(self, "_editor_mode", "JSON")).upper()
+        self._apply_tree_mode_style(mode)
         show_input = (mode == "INPUT")
         editor_mode_top_inset = 24
         if show_input:
@@ -1084,6 +1209,10 @@ if not install_started:
             text_scroll.pack(fill="y", side="right", pady=(editor_mode_top_inset, 0))
         if getattr(self, "data", None) is None:
             self._show_json_no_file_message()
+
+    def _apply_tree_mode_style(self, mode=None):
+        use_mode = str(mode or getattr(self, "_editor_mode", "JSON")).upper()
+        tree_mode_service.apply_tree_mode(self, use_mode)
 
     def _show_json_no_file_message(self):
         text = getattr(self, "text", None)
@@ -1137,8 +1266,14 @@ if not install_started:
         if not self._is_edit_allowed(path, working):
             return
         self._set_value(path, working)
-        self._populate_children(item_id)
-        self.on_select(None)
+        if self._is_bank_input_style_path(path):
+            # Bank INPUT rows already reflect the edited value; skip full repaint to avoid flicker.
+            self._input_mode_last_render_item = item_id
+            self._input_mode_last_render_path_key = self._input_mode_path_key(path)
+            self._input_mode_force_refresh = False
+        else:
+            self._populate_children(item_id)
+            self.on_select(None)
         self.set_status("Edited")
 
     def _input_mode_root_key_for_path(self, path):
@@ -1148,11 +1283,27 @@ if not install_started:
         root = normalized[0]
         return self._normalize_root_tree_key(root)
 
+    def _hidden_root_tree_keys_for_mode(self, mode=None):
+        use_mode = str(mode or getattr(self, "_editor_mode", "JSON")).upper()
+        if use_mode == "INPUT":
+            return self.HIDDEN_ROOT_TREE_KEYS_INPUT
+        return self.HIDDEN_ROOT_TREE_KEYS_JSON
+
     def _is_input_mode_category_disabled(self, path):
         root_key = self._input_mode_root_key_for_path(path)
         if not root_key:
             return False
         return root_key in self.INPUT_MODE_DISABLED_ROOT_KEYS
+
+    def _is_input_tree_expand_blocked(self, item_id):
+        # INPUT-only gate: keep configured root categories collapsed in tree mode.
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return False
+        path = self.item_to_path.get(item_id)
+        if not isinstance(path, list) or len(path) != 1:
+            return False
+        root_key = self._normalize_root_tree_key(path[0]) if path else ""
+        return root_key in self.INPUT_MODE_NO_EXPAND_ROOT_KEYS
 
     def _editor_mode_tab_photo(self, active=False):
         theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -1202,11 +1353,14 @@ if not install_started:
         mode = str(mode).upper()
         if mode not in ("INPUT", "JSON"):
             return
+        previous_mode = str(getattr(self, "_editor_mode", "JSON")).upper()
         self._editor_mode = mode
+        if mode == "INPUT":
+            self._input_mode_force_refresh = True
+        if mode != previous_mode and self._mode_switch_requires_tree_rebuild(previous_mode, mode):
+            self._rebuild_tree_for_mode_change()
         self._update_editor_mode_controls()
         self._refresh_editor_mode_view()
-        if mode == "INPUT" and not bool(getattr(self, "_input_mode_public_enabled", False)):
-            self.set_status("INPUT mode is still in development. Use JSON mode for edits.")
         if mode == "JSON":
             try:
                 self.on_select(None)
@@ -1256,8 +1410,14 @@ if not install_started:
                 )
             except Exception:
                 continue
-        if active_mode == "INPUT":
-            self._refresh_editor_mode_view()
+        # Avoid duplicate mode-view refresh here; _set_editor_mode performs one canonical refresh pass.
+
+    def _mode_switch_requires_tree_rebuild(self, previous_mode, next_mode):
+        # Rebuild tree only when root-hide policy changes between modes.
+        # This prevents unnecessary rebuild flicker when both modes share the same hide set.
+        prev_hidden = self._hidden_root_tree_keys_for_mode(previous_mode)
+        next_hidden = self._hidden_root_tree_keys_for_mode(next_mode)
+        return prev_hidden != next_hidden
 
     def _refresh_input_mode_theme_widgets(self):
         theme = getattr(self, "_theme", {}) or {}
@@ -3976,10 +4136,15 @@ if not install_started:
             popup.update_idletasks()
             req_w = max(206, int(popup.winfo_reqwidth()))
             req_h = max(1, int(popup.winfo_reqheight()))
-            screen_w = max(req_w + 2, int(self.root.winfo_screenwidth()))
-            screen_h = max(req_h + 2, int(self.root.winfo_screenheight()))
-            x = max(2, min(int(popup_x), screen_w - req_w - 2))
-            y = max(2, min(int(popup_y), screen_h - req_h - 2))
+            # Use virtual desktop bounds so popup follows the app across monitors.
+            vroot_x = int(self.root.winfo_vrootx())
+            vroot_y = int(self.root.winfo_vrooty())
+            screen_w = max(req_w + 2, int(self.root.winfo_vrootwidth()))
+            screen_h = max(req_h + 2, int(self.root.winfo_vrootheight()))
+            max_x = max(vroot_x + 2, (vroot_x + screen_w) - req_w - 2)
+            max_y = max(vroot_y + 2, (vroot_y + screen_h) - req_h - 2)
+            x = max(vroot_x + 2, min(int(popup_x), max_x))
+            y = max(vroot_y + 2, min(int(popup_y), max_y))
             # Keep natural widget size; only control position.
             popup.geometry(f"+{x}+{y}")
             popup.deiconify()
@@ -3988,8 +4153,10 @@ if not install_started:
             popup.update_idletasks()
             final_w = max(req_w, int(popup.winfo_width()))
             final_h = max(req_h, int(popup.winfo_height()))
-            x = max(2, min(int(popup_x), int(self.root.winfo_screenwidth()) - final_w - 2))
-            y = max(2, min(int(popup_y), int(self.root.winfo_screenheight()) - final_h - 2))
+            max_x = max(vroot_x + 2, (vroot_x + screen_w) - final_w - 2)
+            max_y = max(vroot_y + 2, (vroot_y + screen_h) - final_h - 2)
+            x = max(vroot_x + 2, min(int(popup_x), max_x))
+            y = max(vroot_y + 2, min(int(popup_y), max_y))
             popup.geometry(f"+{x}+{y}")
         except Exception:
             return False
@@ -4027,13 +4194,17 @@ if not install_started:
         self._text_context_menu_hover_action = None
 
         menu_req_h = 0
-        screen_h = 0
+        vroot_top = 2
+        vroot_bottom = 0
         text_bottom = None
         root_bottom = None
         try:
             popup.update_idletasks()
             menu_req_h = max(1, int(popup.winfo_reqheight()))
-            screen_h = max(menu_req_h + 2, int(self.root.winfo_screenheight()))
+            vroot_y = int(self.root.winfo_vrooty())
+            vroot_h = max(menu_req_h + 2, int(self.root.winfo_vrootheight()))
+            vroot_top = vroot_y + 2
+            vroot_bottom = vroot_y + vroot_h
             try:
                 text_bottom = int(self.text.winfo_rooty()) + int(self.text.winfo_height())
             except Exception:
@@ -4044,7 +4215,8 @@ if not install_started:
                 root_bottom = None
         except Exception:
             menu_req_h = 0
-            screen_h = 0
+            vroot_top = 2
+            vroot_bottom = 0
             text_bottom = None
             root_bottom = None
 
@@ -4053,9 +4225,14 @@ if not install_started:
                 y = int(preferred_y)
             except Exception:
                 return preferred_y
-            if menu_req_h <= 0 or screen_h <= 0:
+            if menu_req_h <= 0:
                 return y
-            container_bottom = int(screen_h)
+            container_bottom = int(vroot_bottom)
+            if container_bottom <= 0:
+                try:
+                    container_bottom = max(menu_req_h + 2, int(self.root.winfo_screenheight()))
+                except Exception:
+                    container_bottom = menu_req_h + 2
             try:
                 if text_bottom is not None and int(text_bottom) > 0:
                     container_bottom = min(container_bottom, int(text_bottom))
@@ -4070,14 +4247,14 @@ if not install_started:
             if y > bottom_limit and anchor_top is not None:
                 try:
                     above_y = int(anchor_top) - menu_req_h - 2
-                    if above_y >= 2:
+                    if above_y >= int(vroot_top):
                         return above_y
                 except Exception:
                     pass
             if y > bottom_limit:
-                y = max(2, bottom_limit)
-            if y < 2:
-                y = 2
+                y = max(int(vroot_top), bottom_limit)
+            if y < int(vroot_top):
+                y = int(vroot_top)
             return y
 
         popup_x = None
@@ -4256,6 +4433,48 @@ if not install_started:
         except Exception:
             return False
 
+    def _restore_insert_index(self, restore_index, log_failure=False):
+        """Best-effort cursor restore after local text rewrites or re-render passes."""
+        if not restore_index:
+            return
+        target_line = 1
+        try:
+            target_line = int(self._line_number_from_index(restore_index) or 1)
+        except Exception:
+            target_line = 1
+        try:
+            line_text = str(restore_index).split(".", 1)
+            line_no = max(1, int(line_text[0]))
+            col_no = max(0, int(line_text[1]))
+            max_line = max(1, int(str(self.text.index("end-1c")).split(".", 1)[0]))
+            line_no = min(line_no, max_line)
+            live_line_text = str(self._line_text(line_no) or "")
+            col_no = min(col_no, len(live_line_text))
+            restore_index = f"{line_no}.{col_no}"
+            self.text.mark_set("insert", restore_index)
+            self.text.see(restore_index)
+        except Exception:
+            if not bool(log_failure):
+                return
+            try:
+                marker = type(
+                    "E",
+                    (),
+                    {
+                        "msg": "Cursor restore failed after autofix/apply cycle.",
+                        "lineno": target_line,
+                        "colno": 1,
+                    },
+                )
+                self._log_json_error(
+                    marker,
+                    target_line,
+                    note=f"cursor_restore_failed requested={str(restore_index)}",
+                )
+            except Exception:
+                pass
+            return
+
     def _on_context_autofix(self):
         payload = self._current_overlay_suggestion()
         if not payload:
@@ -4276,24 +4495,13 @@ if not install_started:
             payload.get("after"),
         )
         if changed:
-            if restore_index:
-                try:
-                    line_text = str(restore_index).split(".", 1)
-                    line_no = max(1, int(line_text[0]))
-                    col_no = max(0, int(line_text[1]))
-                    max_line = max(1, int(str(self.text.index("end-1c")).split(".", 1)[0]))
-                    line_no = min(line_no, max_line)
-                    live_line_text = str(self._line_text(line_no) or "")
-                    col_no = min(col_no, len(live_line_text))
-                    restore_index = f"{line_no}.{col_no}"
-                    self.text.mark_set("insert", restore_index)
-                    self.text.see(restore_index)
-                except Exception:
-                    pass
+            self._restore_insert_index(restore_index)
             try:
                 self._apply_json_view_lock_state(path)
             except Exception:
                 pass
+            # Defer final cursor restore until apply_edit() completes and repaints this node.
+            self._pending_insert_restore_index = str(restore_index or "")
             self._auto_apply_pending = True
 
     @staticmethod
@@ -9832,6 +10040,52 @@ if not install_started:
         except Exception:
             return image
 
+    def _is_input_red_arrow_root_path(self, path):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return False
+        if not isinstance(path, list) or len(path) != 1:
+            return False
+        return self._normalize_root_tree_key(path[0]) in self.INPUT_MODE_RED_ARROW_ROOT_KEYS
+
+    def _load_input_bank_red_arrow_icon(self, expandable=False, expanded=False):
+        # INPUT-only Bank marker override: red arrow without affecting JSON marker assets.
+        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+        key = ("INPUT_BANK_ARROW", variant, bool(expandable), bool(expanded))
+        cache = getattr(self, "_tree_marker_icon_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._tree_marker_icon_cache = cache
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        try:
+            image_module = importlib.import_module("PIL.Image")
+            draw_module = importlib.import_module("PIL.ImageDraw")
+            canvas = image_module.new("RGBA", (14, 14), (0, 0, 0, 0))
+            draw = draw_module.Draw(canvas)
+            edge = (255, 128, 128, 255)
+            fill = (208, 62, 62, 255)
+            if expandable:
+                # Expanded uses down arrow; collapsed uses right arrow.
+                points = [(3, 4), (11, 4), (7, 10)] if expanded else [(4, 3), (10, 7), (4, 11)]
+                draw.polygon(points, fill=fill, outline=edge)
+            else:
+                draw.ellipse((4, 4, 9, 9), fill=fill, outline=edge, width=1)
+            # Micro placement tune for INPUT Bank marker: one pixel left and slightly lower.
+            canvas = self._nudge_marker_image_y(canvas, delta_y=0.25)
+            try:
+                shifted = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
+                shifted.alpha_composite(canvas, (-1, 0))
+                canvas = shifted
+            except Exception:
+                pass
+            photo = self._pil_to_photo(canvas)
+            self._bounded_cache_put(cache, key, photo, max_items=128)
+            return photo
+        except Exception:
+            self._bounded_cache_put(cache, key, None, max_items=128)
+            return None
+
     def _refresh_tree_item_markers(self):
         tree = getattr(self, "tree", None)
         if tree is None:
@@ -9857,12 +10111,18 @@ if not install_started:
                 has_children = bool(tree.get_children(item_id))
                 is_expanded = bool(tree.item(item_id, "open")) if has_children else False
                 if depth <= 1:
-                    icon = self._load_tree_marker_icon(
-                        "main",
-                        selected=False,
-                        expandable=has_children,
-                        expanded=is_expanded,
-                    )
+                    if self._is_input_red_arrow_root_path(path):
+                        icon = self._load_input_bank_red_arrow_icon(
+                            expandable=has_children,
+                            expanded=is_expanded,
+                        )
+                    else:
+                        icon = self._load_tree_marker_icon(
+                            "main",
+                            selected=False,
+                            expandable=has_children,
+                            expanded=is_expanded,
+                        )
                 else:
                     icon = self._load_tree_marker_icon(
                         "sub",
@@ -9889,12 +10149,18 @@ if not install_started:
             has_children = bool(tree.get_children(item_id))
             is_expanded = bool(tree.item(item_id, "open")) if has_children else False
             if depth <= 1:
-                icon = self._load_tree_marker_icon(
-                    "main",
-                    selected=False,
-                    expandable=has_children,
-                    expanded=is_expanded,
-                )
+                if self._is_input_red_arrow_root_path(path):
+                    icon = self._load_input_bank_red_arrow_icon(
+                        expandable=has_children,
+                        expanded=is_expanded,
+                    )
+                else:
+                    icon = self._load_tree_marker_icon(
+                        "main",
+                        selected=False,
+                        expandable=has_children,
+                        expanded=is_expanded,
+                    )
             else:
                 icon = self._load_tree_marker_icon(
                     "sub",
@@ -9910,6 +10176,7 @@ if not install_started:
         self.tree.delete(*self.tree.get_children())
         self.item_to_path.clear()
         self._last_tree_selected_item = None
+        self._input_mode_force_refresh = True
         self._reset_find_state()
 
         # Render top-level categories under Tk's implicit root (hidden "root" row).
@@ -9917,6 +10184,39 @@ if not install_started:
         self.item_to_path[""] = []
         self._populate_children("")
         self._refresh_tree_item_markers()
+
+    def _rebuild_tree_for_mode_change(self):
+        tree = getattr(self, "tree", None)
+        if tree is None:
+            return
+        if getattr(self, "data", None) is None:
+            return
+        previous_item = None
+        previous_path = None
+        try:
+            previous_item = tree.focus()
+            previous_path = self.item_to_path.get(previous_item)
+        except Exception:
+            previous_item = None
+            previous_path = None
+        self._rebuild_tree()
+        target_item = None
+        try:
+            if isinstance(previous_path, list):
+                target_item = self._ensure_tree_item_for_path(previous_path)
+            elif (
+                isinstance(previous_path, tuple)
+                and len(previous_path) == 3
+                and previous_path[0] == "__group__"
+            ):
+                target_item = self._ensure_tree_group_item_loaded(previous_path[1], previous_path[2])
+            if target_item:
+                self._open_to_item(target_item)
+                tree.focus(target_item)
+                tree.selection_set(target_item)
+                tree.see(target_item)
+        except Exception:
+            pass
 
     def _add_placeholder_if_container(self, item_id, value):
         if isinstance(value, (dict, list)) and len(value) > 0:
@@ -9960,6 +10260,10 @@ if not install_started:
 
     def _append_find_search_entries(self, path, value, entries):
         if isinstance(value, dict):
+            hidden_keys_getter = getattr(self, "_hidden_root_tree_keys_for_mode", None)
+            hidden_keys = (
+                hidden_keys_getter() if callable(hidden_keys_getter) else set(getattr(self, "HIDDEN_ROOT_TREE_KEYS", set()))
+            )
             keys = list(value.keys())
             if isinstance(path, list) and len(path) == 0:
                 keys = sorted(
@@ -9970,7 +10274,7 @@ if not install_started:
                 if (
                     isinstance(path, list)
                     and not path
-                    and self._normalize_root_tree_key(key) in self.HIDDEN_ROOT_TREE_KEYS
+                    and self._normalize_root_tree_key(key) in hidden_keys
                 ):
                     continue
                 child_path = path + [key]
@@ -10179,6 +10483,10 @@ if not install_started:
             self.tree.delete(child)
 
         if isinstance(value, dict):
+            hidden_keys_getter = getattr(self, "_hidden_root_tree_keys_for_mode", None)
+            hidden_keys = (
+                hidden_keys_getter() if callable(hidden_keys_getter) else set(getattr(self, "HIDDEN_ROOT_TREE_KEYS", set()))
+            )
             keys = list(value.keys())
             if isinstance(path, list) and len(path) == 0:
                 # UI-only ordering for top-level categories; does not mutate save data.
@@ -10190,7 +10498,7 @@ if not install_started:
                 if (
                     isinstance(path, list)
                     and not path
-                    and self._normalize_root_tree_key(key) in self.HIDDEN_ROOT_TREE_KEYS
+                    and self._normalize_root_tree_key(key) in hidden_keys
                 ):
                     continue
                 level_tag = "tree-main-level" if isinstance(path, list) and len(path) == 0 else "tree-sub-level"
@@ -10329,6 +10637,14 @@ if not install_started:
     def on_expand(self, event):
         item_id = self.tree.focus()
         if item_id:
+            if self._is_input_tree_expand_blocked(item_id):
+                try:
+                    self.tree.item(item_id, open=False)
+                    self.root.after_idle(lambda iid=item_id: self.tree.item(iid, open=False))
+                except Exception:
+                    pass
+                self.set_status("INPUT mode: Bank subcategories are disabled.")
+                return "break"
             self._populate_children(item_id)
 
     def on_collapse(self, event):
@@ -10336,6 +10652,8 @@ if not install_started:
 
     def _tree_item_can_toggle(self, item_id):
         if not item_id:
+            return False
+        if self._is_input_tree_expand_blocked(item_id):
             return False
         try:
             if self.tree.get_children(item_id):
@@ -10381,6 +10699,23 @@ if not install_started:
             return None
         return "break"
 
+    def _on_tree_double_click_guard(self, event):
+        tree = self.tree
+        item_id = tree.identify_row(event.y)
+        if not item_id:
+            return None
+        if not self._is_input_tree_expand_blocked(item_id):
+            return None
+        try:
+            tree.focus(item_id)
+            tree.selection_set(item_id)
+            tree.item(item_id, open=False)
+            self.root.after_idle(lambda iid=item_id: self.tree.item(iid, open=False))
+        except Exception:
+            return "break"
+        self.set_status("INPUT mode: Bank subcategories are disabled.")
+        return "break"
+
     def on_select(self, event):
         item_id = self.tree.focus()
         if not item_id:
@@ -10403,6 +10738,9 @@ if not install_started:
                 if isinstance(item, dict) and item.get("type") == group
             ]
             if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+                if self._can_skip_input_mode_refresh(item_id, list_path):
+                    self.set_status(f"group {group} ({len(group_items)})")
+                    return
                 self._refresh_input_mode_fields(list_path, group_items)
             else:
                 self._show_value(group_items, path=list_path)
@@ -10410,6 +10748,9 @@ if not install_started:
             return
         value = self._get_value(path)
         if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+            if self._can_skip_input_mode_refresh(item_id, path):
+                self.set_status(self._describe(value))
+                return
             self._refresh_input_mode_fields(path, value)
         else:
             self._show_value(value, path=path)
@@ -10943,9 +11284,6 @@ if not install_started:
             messagebox.showwarning("Not editable", "Select a specific item to edit.")
             return
         if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
-            if not bool(getattr(self, "_input_mode_public_enabled", False)):
-                self.set_status("INPUT mode is still in development. Use JSON mode for edits.")
-                return
             self._apply_input_edit()
             return
 
@@ -10956,13 +11294,21 @@ if not install_started:
             message = self._format_json_error(exc)
             self._error_visual_mode = "guide"
             self._show_error_overlay("Invalid Entry", message)
-            try:
-                self._log_json_error(exc, getattr(exc, "lineno", None) or 1, note="overlay_parse")
-            except Exception:
-                pass
             # Keep highlight-label colors active while JSON is temporarily invalid.
             self._apply_json_view_lock_state(path)
+            # Prefer one specific diagnostic note per apply cycle; use overlay_parse only as fallback.
+            self._last_error_highlight_note = ""
             self._highlight_json_error(exc)
+            highlight_note = str(getattr(self, "_last_error_highlight_note", "") or "").strip()
+            if (
+                not highlight_note
+                or highlight_note == "highlight"
+                or highlight_note.startswith("highlight_failed")
+            ):
+                try:
+                    self._log_json_error(exc, getattr(exc, "lineno", None) or 1, note="overlay_parse")
+                except Exception:
+                    pass
             return
         self._clear_json_error_highlight()
 
@@ -11051,6 +11397,16 @@ if not install_started:
         self._populate_children(item_id)
         # Repaint label highlights after JSON edits so fixed key quotes stay orange.
         self._apply_json_view_lock_state(path)
+        pending_restore = str(getattr(self, "_pending_insert_restore_index", "") or "")
+        self._pending_insert_restore_index = ""
+        if pending_restore:
+            try:
+                if getattr(self, "root", None) is not None:
+                    self.root.after_idle(lambda idx=pending_restore: self._restore_insert_index(idx, log_failure=True))
+                else:
+                    self._restore_insert_index(pending_restore, log_failure=True)
+            except Exception:
+                pass
         self.set_status("Edited")
 
     def _extract_key_name_from_diag_line(self, line_text):
@@ -15877,7 +16233,7 @@ if not install_started:
             if self._missing_list_open_from_extra_data():
                 line = 1
                 start_index = f"{line}.0"
-                end_index = self.text.index(f"{line}.0 lineend +1c")
+                end_index = f"{line}.0"
                 self._apply_json_error_highlight(
                     exc, line, start_index, end_index, note="missing_list_open_start"
                 )
@@ -16007,7 +16363,37 @@ if not install_started:
                             line = blank_line
                         line = max(line, 1)
                         start_index = f"{line}.0"
-                        end_index = f"{line}.1"
+                        end_index = start_index
+                        self._apply_json_error_highlight(
+                            exc, line, start_index, end_index, note="missing_list_close_before_object_end"
+                        )
+                        return
+                    # If the insertion slot is a blank line right below the current value,
+                    # anchor there to keep the caret at the user's actual edit row.
+                    next_line = max(int(line) + 1, 1)
+                    try:
+                        next_text = str(self._line_text(next_line) or "")
+                        after_next_text = str(self._line_text(next_line + 1) or "")
+                        current_line_text = str(self._line_text(line) or "")
+                    except Exception:
+                        next_text = ""
+                        after_next_text = ""
+                        current_line_text = ""
+                    try:
+                        if (not next_text.strip()) and current_line_text.strip().startswith('"'):
+                            line = next_line
+                            start_index = f"{line}.0"
+                            end_index = start_index
+                            self._apply_json_error_highlight(
+                                exc, line, start_index, end_index, note="missing_list_close_before_object_end"
+                            )
+                            return
+                    except Exception:
+                        pass
+                    if (not next_text.strip()) and after_next_text.strip().startswith("}"):
+                        line = next_line
+                        start_index = f"{line}.0"
+                        end_index = start_index
                         self._apply_json_error_highlight(
                             exc, line, start_index, end_index, note="missing_list_close_before_object_end"
                         )
@@ -16287,7 +16673,7 @@ if not install_started:
                 if self._missing_list_open_top_level():
                     line = 1
                     start_index = f"{line}.0"
-                    end_index = self.text.index(f"{line}.0 lineend +1c")
+                    end_index = f"{line}.0"
                 else:
                     next_line = self._next_non_empty_line(line)
                     if next_line:
@@ -16322,6 +16708,7 @@ if not install_started:
         # - locked_* -> highlight_restore
         # - overlay_* -> overlay_parse
         # - highlight_failed* -> highlight_internal
+        # - cursor_restore* -> cursor_restore
         # - spacing_*, missing_phone*, invalid_email* -> input_validation
         # - symbol_* and symbol-type invalid_* -> symbol_recovery
         # - everything else -> json_highlight

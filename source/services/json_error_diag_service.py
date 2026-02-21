@@ -14,6 +14,8 @@ def diag_system_from_note(note, is_symbol_error_note=None):
         return "overlay_parse"
     if note_text.startswith("highlight_failed"):
         return "highlight_internal"
+    if note_text.startswith("cursor_restore"):
+        return "cursor_restore"
     if (
         note_text.startswith("spacing_")
         or note_text.startswith("missing_phone")

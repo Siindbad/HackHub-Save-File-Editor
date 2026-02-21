@@ -64,6 +64,7 @@ def build_ui(owner, tk, ttk):
     owner.tree.configure(yscrollcommand=tree_scroll.set)
 
     owner.tree.bind("<Button-1>", owner._on_tree_click_toggle, add="+")
+    owner.tree.bind("<Double-1>", owner._on_tree_double_click_guard, add="+")
     owner.tree.bind("<<TreeviewOpen>>", owner.on_expand)
     owner.tree.bind("<<TreeviewClose>>", owner.on_collapse)
     owner.tree.bind("<<TreeviewSelect>>", owner.on_select)
@@ -287,5 +288,4 @@ def build_ui(owner, tk, ttk):
         owner._schedule_theme_asset_prewarm(targets=(other_variant,), delay_ms=650)
         if owner._auto_update_startup_enabled():
             owner._schedule_auto_update_check(delay_ms=500)
-
 

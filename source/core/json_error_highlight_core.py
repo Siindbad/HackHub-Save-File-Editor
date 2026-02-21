@@ -146,7 +146,7 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
         if owner._missing_list_open_from_extra_data():
             line = 1
             start_index = f"{line}.0"
-            end_index = owner.text.index(f"{line}.0 lineend +1c")
+            end_index = f"{line}.0"
             apply_highlight_fn(owner, 
                 exc, line, start_index, end_index, note="missing_list_open_start"
             )
@@ -276,7 +276,37 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
                         line = blank_line
                     line = max(line, 1)
                     start_index = f"{line}.0"
-                    end_index = f"{line}.1"
+                    end_index = start_index
+                    apply_highlight_fn(owner, 
+                        exc, line, start_index, end_index, note="missing_list_close_before_object_end"
+                    )
+                    return
+                # If the insertion slot is a blank line right below the current value,
+                # anchor there to keep the caret at the user's actual edit row.
+                next_line = max(int(line) + 1, 1)
+                try:
+                    next_text = str(owner._line_text(next_line) or "")
+                    after_next_text = str(owner._line_text(next_line + 1) or "")
+                    current_line_text = str(owner._line_text(line) or "")
+                except Exception:
+                    next_text = ""
+                    after_next_text = ""
+                    current_line_text = ""
+                try:
+                    if (not next_text.strip()) and current_line_text.strip().startswith('"'):
+                        line = next_line
+                        start_index = f"{line}.0"
+                        end_index = start_index
+                        apply_highlight_fn(owner, 
+                            exc, line, start_index, end_index, note="missing_list_close_before_object_end"
+                        )
+                        return
+                except Exception:
+                    pass
+                if (not next_text.strip()) and after_next_text.strip().startswith("}"):
+                    line = next_line
+                    start_index = f"{line}.0"
+                    end_index = start_index
                     apply_highlight_fn(owner, 
                         exc, line, start_index, end_index, note="missing_list_close_before_object_end"
                     )
@@ -556,7 +586,7 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
             if owner._missing_list_open_top_level():
                 line = 1
                 start_index = f"{line}.0"
-                end_index = owner.text.index(f"{line}.0 lineend +1c")
+                end_index = f"{line}.0"
             else:
                 next_line = owner._next_non_empty_line(line)
                 if next_line:
@@ -576,5 +606,3 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
         except Exception:
             pass
         return
-
-

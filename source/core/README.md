@@ -1,5 +1,7 @@
 # Core Suite
 
+Last sync: 2026-02-20 (fixed Extra data and missing-list-close insertion highlight index targeting to preserve cursor anchor line).
+
 | Module | Purpose |
 | --- | --- |
 | `constants.py` | Defines shared static configuration values used across editor components, including updater/bug-report token env names, bug-report destination, screenshot-upload limits, and submit cooldown settings. |

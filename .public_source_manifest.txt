@@ -499,6 +499,7 @@ source/services/error_overlay_service.py
 source/services/error_service.py
 source/services/footer_service.py
 source/services/highlight_label_service.py
+source/services/input_bank_style_service.py
 source/services/input_mode_service.py
 source/services/json_error_diag_service.py
 source/services/json_error_highlight_render_service.py
@@ -510,6 +511,7 @@ source/services/startup_loader_ui_service.py
 source/services/theme_asset_service.py
 source/services/theme_service.py
 source/services/toolbar_service.py
+source/services/tree_mode_service.py
 source/services/tree_view_service.py
 source/services/ui_build_service.py
 source/services/update_orchestrator_service.py
