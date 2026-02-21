@@ -133,6 +133,10 @@ def render_database_grades_matrix(owner, host, normalized_path, matrix_payload):
         ["Segoe UI", "Bahnschrift", "Segoe UI Semibold"],
         owner._credit_name_font()[0],
     )
+    header_size = owner._input_mode_font_size(8, min_size=7, max_size=16)
+    student_size = owner._input_mode_font_size(9, min_size=8, max_size=18)
+    input_size = owner._input_mode_font_size(8, min_size=7, max_size=16)
+    value_size = owner._input_mode_font_size(9, min_size=8, max_size=18)
 
     table_frame = tk.Frame(
         host,
@@ -169,7 +173,7 @@ def render_database_grades_matrix(owner, host, normalized_path, matrix_payload):
             justify=justify,
             padx=4 if col == 0 else 2,
             pady=2,
-            font=(label_family, 8, "bold"),
+            font=(label_family, header_size, "bold"),
         )
         label.pack(fill="both", expand=True)
 
@@ -224,7 +228,7 @@ def render_database_grades_matrix(owner, host, normalized_path, matrix_payload):
             justify="left",
             padx=4,
             pady=4,
-            font=(label_family, 9, "bold"),
+            font=(label_family, student_size, "bold"),
         )
         student_label.grid(row=0, column=0, sticky="w")
 
@@ -251,7 +255,7 @@ def render_database_grades_matrix(owner, host, normalized_path, matrix_payload):
                     highlightthickness=1,
                     highlightbackground=input_edge,
                     highlightcolor=input_edge,
-                    font=(input_family, 8, "bold"),
+                    font=(input_family, input_size, "bold"),
                 )
                 # Align editable inputs with non-editable numeric labels in the same row.
                 entry.pack(anchor="center", pady=(4, 0), ipady=1)
@@ -275,6 +279,6 @@ def render_database_grades_matrix(owner, host, normalized_path, matrix_payload):
                     justify="center",
                     padx=1,
                     pady=4,
-                    font=(input_family, 9, "bold"),
+                    font=(input_family, value_size, "bold"),
                 )
                 value_label.pack(anchor="center")

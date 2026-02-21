@@ -112,6 +112,10 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
         ["Segoe UI", "Bahnschrift", "Segoe UI Semibold"],
         owner._credit_name_font()[0],
     )
+    ip_size = owner._input_mode_font_size(11, min_size=9, max_size=20)
+    meta_size = owner._input_mode_font_size(9, min_size=8, max_size=17)
+    label_size = owner._input_mode_font_size(9, min_size=8, max_size=17)
+    input_size = owner._input_mode_font_size(9, min_size=8, max_size=17)
 
     for row in row_defs:
         row_frame = tk.Frame(host, bg=panel_bg, bd=0, highlightthickness=1, highlightbackground=frame_edge)
@@ -127,7 +131,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
             bg=left_bg,
             fg=name_fg,
             anchor="w",
-            font=(input_family, 11, "bold"),
+            font=(input_family, ip_size, "bold"),
         ).pack(anchor="w", padx=7, pady=(4, 1))
         tk.Label(
             left,
@@ -135,7 +139,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
             bg=left_bg,
             fg=meta_fg,
             anchor="w",
-            font=(input_family, 9, "bold"),
+            font=(input_family, meta_size, "bold"),
         ).pack(anchor="w", padx=7)
         tk.Label(
             left,
@@ -143,7 +147,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
             bg=left_bg,
             fg=meta_fg,
             anchor="w",
-            font=(input_family, 9, "bold"),
+            font=(input_family, meta_size, "bold"),
         ).pack(anchor="w", padx=7)
         user_value = str(row.get("user", "") or "").strip() or "N/A"
         pass_value = str(row.get("password", "") or "").strip() or "N/A"
@@ -153,7 +157,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
             bg=left_bg,
             fg=meta_fg if user_value != "N/A" else na_fg,
             anchor="w",
-            font=(input_family, 9, "bold"),
+            font=(input_family, meta_size, "bold"),
         ).pack(anchor="w", padx=7)
         tk.Label(
             left,
@@ -161,7 +165,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
             bg=left_bg,
             fg=meta_fg if pass_value != "N/A" else na_fg,
             anchor="w",
-            font=(input_family, 9, "bold"),
+            font=(input_family, meta_size, "bold"),
         ).pack(anchor="w", padx=7, pady=(0, 4))
 
         right = tk.Frame(row_frame, bg=panel_bg, bd=0, highlightthickness=0)
@@ -193,7 +197,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
                 fg=label_fg,
                 anchor="center",
                 justify="center",
-                font=(label_family, 9, "bold"),
+                font=(label_family, label_size, "bold"),
             ).pack(fill="x", padx=3, pady=(3, 2))
             _render_field_input(
                 owner,
@@ -201,6 +205,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
                 spec=rule["port"],
                 normalized_path=normalized_path,
                 input_family=input_family,
+                input_size=input_size,
                 input_bg=input_bg,
                 input_fg=input_fg,
                 bool_false_fg=bool_false_fg,
@@ -214,7 +219,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
                 fg=label_fg,
                 anchor="center",
                 justify="center",
-                font=(label_family, 9, "bold"),
+                font=(label_family, label_size, "bold"),
             ).pack(fill="x", padx=3, pady=(7, 2))
             _render_field_input(
                 owner,
@@ -222,6 +227,7 @@ def render_firewall_input_rows(owner, host, normalized_path, row_defs):
                 spec=rule["allowed"],
                 normalized_path=normalized_path,
                 input_family=input_family,
+                input_size=input_size,
                 input_bg=input_bg,
                 input_fg=input_fg,
                 bool_false_fg=bool_false_fg,
@@ -236,6 +242,7 @@ def _render_field_input(
     spec,
     normalized_path,
     input_family,
+    input_size,
     input_bg,
     input_fg,
     bool_false_fg,
@@ -262,7 +269,7 @@ def _render_field_input(
         highlightthickness=1,
         highlightbackground=input_edge,
         highlightcolor=input_edge,
-        font=(input_family, 9, "bold"),
+        font=(input_family, input_size, "bold"),
     )
     placeholder_text = None
     if str(text_value).strip() == "":

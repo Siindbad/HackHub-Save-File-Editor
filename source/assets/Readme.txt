@@ -22,6 +22,13 @@ ENGINEERS : SIINDBAD & KAMUE
 [ USAGE ]
 =================================================================================
 
+TWO Buttons Are available Below the README button
+
+JSON : Raw Data Format
+INPUT : A More Simple Format Focusing On Certain Categories
+
+:: HOW TO USE THE APPLICATION ::
+----------------------------------------------------------------------------------
 1. In-Game : "F1" and type "save.export" : A save file with a location
 2. Navigate To That Save File Location in Your Windows File Explorer
 3. Create a "Backup" Folder : (or any name you prefer) : where the file is
@@ -31,6 +38,7 @@ ENGINEERS : SIINDBAD & KAMUE
 7. If Any Errors Displayed, fix them and hit "Apply Edit" again
 8. "Export" The save in "Backup" Folder you created (or any folder you made)
 9. At MAIN MENU of the game : Use F1 then type "save.import" and select the file
+----------------------------------------------------------------------------------
 
 =================================================================================
 
@@ -88,4 +96,3 @@ there HackTheCube web address if they deleted the email.
 =================================================================================
 
 - MIT License. See the LICENSE file in the public repo README.md.
-

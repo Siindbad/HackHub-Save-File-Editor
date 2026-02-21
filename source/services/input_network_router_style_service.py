@@ -132,6 +132,10 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
         ["Segoe UI", "Bahnschrift", "Segoe UI Semibold"],
         owner._credit_name_font()[0],
     )
+    ip_size = owner._input_mode_font_size(11, min_size=9, max_size=20)
+    meta_size = owner._input_mode_font_size(9, min_size=8, max_size=17)
+    label_size = owner._input_mode_font_size(9, min_size=8, max_size=17)
+    input_size = owner._input_mode_font_size(9, min_size=8, max_size=17)
 
     for row in row_defs:
         row_frame = tk.Frame(
@@ -149,8 +153,8 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
 
         left = tk.Frame(row_frame, bg=left_bg, bd=0, highlightthickness=1, highlightbackground=frame_edge)
         left.grid(row=0, column=0, sticky="nsew", padx=(5, 3), pady=6)
-        tk.Label(left, text=row.get("ip", ""), bg=left_bg, fg=name_fg, anchor="w", font=(input_family, 11, "bold")).pack(anchor="w", padx=7, pady=(4, 1))
-        tk.Label(left, text=f"LAN: {row.get('lan_ip', '')}", bg=left_bg, fg=meta_fg, anchor="w", font=(input_family, 9, "bold")).pack(anchor="w", padx=7)
+        tk.Label(left, text=row.get("ip", ""), bg=left_bg, fg=name_fg, anchor="w", font=(input_family, ip_size, "bold")).pack(anchor="w", padx=7, pady=(4, 1))
+        tk.Label(left, text=f"LAN: {row.get('lan_ip', '')}", bg=left_bg, fg=meta_fg, anchor="w", font=(input_family, meta_size, "bold")).pack(anchor="w", padx=7)
         model_value = str(row.get("model", "") or "").strip()
         if model_value:
             tk.Label(
@@ -159,7 +163,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
                 bg=left_bg,
                 fg=meta_fg,
                 anchor="w",
-                font=(input_family, 9, "bold"),
+                font=(input_family, meta_size, "bold"),
             ).pack(anchor="w", padx=7)
         wifi_name = str(row.get("wifi_name", "") or "").strip()
         signal_value = str(row.get("signal", "") or "").strip()
@@ -177,7 +181,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
                 bg=left_bg,
                 fg=meta_fg,
                 anchor="w",
-                font=(input_family, 9, "bold"),
+                font=(input_family, meta_size, "bold"),
             ).pack(anchor="w", padx=7)
             tk.Label(
                 left,
@@ -185,7 +189,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
                 bg=left_bg,
                 fg=meta_fg if signal_value else na_fg,
                 anchor="w",
-                font=(input_family, 9, "bold"),
+                font=(input_family, meta_size, "bold"),
             ).pack(anchor="w", padx=7)
             tk.Label(
                 left,
@@ -193,7 +197,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
                 bg=left_bg,
                 fg=meta_fg if wifi_pass else na_fg,
                 anchor="w",
-                font=(input_family, 9, "bold"),
+                font=(input_family, meta_size, "bold"),
             ).pack(anchor="w", padx=7, pady=(0, 4))
         else:
             # Non-WiFi routers skip WiFi/Signal and show account credentials when available.
@@ -204,7 +208,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
                     bg=left_bg,
                     fg=meta_fg,
                     anchor="w",
-                    font=(input_family, 9, "bold"),
+                    font=(input_family, meta_size, "bold"),
                 ).pack(anchor="w", padx=7)
             if user_pass:
                 tk.Label(
@@ -213,7 +217,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
                     bg=left_bg,
                     fg=meta_fg,
                     anchor="w",
-                    font=(input_family, 9, "bold"),
+                    font=(input_family, meta_size, "bold"),
                 ).pack(anchor="w", padx=7, pady=(0, 4))
 
         right = tk.Frame(row_frame, bg=panel_bg, bd=0, highlightthickness=0)
@@ -251,7 +255,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
                 fg=label_fg,
                 anchor="center",
                 justify="center",
-                font=(label_family, 9, "bold"),
+                font=(label_family, label_size, "bold"),
             ).pack(fill="x", padx=3, pady=(3, 2))
             value = spec.get("value")
             text_value = _format_input_text(value)
@@ -272,7 +276,7 @@ def render_router_input_rows(owner, host, normalized_path, row_defs):
                 highlightthickness=1,
                 highlightbackground=input_edge,
                 highlightcolor=input_edge,
-                font=(input_family, 9, "bold"),
+                font=(input_family, input_size, "bold"),
             )
             placeholder_text = None
             if is_version and str(text_value).strip() == "":

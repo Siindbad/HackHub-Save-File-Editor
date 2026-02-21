@@ -588,6 +588,8 @@ if not install_started:
     def _style_input_mode_row_widgets(self, label_widget, input_widget, input_container=None):
         theme = getattr(self, "_theme", {})
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+        label_size = self._input_mode_font_size(8, min_size=7, max_size=16)
+        input_size = self._input_mode_font_size(8, min_size=7, max_size=16)
         label_family = self._resolve_font_family(
             ["Tektur SemiBold", "Tektur Med", "Tektur", "Segoe UI Semibold", "Segoe UI"],
             self._credit_name_font()[0],
@@ -611,7 +613,7 @@ if not install_started:
             label_widget.configure(
                 bg=panel,
                 fg=label_fg,
-                font=(label_family, 8, "bold"),
+                font=(label_family, label_size, "bold"),
             )
         except Exception:
             pass
@@ -634,10 +636,21 @@ if not install_started:
                 highlightthickness=1,
                 highlightbackground=field_edge,
                 highlightcolor=field_edge,
-                font=(input_family, 8, "bold"),
+                font=(input_family, input_size, "bold"),
             )
         except Exception:
             pass
+
+    def _input_mode_font_size(self, base_size, min_size=7, max_size=18):
+        # Keep INPUT rows synced with editor FONT +/- without breaking compact layouts.
+        try:
+            base = int(base_size)
+        except Exception:
+            base = 9
+        editor_size = max(6, min(32, int(round(float(getattr(self, "_font_size", 10) or 10)))))
+        delta = editor_size - 10
+        scaled = base + delta
+        return max(int(min_size), min(int(max_size), int(scaled)))
 
     def _is_bank_input_style_path(self, path):
         normalized = list(path or [])
@@ -771,10 +784,15 @@ if not install_started:
                 justify="left",
                 padx=12,
                 pady=12,
-                font=(self._credit_name_font()[0], 11, "bold"),
+                font=(self._credit_name_font()[0], self._input_mode_font_size(11, min_size=8, max_size=20), "bold"),
             )
             disabled.pack(fill="x", expand=False)
             self._input_mode_no_fields_label = disabled
+            # Track last rendered selection for disabled roots too; otherwise
+            # returning to a previously-rendered category can be incorrectly skipped.
+            self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
+            self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
+            self._input_mode_force_refresh = False
             return
         if len(normalized_path) == 0:
             variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -794,7 +812,7 @@ if not install_started:
                 justify="left",
                 padx=12,
                 pady=12,
-                font=(self._credit_name_font()[0], 9, "bold"),
+                font=(self._credit_name_font()[0], self._input_mode_font_size(9, min_size=8, max_size=18), "bold"),
             )
             empty.pack(fill="x", expand=False)
             self._input_mode_no_fields_label = empty
@@ -819,7 +837,7 @@ if not install_started:
                     justify="left",
                     padx=12,
                     pady=12,
-                    font=(self._credit_name_font()[0], 11, "bold"),
+                    font=(self._credit_name_font()[0], self._input_mode_font_size(11, min_size=8, max_size=20), "bold"),
                 )
                 empty.pack(fill="x", expand=False)
                 self._input_mode_no_fields_label = empty
@@ -934,7 +952,7 @@ if not install_started:
                 justify="left",
                 padx=12,
                 pady=12,
-                font=(self._credit_name_font()[0], 11, "bold"),
+                font=(self._credit_name_font()[0], self._input_mode_font_size(11, min_size=8, max_size=20), "bold"),
             )
             disabled.pack(fill="x", expand=False)
             self._input_mode_no_fields_label = disabled
@@ -955,7 +973,7 @@ if not install_started:
                 justify="left",
                 padx=12,
                 pady=12,
-                font=(self._credit_name_font()[0], 9, "bold"),
+                font=(self._credit_name_font()[0], self._input_mode_font_size(9, min_size=8, max_size=18), "bold"),
             )
             empty.pack(fill="x", expand=False)
             self._input_mode_no_fields_label = empty
@@ -981,7 +999,7 @@ if not install_started:
                 padx=0,
                 pady=0,
                 width=label_width_chars,
-                font=(self._credit_name_font()[0], 8, "bold"),
+                font=(self._credit_name_font()[0], self._input_mode_font_size(8, min_size=7, max_size=16), "bold"),
             )
             label.grid(row=0, column=0, sticky="w", padx=(0, 10))
 
@@ -999,7 +1017,7 @@ if not install_started:
             widget = tk.Entry(
                 value_container,
                 textvariable=var,
-                font=(self._credit_name_font()[0], 8, "bold"),
+                font=(self._credit_name_font()[0], self._input_mode_font_size(8, min_size=7, max_size=16), "bold"),
             )
             self._style_input_mode_row_widgets(label, widget, input_container=value_container)
             initial_token = str(initial).strip().lower()
@@ -1518,11 +1536,15 @@ if not install_started:
         # Theme switch must repaint custom INPUT renderers (Bank/Database) so variant palettes apply.
         if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
             return
-        path = list(getattr(self, "_input_mode_current_path", []) or [])
-        if not path:
-            return
+        item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
         try:
-            value = self._get_value(path)
+            if item_id:
+                path, value, _status_text = self._resolve_input_mode_selection_payload(item_id)
+            else:
+                path = list(getattr(self, "_input_mode_current_path", []) or [])
+                if not path:
+                    return
+                value = self._get_value(path)
         except Exception:
             return
         try:
@@ -4804,6 +4826,8 @@ if not install_started:
         self._refresh_open_readme_window()
         # Keep active warning/error overlays synchronized with font-size changes.
         self._refresh_active_error_theme()
+        # Keep INPUT-mode category views synced to editor font changes.
+        self._refresh_input_mode_theme_widgets()
 
     def _sync_font_size_from_var(self):
         """Read the combobox StringVar and apply it to the internal font size."""

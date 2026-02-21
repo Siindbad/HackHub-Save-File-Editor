@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-21 (added Network FIREWALL Input style service plus prior editor mode/tree/ui service extractions, INPUT nested write/boolean render behavior sync, and themed update warning path sync).
+Last sync: 2026-02-21 (added Network FIREWALL Input style service plus prior editor mode/tree/ui service extractions, INPUT nested write/boolean render behavior sync, INPUT font-size scaling/rerender sync across category renderers, and themed update warning path sync).
 
 | Module | Purpose |
 | --- | --- |
@@ -13,12 +13,12 @@ Last sync: 2026-02-21 (added Network FIREWALL Input style service plus prior edi
 | `error_service.py` | Provides error-system helper logic for before/after suggestion parsing, overlay payload shaping, marker color rules, and theme-aware error palettes. |
 | `footer_service.py` | Provides bottom-footer style and visual spec helpers used by badge/chip layout rendering. |
 | `highlight_label_service.py` | Provides edit-safety helpers for network list/context detection, key-rename guard payload shaping, and global JSON key/value label-policy detection/restore/highlight rules. |
-| `input_bank_style_service.py` | Provides Bank-specific Input-mode row discovery and themed style rendering (account/IBAN labels, provider pill, rounded balance input). |
-| `input_database_style_service.py` | Provides Database Grades Input-mode matrix detection/rendering with editability-aware cells (editable inputs vs centered read-only values). |
+| `input_bank_style_service.py` | Provides Bank-specific Input-mode row discovery and themed style rendering (account/IBAN labels, provider pill, rounded balance input) with editor FONT-linked size scaling support. |
+| `input_database_style_service.py` | Provides Database Grades Input-mode matrix detection/rendering with editability-aware cells (editable inputs vs centered read-only values) and editor FONT-linked size scaling support. |
 | `input_mode_service.py` | Provides Input-mode helper logic for scalar detection, field-spec collection, value coercion, and nested path writes. |
-| `input_network_firewall_style_service.py` | Provides Network FIREWALL Input-mode Concept-2 styled row detection/rendering with non-editable identity fields and editable rule Port/Allowed inputs. |
-| `input_network_router_style_service.py` | Provides Network ROUTER Input-mode Concept-2 styled row detection/rendering with framed sections and editable port/state fields. |
-| `input_suspicion_phone_style_service.py` | Provides Suspicion Input-mode phone-art renderer with one centered editable value field anchored on theme-specific SIN/KAMUE phone PNG assets. |
+| `input_network_firewall_style_service.py` | Provides Network FIREWALL Input-mode Concept-2 styled row detection/rendering with non-editable identity fields, editable rule Port/Allowed inputs, and editor FONT-linked size scaling support. |
+| `input_network_router_style_service.py` | Provides Network ROUTER Input-mode Concept-2 styled row detection/rendering with framed sections, editable port/state fields, and editor FONT-linked size scaling support. |
+| `input_suspicion_phone_style_service.py` | Provides Suspicion Input-mode phone-art renderer with one centered editable value field anchored on theme-specific SIN/KAMUE phone PNG assets and editor FONT-linked size scaling support. |
 | `json_error_diag_service.py` | Provides diagnostic note-to-system mapping and normalized diagnostics log entry writing helpers used by editor wrappers. |
 | `json_error_highlight_render_service.py` | Provides JSON highlight render callbacks used by core decision logic to apply editor highlight tags and diagnostic log writes. |
 | `json_view_service.py` | Provides JSON-view helper behavior such as default no-file message rendering in the editor text widget. |

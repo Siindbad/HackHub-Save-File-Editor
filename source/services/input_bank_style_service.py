@@ -129,6 +129,10 @@ def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
         ["Segoe UI", "Bahnschrift", "Segoe UI Semibold"],
         owner._credit_name_font()[0],
     )
+    account_size = owner._input_mode_font_size(12, min_size=9, max_size=20)
+    meta_size = owner._input_mode_font_size(9, min_size=8, max_size=16)
+    provider_size = owner._input_mode_font_size(9, min_size=8, max_size=16)
+    input_size = owner._input_mode_font_size(9, min_size=8, max_size=16)
 
     for row in row_defs:
         row_frame = tk.Frame(
@@ -159,7 +163,7 @@ def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
             fg=account_fg,
             anchor="w",
             justify="left",
-            font=(account_family, 12, "bold"),
+            font=(account_family, account_size, "bold"),
         ).pack(anchor="w")
         iban_line = tk.Frame(account_host, bg=row_bg, bd=0, highlightthickness=0)
         iban_line.pack(anchor="w", pady=(1, 0))
@@ -170,7 +174,7 @@ def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
             fg=iban_label_fg,
             anchor="w",
             justify="left",
-            font=(mono_family, 9, "bold"),
+            font=(mono_family, meta_size, "bold"),
         ).pack(side="left")
         tk.Label(
             iban_line,
@@ -179,7 +183,7 @@ def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
             fg=iban_fg,
             anchor="w",
             justify="left",
-            font=(mono_family, 9, "bold"),
+            font=(mono_family, meta_size, "bold"),
         ).pack(side="left")
 
         provider_canvas = tk.Canvas(
@@ -203,7 +207,7 @@ def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
             h // 2,
             text=f"Provider : {row.get('provider', 'N/A')}",
             fill=provider_fg,
-            font=(provider_family, 9, "bold"),
+            font=(provider_family, provider_size, "bold"),
             anchor="c",
         )
 
@@ -234,7 +238,7 @@ def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
             relief="flat",
             bd=0,
             highlightthickness=0,
-            font=(input_family, 9, "bold"),
+            font=(input_family, input_size, "bold"),
         )
         entry_canvas.create_window(
             ew // 2,

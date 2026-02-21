@@ -28,6 +28,8 @@ def render_suspicion_phone_input(owner, host, normalized_path, value):
     input_bg = "#1b1230" if variant == "KAMUE" else "#071322"
     input_fg = "#8bf2aa" if variant == "KAMUE" else "#62d67a"
     name_font = owner._credit_name_font()[0]
+    fallback_size = owner._input_mode_font_size(10, min_size=8, max_size=18)
+    input_size = owner._input_mode_font_size(10, min_size=8, max_size=18)
 
     wrapper = tk.Frame(host, bg=panel_bg, bd=0, highlightthickness=0)
     wrapper.pack(fill="both", expand=True, padx=0, pady=(0, 0))
@@ -65,7 +67,7 @@ def render_suspicion_phone_input(owner, host, normalized_path, value):
             text="Suspicion phone preview asset not found.",
             bg=panel_bg,
             fg="#cdb6f7" if variant == "KAMUE" else "#9dc2e2",
-            font=(name_font, 10, "bold"),
+            font=(name_font, fallback_size, "bold"),
             padx=18,
             pady=28,
         )
@@ -91,7 +93,7 @@ def render_suspicion_phone_input(owner, host, normalized_path, value):
         highlightthickness=1,
         highlightbackground=input_edge,
         highlightcolor=input_edge,
-        font=(name_font, 10, "bold"),
+        font=(name_font, input_size, "bold"),
     )
     entry.pack(ipady=1)
     _bind_percent_revert_guard(entry, var, initial_value=value)
