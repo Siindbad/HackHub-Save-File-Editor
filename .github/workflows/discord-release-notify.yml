@@ -1,0 +1,178 @@
+name: Discord Release Notify
+
+on:
+  release:
+    types: [published, prereleased]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag override (optional)"
+        required: false
+        type: string
+      title:
+        description: "Release title override (optional)"
+        required: false
+        type: string
+      url:
+        description: "Release URL override (optional)"
+        required: false
+        type: string
+      notes:
+        description: "Release notes override (optional)"
+        required: false
+        type: string
+      prerelease:
+        description: "Mark manual dispatch as prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord release message
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          MANUAL_TAG: ${{ inputs.tag }}
+          MANUAL_TITLE: ${{ inputs.title }}
+          MANUAL_URL: ${{ inputs.url }}
+          MANUAL_NOTES: ${{ inputs.notes }}
+          MANUAL_PRERELEASE: ${{ inputs.prerelease }}
+          REPO_NAME: ${{ github.repository }}
+          ACTOR_NAME: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DISCORD_USERNAME: ${{ vars.DISCORD_RELEASE_USERNAME }}
+          DISCORD_AVATAR_URL: ${{ vars.DISCORD_RELEASE_AVATAR_URL }}
+          DISCORD_MENTION: ${{ vars.DISCORD_RELEASE_MENTION }}
+          DISCORD_COLOR: ${{ vars.DISCORD_RELEASE_COLOR }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+
+          webhook = (os.getenv("DISCORD_WEBHOOK_URL") or "").strip()
+          if not webhook:
+              print("DISCORD_RELEASE_WEBHOOK is not set. Skipping Discord notify.")
+              sys.exit(0)
+
+          event_name = (os.getenv("EVENT_NAME") or "").strip()
+
+          def _pick(*values):
+              for value in values:
+                  text = (value or "").strip()
+                  if text:
+                      return text
+              return ""
+
+          tag = _pick(os.getenv("MANUAL_TAG"), os.getenv("RELEASE_TAG"))
+          title = _pick(os.getenv("MANUAL_TITLE"), os.getenv("RELEASE_NAME"), f"Release {tag}" if tag else "")
+          url = _pick(os.getenv("MANUAL_URL"), os.getenv("RELEASE_URL"))
+          notes = _pick(os.getenv("MANUAL_NOTES"), os.getenv("RELEASE_BODY"))
+
+          manual_pre = (os.getenv("MANUAL_PRERELEASE") or "").strip().lower() in {"1", "true", "yes", "on"}
+          event_pre = (os.getenv("RELEASE_IS_PRERELEASE") or "").strip().lower() in {"1", "true", "yes", "on"}
+          is_prerelease = manual_pre if event_name == "workflow_dispatch" else event_pre
+
+          mention = (os.getenv("DISCORD_MENTION") or "").strip()
+          content = mention if mention else ""
+
+          color_text = (os.getenv("DISCORD_COLOR") or "").strip()
+          try:
+              color = int(color_text) if color_text else (16753920 if is_prerelease else 5814783)
+          except Exception:
+              color = 5814783
+
+          repo = (os.getenv("REPO_NAME") or "").strip()
+          actor = (os.getenv("ACTOR_NAME") or "").strip()
+          run_url = (os.getenv("RUN_URL") or "").strip()
+
+          label = "Pre-release" if is_prerelease else "Release"
+          embed_title = f"{label}: {title or tag or 'New build'}"
+          description = (notes or "").strip()
+          if len(description) > 3900:
+              description = description[:3897] + "..."
+          if not description:
+              description = "No release notes were provided."
+
+          embed = {
+              "title": embed_title,
+              "description": description,
+              "color": color,
+              "fields": [
+                  {"name": "Version", "value": tag or "N/A", "inline": True},
+                  {"name": "Repository", "value": repo or "N/A", "inline": True},
+                  {"name": "Published by", "value": actor or "N/A", "inline": True},
+              ],
+              "footer": {"text": "HackHub Release Notifications"},
+              "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+          }
+          if url:
+              embed["url"] = url
+          if run_url:
+              embed["fields"].append({"name": "Workflow Run", "value": f"[Open Run]({run_url})", "inline": False})
+
+          payload = {
+              "content": content,
+              "embeds": [embed],
+              "allowed_mentions": {"parse": []},
+          }
+
+          username = (os.getenv("DISCORD_USERNAME") or "").strip()
+          avatar = (os.getenv("DISCORD_AVATAR_URL") or "").strip()
+          if username:
+              payload["username"] = username
+          if avatar:
+              payload["avatar_url"] = avatar
+
+          data = json.dumps(payload).encode("utf-8")
+          for attempt in range(1, 6):
+              req = urllib.request.Request(
+                  webhook,
+                  data=data,
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      print(f"Discord notify sent (status={resp.status}).")
+                      sys.exit(0)
+              except urllib.error.HTTPError as exc:
+                  raw = exc.read().decode("utf-8", "replace")
+                  if exc.code == 429 and attempt < 5:
+                      wait_s = 2.0
+                      try:
+                          body = json.loads(raw or "{}")
+                          wait_s = float(body.get("retry_after", wait_s))
+                          # Discord may return milliseconds in some contexts.
+                          if wait_s > 30:
+                              wait_s = wait_s / 1000.0
+                      except Exception:
+                          pass
+                      wait_s = max(1.0, min(wait_s, 30.0))
+                      print(f"Discord rate limit hit, retrying in {wait_s:.2f}s (attempt {attempt}/5).")
+                      time.sleep(wait_s)
+                      continue
+                  print(f"Discord notify failed: HTTP {exc.code}: {raw}", file=sys.stderr)
+                  sys.exit(1)
+              except Exception as exc:
+                  if attempt < 5:
+                      time.sleep(2.0)
+                      continue
+                  print(f"Discord notify failed: {exc}", file=sys.stderr)
+                  sys.exit(1)
+          PY
