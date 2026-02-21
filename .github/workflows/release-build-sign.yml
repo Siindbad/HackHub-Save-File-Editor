@@ -79,8 +79,24 @@ jobs:
           }
           Set-Content -Path "dist/version.txt" -Value $version -Encoding ASCII
 
-          $hash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor.exe").Hash.ToLowerInvariant()
-          Set-Content -Path "dist/sins_editor.exe.sha256" -Value "$hash *sins_editor.exe" -Encoding ASCII
+          $exeHash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor.exe").Hash.ToLowerInvariant()
+          Set-Content -Path "dist/sins_editor.exe.sha256" -Value "$exeHash *sins_editor.exe" -Encoding ASCII
+
+          $zipHash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor-onedir.zip").Hash.ToLowerInvariant()
+          $versionHash = (Get-FileHash -Algorithm SHA256 -Path "dist/version.txt").Hash.ToLowerInvariant()
+          $builtUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $tag = "${{ steps.vars.outputs.tag }}"
+          $reportLines = @(
+            "report_format: v1",
+            "tag: $tag",
+            "built_utc: $builtUtc",
+            "",
+            "[ Assets ]",
+            "sins_editor.exe sha256: $exeHash",
+            "sins_editor-onedir.zip sha256: $zipHash",
+            "version.txt sha256: $versionHash"
+          )
+          Set-Content -Path "dist/security-report.txt" -Value ($reportLines -join "`r`n") -Encoding ASCII
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
@@ -92,7 +108,8 @@ jobs:
             "dist/sins_editor.exe",
             "dist/sins_editor-onedir.zip",
             "dist/version.txt",
-            "dist/sins_editor.exe.sha256"
+            "dist/sins_editor.exe.sha256",
+            "dist/security-report.txt"
           )
           foreach ($path in $artifacts) {
             if (-not (Test-Path $path)) {
@@ -104,6 +121,19 @@ jobs:
               "$path"
           }
 
+      - name: Bundle Sigstore proofs
+        shell: pwsh
+        run: |
+          $zipPath = "dist/sigstore-proofs.zip"
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          $proofFiles = Get-ChildItem "dist" -File | Where-Object { $_.Name -match "\.(sig|cert)$" } | Sort-Object Name
+          if (-not $proofFiles -or $proofFiles.Count -eq 0) {
+            throw "No Sigstore proof files found to bundle."
+          }
+          Compress-Archive -Path ($proofFiles | ForEach-Object { $_.FullName }) -DestinationPath $zipPath -CompressionLevel Optimal -Force
+
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
@@ -112,13 +142,7 @@ jobs:
           files: |
             dist/sins_editor.exe
             dist/sins_editor-onedir.zip
-            dist/version.txt
             dist/sins_editor.exe.sha256
-            dist/sins_editor.exe.sig
-            dist/sins_editor.exe.cert
-            dist/sins_editor-onedir.zip.sig
-            dist/sins_editor-onedir.zip.cert
-            dist/version.txt.sig
-            dist/version.txt.cert
-            dist/sins_editor.exe.sha256.sig
-            dist/sins_editor.exe.sha256.cert
+            dist/version.txt
+            dist/security-report.txt
+            dist/sigstore-proofs.zip
