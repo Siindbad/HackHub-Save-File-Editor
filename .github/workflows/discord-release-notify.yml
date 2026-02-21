@@ -120,18 +120,11 @@ jobs:
               "title": embed_title,
               "description": description,
               "color": color,
-              "fields": [
-                  {"name": "Version", "value": tag or "N/A", "inline": True},
-                  {"name": "Repository", "value": repo or "N/A", "inline": True},
-                  {"name": "Published by", "value": actor or "N/A", "inline": True},
-              ],
               "footer": {"text": "HackHub Release Notifications"},
               "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
           }
           if url:
               embed["url"] = url
-          if run_url:
-              embed["fields"].append({"name": "Workflow Run", "value": f"[Open Run]({run_url})", "inline": False})
 
           payload = {
               "content": content,
