@@ -1,5 +1,4 @@
-![Verification Suite](https://img.shields.io/badge/Verification%20Suite-Passing-brightgreen)
-![License](https://img.shields.io/badge/License-MIT-8B0000)
+![Verification Suite](https://img.shields.io/badge/Verification%20Suite-Passing-brightgreen) ![License](https://img.shields.io/badge/License-MIT-8B0000) ![Languages](https://img.shields.io/badge/Languages-Python-3776AB)
 
 
 
