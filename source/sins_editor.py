@@ -1,60 +1,63 @@
-import json
-import hashlib
-import os
-import re
-import sys
-import gzip
-import time
-import random
+import ctypes
 import difflib
+import gzip
+import hashlib
+import importlib
+import json
+import os
+import platform
+import random
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import threading
-import importlib
-import ctypes
-import webbrowser
-import platform
+import time
 import traceback
+import urllib.error
+import urllib.request
+import webbrowser
 from collections import deque
 from datetime import datetime, timedelta
 import tkinter as tk
 import tkinter.font as tkfont
-import urllib.request
-import urllib.error
 from tkinter import filedialog, messagebox, ttk
 from services import bug_report_api_service
 from services import bug_report_service
 from services import bug_report_ui_service
-from services import highlight_label_service
+from services import editor_mode_switch_service
+from services import error_overlay_service
+from services import error_service
 from services import footer_service
-from services import input_mode_service
+from services import highlight_label_service
 from services import input_bank_style_service
+from services import input_mode_service
 from services import json_error_diag_service
+from services import json_error_highlight_render_service
 from services import json_view_service
 from services import label_format_service
 from services import loader_service
-from services import json_error_highlight_render_service
-from services import error_service
-from services import error_overlay_service
 from services import runtime_log_service
 from services import startup_loader_ui_service
 from services import theme_asset_service
 from services import theme_service
+from services import tree_engine_service
 from services import tree_mode_service
+from services import tree_policy_service
 from services import toolbar_service
 from services import tree_view_service
-from services import update_ui_service
 from services import ui_build_service
 from services import update_orchestrator_service
-from services import windows_runtime_service
 from services import update_service
+from services import update_ui_service
+from services import windows_runtime_service
 from core import constants as app_constants
 from core import display_profile as display_profile_core
+from core import json_diagnostics as json_diag_core
 from core import json_error_diagnostics_core
 from core import json_error_highlight_core
-from core import json_diagnostics as json_diag_core
 from core import layout_topbar as layout_topbar_core
 from core import startup_loader as startup_loader_core
 try:
@@ -189,105 +192,22 @@ class JsonEditor:
     KNOWN_EMAIL_DOMAIN_ROOTS = {
         domain.split(".")[-2] for domain in KNOWN_EMAIL_DOMAINS if "." in domain
     }
-    # Mode-scoped root tree hide lists:
-    # - JSON keeps the existing hidden categories.
-    # - INPUT can diverge without affecting JSON behavior.
     HIDDEN_ROOT_TREE_CATEGORIES_JSON = app_constants.HIDDEN_ROOT_TREE_CATEGORIES
-    HIDDEN_ROOT_TREE_CATEGORIES_INPUT = tuple(HIDDEN_ROOT_TREE_CATEGORIES_JSON) + (
-        "App.Store",
-        "AppStore",
-        "BCC.News",
-        "BCCNews",
-        "Bookmarks",
-        "Browser.Session",
-        "BrowserSession",
-        "Computer",
-        "Files",
-        "Global.Store",
-        "GlobalStore",
-        "Esc.Menu",
-        "EscMenu",
-        "Global.Variables",
-        "GlobalVariables",
-        "Hacked",
-        "Hackhub",
-        "Installed.Apps",
-        "InstalledApps",
-        "Kisscord",
-        "Mails",
-        "Personal.Info",
-        "PersonalInfo",
-        "Phone.Call",
-        "PhoneCall",
-        "Phone.Messages",
-        "PhoneMessages",
-        "Process",
-        "Program.Sizes",
-        "ProgramSizes",
-        "Quests",
-        "Save",
-        "Scoutify",
-        "Skills",
-        "stats",
-        "Taskbar",
-        "Terminal",
-        "Twotter",
-        "Typewriter",
-        "Website.Templates",
-        "WebsiteTemplates",
-    )
-    HIDDEN_ROOT_TREE_KEYS_JSON = {
-        str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES_JSON
-    }
-    HIDDEN_ROOT_TREE_KEYS_INPUT = {
-        str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES_INPUT
-    }
+    HIDDEN_ROOT_TREE_CATEGORIES_INPUT = app_constants.HIDDEN_ROOT_TREE_CATEGORIES_INPUT
+    HIDDEN_ROOT_TREE_KEYS_JSON = app_constants.HIDDEN_ROOT_TREE_KEYS_JSON
+    HIDDEN_ROOT_TREE_KEYS_INPUT = app_constants.HIDDEN_ROOT_TREE_KEYS_INPUT
     TREE_B_SAFE_DISPLAY_LABELS = dict(app_constants.TREE_B_SAFE_DISPLAY_LABELS)
     # Snapshot for re-installing header A/B controls later with exact previous values.
     HEADER_VARIANT_RESTORE_SPEC = dict(app_constants.HEADER_VARIANT_RESTORE_SPEC)
     TREE_MAIN_MARKER_FILES = dict(app_constants.TREE_MAIN_MARKER_FILES)
     TREE_MAIN_MARKER_SHA256 = dict(app_constants.TREE_MAIN_MARKER_SHA256)
     TREE_B2_MARKER_SHA256 = dict(app_constants.TREE_B2_MARKER_SHA256)
-    # Add root category names here to disable INPUT-mode editing for that branch.
-    INPUT_MODE_DISABLED_ROOT_CATEGORIES = (
-        "Database",
-        "Mail.Accounts",
-        "MailAccounts",
-        "Network",
-        "Phone",
-        "Skypersky",
-        "Suspicion",
-    )
-    INPUT_MODE_DISABLED_ROOT_KEYS = {
-        str(name).strip().casefold() for name in INPUT_MODE_DISABLED_ROOT_CATEGORIES
-    }
-    # INPUT tree expand-block policy:
-    # Root categories listed here stay collapsed in INPUT mode (JSON mode unaffected).
-    INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES = (
-        "Bank",
-        "Phone",
-        "Skypersky",
-        "Database",
-        "Mail.Accounts",
-        "MailAccounts",
-    )
-    INPUT_MODE_NO_EXPAND_ROOT_KEYS = {
-        str(name).strip().casefold() for name in INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES
-    }
-    # INPUT marker override policy:
-    # Render red main arrows for selected root categories in INPUT mode only.
-    INPUT_MODE_RED_ARROW_ROOT_CATEGORIES = (
-        "Bank",
-        "Phone",
-        "Suspicion",
-        "Skypersky",
-        "Database",
-        "Mail.Accounts",
-        "MailAccounts",
-    )
-    INPUT_MODE_RED_ARROW_ROOT_KEYS = {
-        str(name).strip().casefold() for name in INPUT_MODE_RED_ARROW_ROOT_CATEGORIES
-    }
+    INPUT_MODE_DISABLED_ROOT_CATEGORIES = app_constants.INPUT_MODE_DISABLED_ROOT_CATEGORIES
+    INPUT_MODE_DISABLED_ROOT_KEYS = app_constants.INPUT_MODE_DISABLED_ROOT_KEYS
+    INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES = app_constants.INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES
+    INPUT_MODE_NO_EXPAND_ROOT_KEYS = app_constants.INPUT_MODE_NO_EXPAND_ROOT_KEYS
+    INPUT_MODE_RED_ARROW_ROOT_CATEGORIES = app_constants.INPUT_MODE_RED_ARROW_ROOT_CATEGORIES
+    INPUT_MODE_RED_ARROW_ROOT_KEYS = app_constants.INPUT_MODE_RED_ARROW_ROOT_KEYS
     INPUT_MODE_DISABLED_CATEGORY_MESSAGE = (
         "Category Is Still Under Developement"
     )
@@ -316,275 +236,11 @@ if not install_started:
         # Use module-level helper to ensure availability during init
         self.seven_zip_path = _module_find_7z()
         self.item_to_path = {}
-        self.logo_image = None
-        self.logo_label = None
-        self.logo_frame = None
-        self._logo_frame_inner = None
-        self._logo_path = None
-        self._logo_photo_cache = {}
-        self._header_frame = None
-        self._header_variant_bar = None
-        self._header_variant_host = None
-        self._header_variant_is_footer = False
-        self._header_variant_labels = {}
-        self._header_variant = "A"
-        self._show_header_variant_controls = False
-        self._editor_mode = "JSON"
-        self._editor_mode_host = None
-        self._editor_mode_parent = None
-        self._editor_mode_labels = {}
-        self._editor_mode_tab_cache = {}
-        self._editor_right_parent = None
-        self._text_scroll = None
-        self._input_mode_container = None
-        self._input_mode_canvas = None
-        self._input_mode_scroll = None
-        self._input_mode_fields_host = None
-        self._input_mode_field_specs = []
-        self._input_mode_current_path = []
-        self._input_mode_no_fields_label = None
-        self._input_mode_last_render_item = None
-        self._input_mode_last_render_path_key = None
-        self._input_mode_force_refresh = True
-        # INPUT mode is now public by default; keep flag for compatibility checks.
-        self._input_mode_public_enabled = True
-        self._app_theme_variant = "SIINDBAD"
-        self._app_theme_labels = {}
-        self._toolbar_style_variant = "B"
-        # Toolbar variants are finalized: use Variant-B for both themes.
-        self._toolbar_style_variant_by_theme = {"SIINDBAD": "B", "KAMUE": "B"}
-        # Dev toggle: set HACKHUB_ENABLE_TOOLBAR_VARIANTS=1 to show toolbar variant controls.
-        self._show_toolbar_variant_controls = (
-            str(os.environ.get("HACKHUB_ENABLE_TOOLBAR_VARIANTS", "0")).strip().lower()
-            in ("1", "true", "yes", "on")
-        )
-        # Optional forced style lock; keep unset so A/B/C can be switched from UI.
-        self._siindbad_style_focus = None
-        self._toolbar_button_images = {}
-        self._toolbar_asset_image_cache = {}
-        self._toolbar_buttons = {}
-        self._toolbar_button_text = {}
-        self._toolbar_style_labels = {}
-        self._toolbar_style_title_label = None
-        self._toolbar_center_frame = None
-        self._toolbar_layout_mode = None
-        self._find_host_default_padx = None
-        self._find_button_default_padx = None
-        self._find_entry_width_override = None
-        self._topbar_align_after_id = None
-        # Main editor is locked to Tree Variant-B.
-        self._tree_style_variant = "B"
-        self._tree_style_labels = {}
-        self._tree_style_title_label = None
-        self._tree_content_top_gap = 2
-        self._tree_marker_icon_cache = {}
-        self._tree_marker_integrity_checked = False
-        self._tree_marker_integrity_ok = True
-        self._tree_item_layout_default = None
-        self._tree_item_layout_no_indicator = None
-        self._siindbad_button_icons = {}
-        self._siindbad_button_icon_signature = None
-        self._credit_badge_images = []
-        self._credit_badge_sources_cache = None
-        self._credit_github_icon_cache = {}
-        self._credit_discord_icon_cache = {}
-        self._credit_badge_render_signature = None
-        self._credit_discord_badge_render_signature = None
-        self._credit_badge_host = None
-        self._credit_discord_badge_host = None
-        self._credit_bar = None
-        self._credit_left_slot = None
-        self._credit_center_slot = None
-        self._credit_right_slot = None
-        self._credit_content = None
-        self._credit_label = None
-        self._credit_badges_divider = None
-        self._credit_badges_divider_lines = ()
-        self._credit_discord_badge_images = []
-        self._credit_discord_divider = None
-        self._credit_discord_divider_lines = ()
-        self._credit_theme_divider = None
-        self._credit_theme_divider_lines = ()
-        self._theme_selector_host = None
-        self._bug_report_host = None
-        self._bug_report_chip = None
-        self._bug_report_label = None
-        self._bug_report_chip_hovered = False
-        self._bug_report_chip_icon_photo = None
-        self._bug_report_icon_cache = {}
-        self._bug_report_chip_icon_label = None
-        self._bug_report_chip_text_label = None
-        self._bug_report_dialog = None
-        self._bug_report_card_frame = None
-        self._bug_report_header_frame = None
-        self._bug_report_header_icon = None
-        self._bug_report_header_icon_photo = None
-        self._bug_report_header_title = None
-        self._bug_report_close_badge = None
-        self._bug_report_pulse_after_id = None
-        self._bug_report_pulse_tick = 0
-        self._bug_report_follow_root = False
-        self._bug_report_offset_x = 0
-        self._bug_report_offset_y = 0
-        self._bug_report_is_dragging = False
-        self._last_bug_report_submit_monotonic = 0.0
-        self._bug_submit_splash = None
-        self._bug_submit_splash_after_id = None
-        self._font_stepper_label = None
-        self._font_size_value_label = None
-        self._font_control_host = None
-        self._readme_window = None
-        self._find_entry_host = None
-        self._toolbar_host = None
-        self._body_top_separator = None
-        self._body_top_separator_inner = None
-        self.find_entry = None
-        self._text_context_menu = None
-        self._text_context_menu_anchor = None
-        self._text_context_menu_frame = None
-        self._text_context_menu_panel = None
-        self._text_context_menu_body = None
-        self._text_context_menu_separator = None
-        self._text_context_menu_separators = []
-        self._text_context_menu_items = {}
-        self._text_context_menu_widget_actions = {}
-        self._text_context_menu_row_style = None
-        self._text_context_menu_item_states = {}
-        self._text_context_menu_hover_action = None
-        self._text_context_menu_global_bindings = []
-        self._text_context_menu_pulse_after_id = None
-        self._text_context_menu_pulse_tick = 0
-        self.font_size_combo = None
-        self.font_size_var = None
-        self._font_stepper_source_size = (1028, 253)
-        self._font_stepper_minus_box_src = (395, 43, 648, 174)
-        self._font_stepper_plus_box_src = (676, 43, 929, 174)
-        self._theme_prewarm_after_id = None
-        self._theme_prewarm_queue = []
-        self._theme_prewarm_done = set()
-        self._theme_prewarm_tasks = deque()
-        self._theme_prewarm_active_variant = None
-        self._theme_prewarm_budget_ms = 10
-        self._theme_prewarm_loader_budget_ms = 6
-        self._theme_prewarm_idle_tick_ms = 12
-        self._theme_prewarm_loader_tick_ms = 16
-        self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
-        self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
-        self._updates_auto_after_id = None
-        # Saved startup update-check preference: default off unless user enables from update dialogs.
-        self._startup_update_check_enabled = False
-        self._update_overlay_title_after_id = None
-        self._update_overlay_progress_pct = 0.0
-        self._update_overlay_stage = ""
-        # Update-flow smoothing: keep install stage visible for a short handoff pause.
-        self._update_install_stage_hold_ms = 3000
-        # Update-flow smoothing: keep restart stage visible longer before root teardown.
-        self._update_restart_notice_ms = 4200
-        self._shutdown_cleanup_done = False
-        self._theme_perf_logging = (
-            # Perf debug toggle: set HACKHUB_THEME_PERF_LOG=1 to print theme switch timings.
-            str(os.environ.get("HACKHUB_THEME_PERF_LOG", "0")).strip().lower()
-            in ("1", "true", "yes", "on")
-        )
-        self._startup_loader_enabled = True
-        self._startup_loader_extra_hold_ms = 1800
-        self._startup_loader_overlay = None
-        self._startup_loader_pct_label = None
-        self._startup_loader_statement_label = None
-        self._startup_loader_top_fill = None
-        self._startup_loader_bottom_fill = None
-        self._startup_loader_started_ts = 0.0
-        self._startup_loader_ready_ts = None
-        self._startup_loader_text_after_id = None
-        self._startup_loader_hide_after_id = None
-        self._startup_loader_progress_after_id = None
-        self._startup_loader_statement_index = 0
-        self._startup_loader_line_pool_loading = []
-        self._startup_loader_line_pool_ready = []
-        self._startup_loader_required_variants = {"SIINDBAD", "KAMUE"}
-        self._startup_loader_deferred_variants = set()
-        self._startup_loader_title_prefix_label = None
-        self._startup_loader_title_suffix_label = None
-        self._startup_loader_title_variant = "SIINDBAD"
-        self._startup_loader_title_after_id = None
-        self._startup_loader_title_cycle_ms = 4200
-        self._startup_loader_progress_interval_ms = 90
-        self._startup_loader_statement_interval_loading_ms = 1450
-        self._startup_loader_statement_interval_ready_ms = 1150
-        self._startup_loader_window_mode = bool(
-            getattr(self.root, "_hh_use_startup_loader_window", False)
-        )
-        self._startup_loader_title_cache = {}
-        self._startup_loader_fill_photo_cache = {}
-        self._startup_loader_panel_photo_cache = {}
-        self._display_scale = 1.0
-        self._auto_display_profile_name = "default"
-        self._window_layout = None
-        self.network_types = ["ROUTER", "DEVICE", "FIREWALL", "SPLITTER"]
-        self.network_types_set = set(self.network_types)
-        self.find_matches = []
-        self.find_index = 0
-        self.last_find_query = ""
-        # Cache searchable tree labels by data path to avoid expensive full-tree expansion on find.
-        self._find_search_entries = []
-        self.error_overlay = None
-        self.error_pin = None
-        self._mono_family = None
-        self._font_family_lookup_cache = None
-        self._font_size = 10  # Default font size
-        self._auto_apply_pending = False
-        self._auto_apply_in_progress = False
-        self._pending_insert_restore_index = ""
-        self._diag_event_seq = 0
-        self._diag_action = "startup:0"
-        self._error_visual_mode = "guide"
-        self._last_edit_was_deletion = False
-        self._error_focus_index = None
-        self._last_error_highlight_note = ""
-        self._last_error_insertion_only = False
-        self._last_error_overlay_message = ""
-        self._error_overlay_actions = None
-        self._allow_highlight_key_change_once = False
-        self._last_tree_selected_item = None
-        self._json_lock_apply_after_id = None
-        self._json_render_seq = 0
-        self._last_json_error_diag = None
-        self._error_hooks_installed = False
-        self._crash_notice_shown = False
-        self._prev_sys_excepthook = None
-        self._prev_threading_excepthook = None
-        self._crash_report_offer_after_id = None
-        self._list_labelers = {
-            ("MailAccounts",): self._mail_account_label,
-            ("Mails",): self._mails_label,
-            ("PhoneMessages",): self._phone_messages_label,
-            ("Files",): self._files_label,
-            ("Database",): self._database_label,
-            ("Bookmarks",): self._bookmarks_label,
-            # Root key is BCCNews; safe-display renders as BCC.News.
-            ("BCCNews",): self._bcc_news_label,
-            ("BCC.News",): self._bcc_news_label,
-            ("BCCNews", "news"): self._bcc_news_label,
-            ("BCC.News", "news"): self._bcc_news_label,
-            ("Process",): self._process_label,
-            ("Processes",): self._process_label,
-            ("Typewriter",): self._typewriter_label,
-            ("Bank", "accounts"): self._bank_account_label,
-            ("Bank", "Accounts"): self._bank_account_label,
-            ("Bank", "transactions"): self._bank_transaction_label,
-            ("Bank", "Transactions"): self._bank_transaction_label,
-            ("AppStore", "unlockedMarketItems"): self._app_store_unlocked_item_label,
-            ("App.Store", "unlockedMarketItems"): self._app_store_unlocked_item_label,
-            ("AppStore", "purchasedItems"): self._app_store_unlocked_item_label,
-            ("App.Store", "purchasedItems"): self._app_store_unlocked_item_label,
-            ("Twotter", "users"): self._twotter_user_label,
-            ("Quests",): self._quests_label,
-            ("Kisscord", "friends"): self._kisscord_friend_label,
-            ("WebsiteTemplates",): self._website_templates_label,
-            ("Terminal", "installedPackages"): self._terminal_package_label,
-            ("Terminal", "datalist"): self._terminal_datalist_label,
-            ("Terminal", "dataList"): self._terminal_datalist_label,
-        }
+        self._init_chrome_runtime_state()
+        self._init_footer_bugreport_runtime_state()
+        self._init_text_context_runtime_state()
+        self._init_theme_update_runtime_state()
+        self._init_editor_session_runtime_state()
 
         self._install_global_error_hooks()
 
@@ -816,85 +472,10 @@ if not install_started:
         return "break"
 
     def _build_editor_mode_toggle(self, parent):
-        self._editor_mode_parent = parent
-        theme = getattr(self, "_theme", {})
-        host = tk.Frame(
-            parent,
-            bg=theme.get("panel", "#161b24"),
-            bd=0,
-            highlightthickness=0,
-        )
-        self._editor_mode_host = host
-        self._editor_mode_labels = {}
-        for idx, mode in enumerate(("INPUT", "JSON")):
-            tab = tk.Label(
-                host,
-                text=mode,
-                compound="center",
-                bd=0,
-                highlightthickness=0,
-                padx=0,
-                pady=0,
-                cursor="hand2",
-                font=(self._credit_name_font()[0], 10, "bold"),
-            )
-            tab.pack(side="left", padx=(0 if idx == 0 else 3, 0))
-            tab.bind("<Button-1>", lambda _e, target=mode: self._set_editor_mode(target), add="+")
-            self._editor_mode_labels[mode] = tab
-        self._update_editor_mode_controls()
+        return ui_build_service.build_editor_mode_toggle(self, parent, tk=tk)
 
     def _build_input_mode_panel(self, parent, scroll_style):
-        theme = getattr(self, "_theme", {})
-        container = tk.Frame(
-            parent,
-            bg=theme.get("panel", "#161b24"),
-            bd=0,
-            highlightthickness=0,
-        )
-        canvas = tk.Canvas(
-            container,
-            bg=theme.get("panel", "#161b24"),
-            bd=0,
-            highlightthickness=0,
-            relief="flat",
-        )
-        scroll = ttk.Scrollbar(
-            container,
-            orient="vertical",
-            command=canvas.yview,
-            style=scroll_style,
-        )
-        fields_host = tk.Frame(
-            canvas,
-            bg=theme.get("panel", "#161b24"),
-            bd=0,
-            highlightthickness=0,
-        )
-        canvas.configure(yscrollcommand=scroll.set)
-        canvas_window = canvas.create_window((0, 0), window=fields_host, anchor="nw")
-
-        def _sync_width(_event=None):
-            try:
-                width = max(120, canvas.winfo_width())
-                canvas.itemconfigure(canvas_window, width=width)
-            except Exception:
-                pass
-
-        fields_host.bind(
-            "<Configure>",
-            lambda _event: canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0)),
-            add="+",
-        )
-        canvas.bind("<Configure>", _sync_width, add="+")
-
-        canvas.pack(fill="both", expand=True, side="left")
-        scroll.pack(fill="y", side="right")
-
-        self._input_mode_container = container
-        self._input_mode_canvas = canvas
-        self._input_mode_scroll = scroll
-        self._input_mode_fields_host = fields_host
-        self._input_mode_field_specs = []
+        return ui_build_service.build_input_mode_panel(self, parent, scroll_style, tk=tk, ttk=ttk)
 
     @staticmethod
     def _is_input_scalar(value):
@@ -1156,12 +737,7 @@ if not install_started:
         return path
 
     def _can_skip_input_mode_refresh(self, item_id, target_path):
-        if bool(getattr(self, "_input_mode_force_refresh", False)):
-            return False
-        last_item = getattr(self, "_input_mode_last_render_item", None)
-        last_key = getattr(self, "_input_mode_last_render_path_key", None)
-        next_key = self._input_mode_path_key(target_path)
-        return bool(item_id and item_id == last_item and next_key == last_key)
+        return editor_mode_switch_service.can_skip_input_mode_refresh(self, item_id, target_path)
 
     def _refresh_editor_mode_view(self):
         text = getattr(self, "text", None)
@@ -1284,26 +860,14 @@ if not install_started:
         return self._normalize_root_tree_key(root)
 
     def _hidden_root_tree_keys_for_mode(self, mode=None):
-        use_mode = str(mode or getattr(self, "_editor_mode", "JSON")).upper()
-        if use_mode == "INPUT":
-            return self.HIDDEN_ROOT_TREE_KEYS_INPUT
-        return self.HIDDEN_ROOT_TREE_KEYS_JSON
+        return tree_policy_service.hidden_root_keys_for_mode(self, mode)
 
     def _is_input_mode_category_disabled(self, path):
-        root_key = self._input_mode_root_key_for_path(path)
-        if not root_key:
-            return False
-        return root_key in self.INPUT_MODE_DISABLED_ROOT_KEYS
+        return tree_policy_service.is_input_mode_root_disabled(self, path)
 
     def _is_input_tree_expand_blocked(self, item_id):
         # INPUT-only gate: keep configured root categories collapsed in tree mode.
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return False
-        path = self.item_to_path.get(item_id)
-        if not isinstance(path, list) or len(path) != 1:
-            return False
-        root_key = self._normalize_root_tree_key(path[0]) if path else ""
-        return root_key in self.INPUT_MODE_NO_EXPAND_ROOT_KEYS
+        return tree_policy_service.is_input_mode_tree_expand_blocked(self, item_id)
 
     def _editor_mode_tab_photo(self, active=False):
         theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -1413,11 +977,7 @@ if not install_started:
         # Avoid duplicate mode-view refresh here; _set_editor_mode performs one canonical refresh pass.
 
     def _mode_switch_requires_tree_rebuild(self, previous_mode, next_mode):
-        # Rebuild tree only when root-hide policy changes between modes.
-        # This prevents unnecessary rebuild flicker when both modes share the same hide set.
-        prev_hidden = self._hidden_root_tree_keys_for_mode(previous_mode)
-        next_hidden = self._hidden_root_tree_keys_for_mode(next_mode)
-        return prev_hidden != next_hidden
+        return editor_mode_switch_service.mode_switch_requires_tree_rebuild(self, previous_mode, next_mode)
 
     def _refresh_input_mode_theme_widgets(self):
         theme = getattr(self, "_theme", {}) or {}
@@ -4893,6 +4453,301 @@ if not install_started:
             safe_display_labels=self.TREE_B_SAFE_DISPLAY_LABELS,
         )
 
+    def _init_chrome_runtime_state(self):
+        # Core window chrome/editor runtime state used before UI widgets are built.
+        self.logo_image = None
+        self.logo_label = None
+        self.logo_frame = None
+        self._logo_frame_inner = None
+        self._logo_path = None
+        self._logo_photo_cache = {}
+        self._header_frame = None
+        self._header_variant_bar = None
+        self._header_variant_host = None
+        self._header_variant_is_footer = False
+        self._header_variant_labels = {}
+        self._header_variant = "A"
+        self._show_header_variant_controls = False
+        self._editor_mode = "JSON"
+        self._editor_mode_host = None
+        self._editor_mode_parent = None
+        self._editor_mode_labels = {}
+        self._editor_mode_tab_cache = {}
+        self._editor_right_parent = None
+        self._text_scroll = None
+        self._init_input_mode_runtime_state()
+        self._init_tree_runtime_state()
+        # INPUT mode is now public by default; keep flag for compatibility checks.
+        self._input_mode_public_enabled = True
+        self._app_theme_variant = "SIINDBAD"
+        self._app_theme_labels = {}
+        self._toolbar_style_variant = "B"
+        # Toolbar variants are finalized: use Variant-B for both themes.
+        self._toolbar_style_variant_by_theme = {"SIINDBAD": "B", "KAMUE": "B"}
+        # Dev toggle: set HACKHUB_ENABLE_TOOLBAR_VARIANTS=1 to show toolbar variant controls.
+        self._show_toolbar_variant_controls = (
+            str(os.environ.get("HACKHUB_ENABLE_TOOLBAR_VARIANTS", "0")).strip().lower()
+            in ("1", "true", "yes", "on")
+        )
+        # Optional forced style lock; keep unset so A/B/C can be switched from UI.
+        self._siindbad_style_focus = None
+        self._toolbar_button_images = {}
+        self._toolbar_asset_image_cache = {}
+        self._toolbar_buttons = {}
+        self._toolbar_button_text = {}
+        self._toolbar_style_labels = {}
+        self._toolbar_style_title_label = None
+        self._toolbar_center_frame = None
+        self._toolbar_layout_mode = None
+        self._find_host_default_padx = None
+        self._find_button_default_padx = None
+        self._find_entry_width_override = None
+        self._topbar_align_after_id = None
+        self._siindbad_button_icons = {}
+        self._siindbad_button_icon_signature = None
+
+    def _init_footer_bugreport_runtime_state(self):
+        # Footer/chips/bug-report runtime state grouped for maintainability.
+        self._credit_badge_images = []
+        self._credit_badge_sources_cache = None
+        self._credit_github_icon_cache = {}
+        self._credit_discord_icon_cache = {}
+        self._credit_badge_render_signature = None
+        self._credit_discord_badge_render_signature = None
+        self._credit_badge_host = None
+        self._credit_discord_badge_host = None
+        self._credit_bar = None
+        self._credit_left_slot = None
+        self._credit_center_slot = None
+        self._credit_right_slot = None
+        self._credit_content = None
+        self._credit_label = None
+        self._credit_badges_divider = None
+        self._credit_badges_divider_lines = ()
+        self._credit_discord_badge_images = []
+        self._credit_discord_divider = None
+        self._credit_discord_divider_lines = ()
+        self._credit_theme_divider = None
+        self._credit_theme_divider_lines = ()
+        self._theme_selector_host = None
+        self._bug_report_host = None
+        self._bug_report_chip = None
+        self._bug_report_label = None
+        self._bug_report_chip_hovered = False
+        self._bug_report_chip_icon_photo = None
+        self._bug_report_icon_cache = {}
+        self._bug_report_chip_icon_label = None
+        self._bug_report_chip_text_label = None
+        self._bug_report_dialog = None
+        self._bug_report_card_frame = None
+        self._bug_report_header_frame = None
+        self._bug_report_header_icon = None
+        self._bug_report_header_icon_photo = None
+        self._bug_report_header_title = None
+        self._bug_report_close_badge = None
+        self._bug_report_pulse_after_id = None
+        self._bug_report_pulse_tick = 0
+        self._bug_report_follow_root = False
+        self._bug_report_offset_x = 0
+        self._bug_report_offset_y = 0
+        self._bug_report_is_dragging = False
+        self._last_bug_report_submit_monotonic = 0.0
+        self._bug_submit_splash = None
+        self._bug_submit_splash_after_id = None
+        self._font_stepper_label = None
+        self._font_size_value_label = None
+        self._font_control_host = None
+        self._readme_window = None
+        self._find_entry_host = None
+        self._toolbar_host = None
+        self._body_top_separator = None
+        self._body_top_separator_inner = None
+        self.find_entry = None
+
+    def _init_text_context_runtime_state(self):
+        # Text context menu and font-stepper sprite runtime state.
+        self._text_context_menu = None
+        self._text_context_menu_anchor = None
+        self._text_context_menu_frame = None
+        self._text_context_menu_panel = None
+        self._text_context_menu_body = None
+        self._text_context_menu_separator = None
+        self._text_context_menu_separators = []
+        self._text_context_menu_items = {}
+        self._text_context_menu_widget_actions = {}
+        self._text_context_menu_row_style = None
+        self._text_context_menu_item_states = {}
+        self._text_context_menu_hover_action = None
+        self._text_context_menu_global_bindings = []
+        self._text_context_menu_pulse_after_id = None
+        self._text_context_menu_pulse_tick = 0
+        self.font_size_combo = None
+        self.font_size_var = None
+        self._font_stepper_source_size = (1028, 253)
+        self._font_stepper_minus_box_src = (395, 43, 648, 174)
+        self._font_stepper_plus_box_src = (676, 43, 929, 174)
+
+    def _init_theme_update_runtime_state(self):
+        # Theme prewarm/update/startup-loader runtime state.
+        self._theme_prewarm_after_id = None
+        self._theme_prewarm_queue = []
+        self._theme_prewarm_done = set()
+        self._theme_prewarm_tasks = deque()
+        self._theme_prewarm_active_variant = None
+        self._theme_prewarm_budget_ms = 10
+        self._theme_prewarm_loader_budget_ms = 6
+        self._theme_prewarm_idle_tick_ms = 12
+        self._theme_prewarm_loader_tick_ms = 16
+        self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
+        self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
+        self._updates_auto_after_id = None
+        # Saved startup update-check preference: default off unless user enables from update dialogs.
+        self._startup_update_check_enabled = False
+        self._update_overlay_title_after_id = None
+        self._update_overlay_progress_pct = 0.0
+        self._update_overlay_stage = ""
+        # Update-flow smoothing: keep install stage visible for a short handoff pause.
+        self._update_install_stage_hold_ms = 3000
+        # Update-flow smoothing: keep restart stage visible longer before root teardown.
+        self._update_restart_notice_ms = 4200
+        self._shutdown_cleanup_done = False
+        self._theme_perf_logging = (
+            # Perf debug toggle: set HACKHUB_THEME_PERF_LOG=1 to print theme switch timings.
+            str(os.environ.get("HACKHUB_THEME_PERF_LOG", "0")).strip().lower()
+            in ("1", "true", "yes", "on")
+        )
+        self._startup_loader_enabled = True
+        self._startup_loader_extra_hold_ms = 1800
+        self._startup_loader_overlay = None
+        self._startup_loader_pct_label = None
+        self._startup_loader_statement_label = None
+        self._startup_loader_top_fill = None
+        self._startup_loader_bottom_fill = None
+        self._startup_loader_started_ts = 0.0
+        self._startup_loader_ready_ts = None
+        self._startup_loader_text_after_id = None
+        self._startup_loader_hide_after_id = None
+        self._startup_loader_progress_after_id = None
+        self._startup_loader_statement_index = 0
+        self._startup_loader_line_pool_loading = []
+        self._startup_loader_line_pool_ready = []
+        self._startup_loader_required_variants = {"SIINDBAD", "KAMUE"}
+        self._startup_loader_deferred_variants = set()
+        self._startup_loader_title_prefix_label = None
+        self._startup_loader_title_suffix_label = None
+        self._startup_loader_title_variant = "SIINDBAD"
+        self._startup_loader_title_after_id = None
+        self._startup_loader_title_cycle_ms = 4200
+        self._startup_loader_progress_interval_ms = 90
+        self._startup_loader_statement_interval_loading_ms = 1450
+        self._startup_loader_statement_interval_ready_ms = 1150
+        self._startup_loader_window_mode = bool(
+            getattr(self.root, "_hh_use_startup_loader_window", False)
+        )
+        self._startup_loader_title_cache = {}
+        self._startup_loader_fill_photo_cache = {}
+        self._startup_loader_panel_photo_cache = {}
+        self._display_scale = 1.0
+        self._auto_display_profile_name = "default"
+        self._window_layout = None
+
+    def _init_editor_session_runtime_state(self):
+        # Core editor/session diagnostics and interaction runtime state.
+        self.network_types = ["ROUTER", "DEVICE", "FIREWALL", "SPLITTER"]
+        self.network_types_set = set(self.network_types)
+        self.find_matches = []
+        self.find_index = 0
+        self.last_find_query = ""
+        # Cache searchable tree labels by data path to avoid expensive full-tree expansion on find.
+        self._find_search_entries = []
+        self.error_overlay = None
+        self.error_pin = None
+        self._mono_family = None
+        self._font_family_lookup_cache = None
+        self._font_size = 10  # Default font size
+        self._auto_apply_pending = False
+        self._auto_apply_in_progress = False
+        self._pending_insert_restore_index = ""
+        self._diag_event_seq = 0
+        self._diag_action = "startup:0"
+        self._error_visual_mode = "guide"
+        self._last_edit_was_deletion = False
+        self._error_focus_index = None
+        self._last_error_highlight_note = ""
+        self._last_error_insertion_only = False
+        self._last_error_overlay_message = ""
+        self._error_overlay_actions = None
+        self._allow_highlight_key_change_once = False
+        self._last_tree_selected_item = None
+        self._json_lock_apply_after_id = None
+        self._json_render_seq = 0
+        self._last_json_error_diag = None
+        self._error_hooks_installed = False
+        self._crash_notice_shown = False
+        self._prev_sys_excepthook = None
+        self._prev_threading_excepthook = None
+        self._crash_report_offer_after_id = None
+        self._list_labelers = self._default_list_labelers()
+
+    def _default_list_labelers(self):
+        # Keep list labeler mapping grouped behind one helper for easier maintenance.
+        return {
+            ("MailAccounts",): self._mail_account_label,
+            ("Mails",): self._mails_label,
+            ("PhoneMessages",): self._phone_messages_label,
+            ("Files",): self._files_label,
+            ("Database",): self._database_label,
+            ("Bookmarks",): self._bookmarks_label,
+            # Root key is BCCNews; safe-display renders as BCC.News.
+            ("BCCNews",): self._bcc_news_label,
+            ("BCC.News",): self._bcc_news_label,
+            ("BCCNews", "news"): self._bcc_news_label,
+            ("BCC.News", "news"): self._bcc_news_label,
+            ("Process",): self._process_label,
+            ("Processes",): self._process_label,
+            ("Typewriter",): self._typewriter_label,
+            ("Bank", "accounts"): self._bank_account_label,
+            ("Bank", "Accounts"): self._bank_account_label,
+            ("Bank", "transactions"): self._bank_transaction_label,
+            ("Bank", "Transactions"): self._bank_transaction_label,
+            ("AppStore", "unlockedMarketItems"): self._app_store_unlocked_item_label,
+            ("App.Store", "unlockedMarketItems"): self._app_store_unlocked_item_label,
+            ("AppStore", "purchasedItems"): self._app_store_unlocked_item_label,
+            ("App.Store", "purchasedItems"): self._app_store_unlocked_item_label,
+            ("Twotter", "users"): self._twotter_user_label,
+            ("Quests",): self._quests_label,
+            ("Kisscord", "friends"): self._kisscord_friend_label,
+            ("WebsiteTemplates",): self._website_templates_label,
+            ("Terminal", "installedPackages"): self._terminal_package_label,
+            ("Terminal", "datalist"): self._terminal_datalist_label,
+            ("Terminal", "dataList"): self._terminal_datalist_label,
+        }
+
+    def _init_input_mode_runtime_state(self):
+        # Keep INPUT-mode runtime state initialization grouped for easier maintenance.
+        self._input_mode_container = None
+        self._input_mode_canvas = None
+        self._input_mode_scroll = None
+        self._input_mode_fields_host = None
+        self._input_mode_field_specs = []
+        self._input_mode_current_path = []
+        self._input_mode_no_fields_label = None
+        self._input_mode_last_render_item = None
+        self._input_mode_last_render_path_key = None
+        self._input_mode_force_refresh = True
+
+    def _init_tree_runtime_state(self):
+        # Keep shared tree UI runtime state initialization grouped by tree subsystem.
+        self._tree_style_variant = "B"
+        self._tree_style_labels = {}
+        self._tree_style_title_label = None
+        self._tree_content_top_gap = 2
+        self._tree_marker_icon_cache = {}
+        self._tree_marker_integrity_checked = False
+        self._tree_marker_integrity_ok = True
+        self._tree_item_layout_default = None
+        self._tree_item_layout_no_indicator = None
+
     @staticmethod
     def _bounded_cache_put(cache, key, value, max_items=128):
         if not isinstance(cache, dict):
@@ -7294,157 +7149,10 @@ if not install_started:
             return None
 
     def _build_theme_selector(self, parent):
-        self._theme_selector_host = parent
-        self._toolbar_style_labels = {}
-        self._toolbar_style_title_label = None
-        self._tree_style_labels = {}
-        self._tree_style_title_label = None
-        theme = getattr(self, "_theme", {})
-        spec = self._footer_visual_spec()
-        label = tk.Label(
-            parent,
-            text="THEMES :",
-            bg=theme.get("credit_bg", "#0b1118"),
-            fg=theme.get("credit_label_fg", "#b5cade"),
-            font=spec["label_font"],
-            bd=0,
-            highlightthickness=0,
-        )
-        label.pack(side="left", padx=(0, 6))
-
-        self._app_theme_labels = {}
-        for idx, variant in enumerate(("SIINDBAD", "KAMUE")):
-            colors = self._theme_chip_palette(variant)
-            chip = tk.Label(
-                parent,
-                text=variant,
-                bg=colors["bg"],
-                fg=colors["fg"],
-                font=spec["chip_font"],
-                bd=0,
-                padx=spec["theme_chip_padx"],
-                pady=spec["theme_chip_pady"],
-                highlightthickness=1,
-                highlightbackground=colors["border"],
-                highlightcolor=colors["border"],
-                cursor="hand2",
-            )
-            chip.bind(
-                "<Button-1>",
-                lambda _event, target=variant: self._set_app_theme_variant(target),
-            )
-            chip.pack(side="left", padx=(0 if idx == 0 else spec["theme_chip_gap"], 0))
-            self._app_theme_labels[variant] = chip
-
-        if bool(getattr(self, "_show_toolbar_variant_controls", False)):
-            self._toolbar_style_title_label = tk.Label(
-                parent,
-                text="BTN :",
-                bg=theme.get("credit_bg", "#0b1118"),
-                fg=theme.get("credit_label_fg", "#b5cade"),
-                font=(self._preferred_mono_family(), 9, "bold"),
-                bd=0,
-                highlightthickness=0,
-            )
-            self._toolbar_style_title_label.pack(side="left", padx=(8, 6))
-
-            for idx, variant in enumerate(("A", "B")):
-                chip = tk.Label(
-                    parent,
-                    text=variant,
-                    bg="#0f1b29",
-                    fg="#7f9bb2",
-                    font=self._credit_name_font(),
-                    bd=0,
-                    padx=7,
-                    pady=spec["chip_text_pady"],
-                    highlightthickness=1,
-                    highlightbackground="#2f4a61",
-                    highlightcolor="#2f4a61",
-                    cursor="hand2",
-                )
-                chip.bind(
-                    "<Button-1>",
-                    lambda _event, target=variant: self._set_toolbar_style_variant(target),
-                )
-                chip.pack(side="left", padx=(0 if idx == 0 else 4, 0))
-                self._toolbar_style_labels[variant] = chip
-
-        self._update_app_theme_controls()
-        self._update_tree_style_controls()
-        self._update_toolbar_style_controls()
+        return ui_build_service.build_theme_selector(self, parent, tk=tk)
 
     def _build_header_variant_switch(self, parent, show_title=True):
-        if parent is None:
-            return
-        try:
-            if not parent.winfo_exists():
-                return
-        except Exception:
-            return
-        old_host = getattr(self, "_header_variant_host", None)
-        if old_host is not None:
-            try:
-                if old_host.winfo_exists():
-                    old_host.destroy()
-            except Exception:
-                pass
-        if not bool(getattr(self, "_show_header_variant_controls", False)):
-            self._header_variant_host = None
-            self._header_variant_is_footer = False
-            self._header_variant_labels = {}
-            return
-        theme = getattr(self, "_theme", {})
-        host_bg = theme.get("credit_bg", "#0b1118") if not show_title else theme.get("bg", "#0f131a")
-        host = tk.Frame(
-            parent,
-            bg=host_bg,
-            bd=0,
-            highlightthickness=0,
-        )
-        if show_title:
-            host.pack(anchor="center")
-        else:
-            host.pack(side="left", padx=(4, 0))
-        self._header_variant_host = host
-        self._header_variant_is_footer = not show_title
-        self._header_variant_labels = {}
-
-        if show_title:
-            title = tk.Label(
-                host,
-                text="VARIANT :",
-                bg=host_bg,
-                fg=theme.get("credit_label_fg", "#b5cade"),
-                font=(self._preferred_mono_family(), 9, "bold"),
-                bd=0,
-                highlightthickness=0,
-            )
-            title.pack(side="left", padx=(0, 6))
-
-        for idx, variant in enumerate(("A", "B")):
-            chip = tk.Label(
-                host,
-                text=variant,
-                bg="#0f1b29",
-                fg="#8aa9bf",
-                font=self._credit_name_font(),
-                bd=0,
-                padx=(5 if not show_title else 7),
-                pady=1,
-                highlightthickness=1,
-                highlightbackground="#2f4a61",
-                highlightcolor="#2f4a61",
-                cursor="hand2",
-            )
-            chip.bind(
-                "<Button-1>",
-                lambda _event, target=variant: self._set_header_variant(target),
-            )
-            chip.pack(side="left", padx=(0 if idx == 0 else 3, 0))
-            self._header_variant_labels[variant] = chip
-
-        self._update_header_variant_controls()
+        return ui_build_service.build_header_variant_switch(self, parent, show_title, tk=tk)
 
     def _set_header_variant(self, variant):
         variant = str(variant).upper()
@@ -10041,11 +9749,7 @@ if not install_started:
             return image
 
     def _is_input_red_arrow_root_path(self, path):
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return False
-        if not isinstance(path, list) or len(path) != 1:
-            return False
-        return self._normalize_root_tree_key(path[0]) in self.INPUT_MODE_RED_ARROW_ROOT_KEYS
+        return tree_policy_service.should_use_input_red_arrow_for_path(self, path)
 
     def _load_input_bank_red_arrow_icon(self, expandable=False, expanded=False):
         # INPUT-only Bank marker override: red arrow without affecting JSON marker assets.
@@ -10087,90 +9791,10 @@ if not install_started:
             return None
 
     def _refresh_tree_item_markers(self):
-        tree = getattr(self, "tree", None)
-        if tree is None:
-            return
-        if str(getattr(self, "_tree_style_variant", "B")).upper() != "B":
-            try:
-                for item_id in self.item_to_path.keys():
-                    if tree.exists(item_id):
-                        tree.item(item_id, image="")
-            except Exception:
-                pass
-            return
-        try:
-            selected = set(tree.selection())
-        except Exception:
-            selected = set()
-        for item_id, path in self.item_to_path.items():
-            try:
-                if not tree.exists(item_id):
-                    continue
-                is_group = isinstance(path, tuple) and path and path[0] == "__group__"
-                depth = 0 if is_group else (len(path) if isinstance(path, list) else 0)
-                has_children = bool(tree.get_children(item_id))
-                is_expanded = bool(tree.item(item_id, "open")) if has_children else False
-                if depth <= 1:
-                    if self._is_input_red_arrow_root_path(path):
-                        icon = self._load_input_bank_red_arrow_icon(
-                            expandable=has_children,
-                            expanded=is_expanded,
-                        )
-                    else:
-                        icon = self._load_tree_marker_icon(
-                            "main",
-                            selected=False,
-                            expandable=has_children,
-                            expanded=is_expanded,
-                        )
-                else:
-                    icon = self._load_tree_marker_icon(
-                        "sub",
-                        selected=(item_id in selected),
-                        expandable=has_children,
-                        expanded=is_expanded,
-                    )
-                tree.item(item_id, image=icon if icon is not None else "")
-            except Exception:
-                continue
+        tree_engine_service.refresh_tree_item_markers(self)
 
     def _refresh_tree_marker_for_item(self, item_id, selected=False):
-        tree = getattr(self, "tree", None)
-        if tree is None or not item_id:
-            return
-        if str(getattr(self, "_tree_style_variant", "B")).upper() != "B":
-            return
-        try:
-            if not tree.exists(item_id):
-                return
-            path = self.item_to_path.get(item_id)
-            is_group = isinstance(path, tuple) and path and path[0] == "__group__"
-            depth = 0 if is_group else (len(path) if isinstance(path, list) else 0)
-            has_children = bool(tree.get_children(item_id))
-            is_expanded = bool(tree.item(item_id, "open")) if has_children else False
-            if depth <= 1:
-                if self._is_input_red_arrow_root_path(path):
-                    icon = self._load_input_bank_red_arrow_icon(
-                        expandable=has_children,
-                        expanded=is_expanded,
-                    )
-                else:
-                    icon = self._load_tree_marker_icon(
-                        "main",
-                        selected=False,
-                        expandable=has_children,
-                        expanded=is_expanded,
-                    )
-            else:
-                icon = self._load_tree_marker_icon(
-                    "sub",
-                    selected=bool(selected),
-                    expandable=has_children,
-                    expanded=is_expanded,
-                )
-            tree.item(item_id, image=icon if icon is not None else "")
-        except Exception:
-            return
+        tree_engine_service.refresh_tree_marker_for_item(self, item_id, selected=selected)
 
     def _rebuild_tree(self):
         self.tree.delete(*self.tree.get_children())
@@ -10471,138 +10095,7 @@ if not install_started:
         self.set_status(f'Find: {self.find_index}/{len(self.find_matches)}')
 
     def _populate_children(self, item_id):
-        path = self.item_to_path.get(item_id)
-        if isinstance(path, tuple) and path[0] == "__group__":
-            return
-        value = self._get_value(path)
-        if not isinstance(value, (dict, list)):
-            return
-
-        # Clear existing children
-        for child in self.tree.get_children(item_id):
-            self.tree.delete(child)
-
-        if isinstance(value, dict):
-            hidden_keys_getter = getattr(self, "_hidden_root_tree_keys_for_mode", None)
-            hidden_keys = (
-                hidden_keys_getter() if callable(hidden_keys_getter) else set(getattr(self, "HIDDEN_ROOT_TREE_KEYS", set()))
-            )
-            keys = list(value.keys())
-            if isinstance(path, list) and len(path) == 0:
-                # UI-only ordering for top-level categories; does not mutate save data.
-                keys = sorted(
-                    keys,
-                    key=lambda raw: str(self._tree_display_label_for_key(raw)).casefold(),
-                )
-            for key in keys:
-                if (
-                    isinstance(path, list)
-                    and not path
-                    and self._normalize_root_tree_key(key) in hidden_keys
-                ):
-                    continue
-                level_tag = "tree-main-level" if isinstance(path, list) and len(path) == 0 else "tree-sub-level"
-                child_text = self._tree_display_label_for_key(key)
-                if tuple(path or []) in (("Typewriter",),):
-                    entry_value = value.get(key)
-                    if isinstance(entry_value, dict):
-                        type_value = entry_value.get("type")
-                        if type_value:
-                            child_text = str(type_value)
-                child_id = self.tree.insert(
-                    item_id,
-                    "end",
-                    text=child_text,
-                    tags=(level_tag,),
-                )
-                self.item_to_path[child_id] = path + [key]
-                self._add_placeholder_if_container(child_id, value[key])
-        elif isinstance(value, list) and self._is_network_list(path, value):
-            groups = {}
-            for idx, item in enumerate(value):
-                group = item.get("type") if isinstance(item, dict) else "UNKNOWN"
-                groups.setdefault(group, []).append((idx, item))
-
-            ordered_groups = [t for t in self.network_types if t in groups]
-            for group in sorted(g for g in groups.keys() if g not in self.network_types_set):
-                ordered_groups.append(group)
-
-            for group in ordered_groups:
-                items = groups[group]
-                group_id = self.tree.insert(
-                    item_id,
-                    "end",
-                    text=f"{group} ({len(items)})",
-                    tags=("tree-sub-level",),
-                )
-                self.item_to_path[group_id] = ("__group__", path, group)
-                for idx, item in items:
-                    # Network subgroup rows use descriptive labels only; hide raw [index] prefixes.
-                    label = ""
-                    if isinstance(item, dict):
-                        if group in ("ROUTER", "DEVICE", "FIREWALL", "SPLITTER"):
-                            ip = item.get("ip")
-                            if group == "SPLITTER":
-                                name = None
-                            elif group == "FIREWALL":
-                                name = None
-                                users = item.get("users")
-                                if isinstance(users, list) and users:
-                                    user0 = users[0]
-                                    if isinstance(user0, dict):
-                                        name = user0.get("id")
-                            else:
-                                name = item.get("name")
-                                if not name:
-                                    domain = item.get("domain")
-                                    if isinstance(domain, dict):
-                                        name = domain.get("name")
-                                if not name:
-                                    users = item.get("users")
-                                    if isinstance(users, list) and users:
-                                        user0 = users[0]
-                                        if isinstance(user0, dict):
-                                            name = user0.get("firstName") or user0.get("name")
-                                if not name and group in ("ROUTER", "DEVICE"):
-                                    name = item.get("type")
-                            if ip is not None or name is not None:
-                                ip_str = "" if ip is None else str(ip)
-                                name_str = "" if name is None else str(name)
-                                label = f"{ip_str} | {name_str}".strip(" |")
-                            else:
-                                extra = []
-                                if "id" in item:
-                                    extra.append(f"id={item['id']}")
-                                if "ip" in item:
-                                    extra.append(f"ip={item['ip']}")
-                                if extra:
-                                    label = " ".join(extra)
-                        else:
-                            extra = []
-                            if "id" in item:
-                                extra.append(f"id={item['id']}")
-                            if "ip" in item:
-                                extra.append(f"ip={item['ip']}")
-                            if extra:
-                                label = " ".join(extra)
-                    if not label:
-                        label = f"Item {idx + 1}"
-                    child_id = self.tree.insert(group_id, "end", text=label, tags=("tree-sub-level",))
-                    self.item_to_path[child_id] = path + [idx]
-                    self._add_placeholder_if_container(child_id, item)
-        elif isinstance(value, list):
-            labeler = self._list_labelers.get(tuple(path))
-            for idx, item in enumerate(value):
-                if labeler:
-                    label = labeler(idx, item)
-                elif self._is_database_table_rows_path(path):
-                    label = self._database_table_row_label(idx, item)
-                else:
-                    label = f"[{idx}]"
-                child_id = self.tree.insert(item_id, "end", text=label, tags=("tree-sub-level",))
-                self.item_to_path[child_id] = path + [idx]
-                self._add_placeholder_if_container(child_id, item)
-        self._refresh_tree_item_markers()
+        tree_engine_service.populate_children(self, item_id)
 
     @staticmethod
     def _is_database_table_rows_path(path):
@@ -10651,70 +10144,13 @@ if not install_started:
         self._refresh_tree_item_markers()
 
     def _tree_item_can_toggle(self, item_id):
-        if not item_id:
-            return False
-        if self._is_input_tree_expand_blocked(item_id):
-            return False
-        try:
-            if self.tree.get_children(item_id):
-                return True
-        except Exception:
-            pass
-        path = self.item_to_path.get(item_id)
-        try:
-            value = self._get_value(path)
-            return tree_view_service.tree_item_can_toggle_from_value(path, value)
-        except Exception:
-            return False
+        return tree_engine_service.tree_item_can_toggle(self, item_id)
 
     def _on_tree_click_toggle(self, event):
-        tree = self.tree
-        item_id = tree.identify_row(event.y)
-        if not item_id:
-            return None
-        if not self._tree_item_can_toggle(item_id):
-            return None
-        # Only intercept clicks in the tree/icon gutter (arrow+marker area).
-        try:
-            bbox = tree.bbox(item_id, "#0")
-        except Exception:
-            bbox = None
-        if not bbox:
-            return None
-        x, y, w, h = bbox
-        local_x = int(event.x - x)
-        if local_x < 0 or local_x > 14:
-            return None
-
-        try:
-            tree.focus(item_id)
-            tree.selection_set(item_id)
-            currently_open = bool(tree.item(item_id, "open"))
-            tree.item(item_id, open=not currently_open)
-            if not currently_open:
-                # Ensure lazy tree children are materialized on first single-click expand.
-                self._populate_children(item_id)
-            self._refresh_tree_item_markers()
-        except Exception:
-            return None
-        return "break"
+        return tree_engine_service.on_tree_click_toggle(self, event)
 
     def _on_tree_double_click_guard(self, event):
-        tree = self.tree
-        item_id = tree.identify_row(event.y)
-        if not item_id:
-            return None
-        if not self._is_input_tree_expand_blocked(item_id):
-            return None
-        try:
-            tree.focus(item_id)
-            tree.selection_set(item_id)
-            tree.item(item_id, open=False)
-            self.root.after_idle(lambda iid=item_id: self.tree.item(iid, open=False))
-        except Exception:
-            return "break"
-        self.set_status("INPUT mode: Bank subcategories are disabled.")
-        return "break"
+        return tree_engine_service.on_tree_double_click_guard(self, event)
 
     def on_select(self, event):
         item_id = self.tree.focus()
@@ -11629,456 +11065,8 @@ if not install_started:
         return True
 
     def _format_json_error(self, exc):
-        if hasattr(self, "_line_text"):
-            return json_error_diagnostics_core.format_json_error(self, exc)
+        return json_error_diagnostics_core.format_json_error(self, exc)
 
-        msg = getattr(exc, "msg", None)
-        self._last_json_error_msg = msg
-        self._last_json_error_diag = None
-        if isinstance(exc, json.JSONDecodeError) or msg:
-            diag = self._build_json_diagnostic(exc)
-            if diag:
-                self._last_json_error_diag = diag
-                return self._format_suggestion(diag["header"], diag["before"], diag["after"])
-            if msg in (
-                "Illegal trailing comma before end of object",
-                "Illegal trailing comma before end of array",
-            ):
-                illegal_no, illegal_text = self._find_nearby_illegal_trailing_comma_line(
-                    getattr(exc, "lineno", None) or 1
-                )
-                if illegal_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: remove the trailing comma.",
-                        illegal_text.strip(),
-                        self._fix_illegal_trailing_comma_before_close(illegal_text).strip(),
-                    )
-            example = self._example_for_error(exc)
-            # Missing list open after key (e.g. '"purchasedItems":' followed by quoted items).
-            if msg in (
-                "Expecting ':' delimiter",
-                "Expecting property name enclosed in double quotes",
-                "Expecting ',' delimiter",
-                "Expecting value",
-                "Expecting ']'",
-                "Expecting '}'",
-            ):
-                if not (msg == "Expecting ',' delimiter" and self._is_missing_object_close()):
-                    missing_key_line, missing_open = self._find_missing_container_open_after_key_line(
-                        getattr(exc, "lineno", None)
-                    )
-                    if missing_key_line and missing_open in ("[", "{"):
-                        key_text = self._line_text(missing_key_line).strip()
-                        return self._format_suggestion(
-                            f'Invalid Entry: add "{missing_open}" after the highlighted line.',
-                            key_text,
-                            f"{key_text} {missing_open}",
-                        )
-            # Prefer missing-quote repair when the parser error points to a nearby
-            # line but the real issue is an unquoted scalar value (e.g. id/IBAN).
-            if msg in ("Expecting value", "Expecting ',' delimiter"):
-                bool_line_no, bool_line_text, bool_diag = self._find_nearby_boolean_literal_typo_line(
-                    getattr(exc, "lineno", None)
-                )
-                if bool_line_text and bool_diag:
-                    return self._format_suggestion(
-                        "Invalid Entry: fix the boolean value.",
-                        bool_line_text.strip(),
-                        bool_diag["after"].strip(),
-                    )
-                nearby_line_no, nearby_line_text = self._find_nearby_unquoted_value_line(
-                    getattr(exc, "lineno", None)
-                )
-                if nearby_line_text:
-                    quoted = self._quote_unquoted_value(nearby_line_text)
-                    if quoted and quoted != nearby_line_text:
-                        return self._format_suggestion(
-                            "Invalid Entry: add the missing quote.",
-                            nearby_line_text,
-                            quoted,
-                        )
-            if msg == "Expecting ',' delimiter":
-                lineno = getattr(exc, "lineno", None)
-                line_text = self._line_text(lineno).strip() if lineno else ""
-                stray_line_no, stray_line_text = self._find_nearby_trailing_stray_quote_line(lineno)
-                if stray_line_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: remove the extra quote.",
-                        stray_line_text,
-                        self._fix_trailing_stray_quote_after_comma(stray_line_text),
-                    )
-                invalid_closer_no, invalid_closer_text = self._find_nearby_invalid_symbol_after_closer_line(lineno)
-                if invalid_closer_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: replace the invalid trailing symbol with a comma.",
-                        invalid_closer_text,
-                        self._fix_invalid_symbol_after_closer(invalid_closer_text),
-                    )
-                if self._line_extra_quote_in_string_value(line_text):
-                    return self._format_suggestion(
-                        "Invalid Entry: add a comma near the highlighted line.",
-                        line_text,
-                        self._fix_extra_quote_to_comma(line_text),
-                    )
-                invalid_tail_no, invalid_tail_text = self._find_nearby_invalid_trailing_symbols_line(lineno)
-                if invalid_tail_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: replace the invalid trailing symbol with a comma.",
-                        invalid_tail_text,
-                        self._fix_invalid_trailing_symbols_after_string_value(invalid_tail_text, invalid_tail_no),
-                    )
-                if self._is_missing_object_close():
-                    return self._format_suggestion(
-                        "Invalid Entry: add the missing closing bracket.",
-                        "",
-                        "}",
-                    )
-                wrong_object_line = self._find_wrong_object_open_line(getattr(exc, "lineno", None))
-                if wrong_object_line:
-                    wrong_text = self._line_text(wrong_object_line).strip()
-                    before = wrong_text
-                    after = wrong_text.replace("[", "{", 1)
-                    return self._format_suggestion(
-                        "Invalid Entry: replace \"[\" with \"{\".",
-                        before,
-                        after,
-                    )
-                wrong_line = self._find_wrong_list_open_line(getattr(exc, "lineno", None))
-                if wrong_line:
-                    return self._format_suggestion(
-                        "Invalid Entry: replace \"[\" with \"{\".",
-                        "[",
-                        "{",
-                    )
-                if self._is_missing_list_close():
-                    lineno = getattr(exc, "lineno", None) or 1
-                    comma_line = self._find_comma_only_line_before(lineno)
-                    if comma_line:
-                        return self._format_suggestion(
-                            "Invalid Entry: add the missing closing bracket.",
-                            ",",
-                            "],",
-                        )
-                    return self._format_suggestion(
-                        "Invalid Entry: add the missing closing bracket.",
-                        "",
-                        "]",
-                    )
-                if self._is_missing_object_open_at(getattr(exc, "lineno", None)):
-                    before, after = "", "{"
-                    return self._format_suggestion(
-                        "Invalid Entry: add \"{\" before the highlighted line.",
-                        before,
-                        after,
-                    )
-                if self._close_before_list(getattr(exc, "lineno", None)):
-                    before, after = "", "}"
-                    return self._format_suggestion(
-                        "Invalid Entry: add the missing closing bracket.",
-                        before,
-                        after,
-                    )
-                if self._is_missing_object_open(exc):
-                    before, after = self._suggestion_from_example(example, add_after="{")
-                    return self._format_suggestion(
-                        "Invalid Entry: add \"{\" after the highlighted line.",
-                        before,
-                        after,
-                    )
-                if self._is_missing_object_close():
-                    add_after = "}" if self._close_before_list(getattr(exc, "lineno", None)) else "},"
-                    before, after = self._suggestion_from_example(example, add_after=add_after)
-                    return self._format_suggestion(
-                        "Invalid Entry: add the missing closing bracket.",
-                        before,
-                        after,
-                    )
-                if self._is_missing_list_close():
-                    lineno = getattr(exc, "lineno", None)
-                    next_text = self._next_non_empty_line(lineno or 1).strip()
-                    add_after = "]" if next_text.startswith(("}", "]")) else "],"
-                    before, after = self._suggestion_from_example(example, add_after=add_after)
-                    return self._format_suggestion(
-                        "Invalid Entry: add the missing closing bracket.",
-                        before,
-                        after,
-                    )
-                before, after = self._suggestion_from_example(example, add_after=",")
-                return self._format_suggestion(
-                    "Invalid Entry: add a comma near the highlighted line.",
-                    before,
-                    after,
-                )
-            if msg == "Expecting property name enclosed in double quotes":
-                missing_key_line, missing_open = self._find_missing_container_open_after_key_line(
-                    getattr(exc, "lineno", None)
-                )
-                if missing_key_line and missing_open in ("[", "{"):
-                    key_text = self._line_text(missing_key_line).strip()
-                    return self._format_suggestion(
-                        f'Invalid Entry: add "{missing_open}" after the highlighted line.',
-                        key_text,
-                        f"{key_text} {missing_open}",
-                    )
-                dup_line_no, dup_line_text = self._find_nearby_duplicate_trailing_comma_line(
-                    getattr(exc, "lineno", None)
-                )
-                if dup_line_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: remove the extra comma.",
-                        dup_line_text,
-                        self._fix_duplicate_trailing_comma(dup_line_text),
-                    )
-                invalid_tail_no, invalid_tail_text = self._find_nearby_invalid_trailing_symbols_line(
-                    getattr(exc, "lineno", None)
-                )
-                if invalid_tail_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: replace the invalid trailing symbol with a comma.",
-                        invalid_tail_text,
-                        self._fix_invalid_trailing_symbols_after_string_value(invalid_tail_text, invalid_tail_no),
-                    )
-                comma_line = self._find_comma_only_line_before(getattr(exc, "lineno", None) or 1)
-                if comma_line:
-                    return self._format_suggestion(
-                        "Invalid Entry: add the missing closing bracket.",
-                        ",",
-                        "},",
-                    )
-                lineno = getattr(exc, "lineno", None)
-                line_text = ""
-                if lineno:
-                    try:
-                        line_text = self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-                    except Exception:
-                        line_text = ""
-                if self._is_missing_object_close() and line_text.startswith("{"):
-                    return self._format_suggestion(
-                        "Invalid Entry: add the missing closing bracket.",
-                        "",
-                        "}",
-                    )
-                if line_text == "{,":
-                    return self._format_suggestion(
-                        "Invalid Entry: remove the comma after \"{\".",
-                        "{,",
-                        "{",
-                    )
-                if line_text.startswith("{"):
-                    key_line = self._missing_list_open_key_line(lineno)
-                    if key_line:
-                        key_text = self._line_text(key_line).strip()
-                        before = key_text
-                        after = key_text + " ["
-                        return self._format_suggestion(
-                            "Invalid Entry: add \"[\" after the highlighted line.",
-                            before,
-                            after,
-                        )
-                before = line_text if line_text else example
-                after = self._quote_property_name(before)
-                return self._format_suggestion(
-                    "Invalid Entry: add quotes around the highlighted name.",
-                    before,
-                    after,
-                )
-            if msg == "Expecting ':' delimiter":
-                missing_key_line, missing_open = self._find_missing_container_open_after_key_line(
-                    getattr(exc, "lineno", None)
-                )
-                if missing_key_line and missing_open in ("[", "{"):
-                    key_text = self._line_text(missing_key_line).strip()
-                    return self._format_suggestion(
-                        f'Invalid Entry: add "{missing_open}" after the highlighted line.',
-                        key_text,
-                        f"{key_text} {missing_open}",
-                    )
-                line_text = ""
-                try:
-                    lineno = getattr(exc, "lineno", None)
-                    if lineno:
-                        line_text = self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-                except Exception:
-                    line_text = ""
-                before = line_text if line_text else example
-                if line_text and self._line_has_trailing_stray_quote_after_comma(line_text):
-                    after = self._fix_trailing_stray_quote_after_comma(line_text)
-                    return self._format_suggestion(
-                        "Invalid Entry: remove the extra quote.",
-                        before,
-                        after,
-                    )
-                if line_text and line_text.count("\"") % 2 == 1:
-                    after = self._fix_missing_quote(line_text)
-                else:
-                    after = self._missing_colon_example(line_text) if line_text else "\"key\": \"value\""
-                return self._format_suggestion(
-                    "Invalid Entry: add a colon after the highlighted name.",
-                    before,
-                    after,
-                )
-            if msg and msg.startswith("Invalid control character"):
-                stray_line_no, stray_line_text = self._find_nearby_trailing_stray_quote_line(
-                    getattr(exc, "lineno", None)
-                )
-                if stray_line_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: remove the extra quote.",
-                        stray_line_text,
-                        self._fix_trailing_stray_quote_after_comma(stray_line_text),
-                    )
-                invalid_tail_no, invalid_tail_text = self._find_nearby_invalid_trailing_symbols_line(
-                    getattr(exc, "lineno", None)
-                )
-                if invalid_tail_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: replace the invalid trailing symbol with a comma.",
-                        invalid_tail_text,
-                        self._fix_invalid_trailing_symbols_after_string_value(invalid_tail_text, invalid_tail_no),
-                    )
-                line_text = ""
-                try:
-                    lineno = getattr(exc, "lineno", None)
-                    if lineno:
-                        line_text = self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-                except Exception:
-                    line_text = ""
-                before = line_text if line_text else example
-                after = self._fix_missing_quote(line_text) if line_text else "\"key\": \"value\""
-                return self._format_suggestion(
-                    "Invalid Entry: add the missing quote.",
-                    before,
-                    after,
-                )
-            if msg in ("Expecting ']'", "Expecting '}'"):
-                before, after = self._suggestion_from_example(example, add_after=example.strip())
-                return self._format_suggestion(
-                    "Invalid Entry: add the missing closing bracket.",
-                    before,
-                    after,
-                )
-            if msg == "Expecting value":
-                line_text = ""
-                try:
-                    lineno = getattr(exc, "lineno", None)
-                    if lineno:
-                        line_text = self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-                except Exception:
-                    line_text = ""
-                if self._is_key_colon_comma_line(line_text):
-                    return self._format_suggestion(
-                        "Invalid Entry: add \"[\" after the highlighted line.",
-                        line_text,
-                        self._key_colon_comma_to_list_open(line_text),
-                    )
-                if line_text:
-                    quoted = self._quote_unquoted_scalar_line(line_text)
-                    if quoted and quoted != line_text:
-                        return self._format_suggestion(
-                            "Invalid Entry: add the missing quote.",
-                            line_text,
-                            quoted,
-                        )
-                # Parser can report the next line; check nearby previous lines for
-                # unquoted scalar values and prefer the quote fix in that case.
-                nearby_line_no, nearby_line_text = self._find_nearby_unquoted_value_line(
-                    getattr(exc, "lineno", None)
-                )
-                if nearby_line_text:
-                    quoted = self._quote_unquoted_scalar_line(nearby_line_text)
-                    if quoted and quoted != nearby_line_text:
-                        return self._format_suggestion(
-                            "Invalid Entry: add the missing quote.",
-                            nearby_line_text,
-                            quoted,
-                        )
-                if self._is_missing_list_open_at_start(exc):
-                    before, after = "", "["
-                    return self._format_suggestion(
-                        "Invalid Entry: add \"[\" before the highlighted line.",
-                        before,
-                        after,
-                    )
-                if self._is_missing_object_open(exc):
-                    before, after = self._suggestion_from_example(example, add_after="{")
-                    return self._format_suggestion(
-                        "Invalid Entry: add \"{\" after the highlighted line.",
-                        before,
-                        after,
-                    )
-                if self._is_missing_list_open(exc):
-                    before, after = self._suggestion_from_example(example, add_after="[")
-                    return self._format_suggestion(
-                        "Invalid Entry: add \"[\" after the highlighted line.",
-                        before,
-                        after,
-                    )
-                if self._is_missing_list_close():
-                    before, after = self._suggestion_from_example(example, add_after="],")
-                    return self._format_suggestion(
-                        "Invalid Entry: add the missing closing bracket.",
-                        before,
-                        after,
-                    )
-            if msg == "Extra data":
-                top_close_no, top_close_text = self._find_nearby_illegal_comma_after_top_level_close_line(
-                    getattr(exc, "lineno", None) or 1
-                )
-                if top_close_text:
-                    return self._format_suggestion(
-                        "Invalid Entry: remove the trailing comma.",
-                        top_close_text.strip(),
-                        self._fix_illegal_comma_after_top_level_close(top_close_text).strip(),
-                    )
-                if self._missing_object_open_from_extra_data():
-                    before, after = "", "{"
-                    return self._format_suggestion(
-                        "Invalid Entry: add \"{\" before the highlighted line.",
-                        before,
-                        after,
-                    )
-                if self._missing_list_open_from_extra_data():
-                    before, after = "", "["
-                    return self._format_suggestion(
-                        "Invalid Entry: add \"[\" before the highlighted line.",
-                        before,
-                        after,
-                    )
-                before, after = self._suggestion_from_example(example)
-                return self._format_suggestion(
-                    "Invalid Entry: extra data after a complete value. Remove it or wrap values in [].",
-                    before,
-                    after,
-                )
-            if msg in ("Unexpected ']'", "Unexpected '}'"):
-                before, after = self._suggestion_from_example(example)
-                return self._format_suggestion(
-                    "Invalid Entry: remove the extra closing bracket.",
-                    before,
-                    after,
-                )
-            if msg == "Unterminated string":
-                before, after = self._suggestion_from_example(example, add_after="\"")
-                return self._format_suggestion(
-                    "Invalid Entry: close the quote.",
-                    before,
-                    after,
-                )
-            # Default suggestion: if the example looks like an unterminated quoted
-            # string (starts with a quote but lacks the closing quote), suggest
-            # adding the missing closing quote so the splash shows the fix.
-            before = example
-            after = example
-            try:
-                if isinstance(example, str) and example.startswith('"') and not example.endswith('"'):
-                    before, after = self._suggestion_from_example(example, add_after='"')
-            except Exception:
-                before, after = example, example
-            return (
-                "Invalid Entry: check the highlighted line.\n\n"
-                f"{self._format_suggestion('Suggestion', before, after, header_only=True)}"
-            )
-        return str(exc)
 
     def _example_for_error(self, exc):
         lineno = getattr(exc, "lineno", None)
@@ -13641,833 +12629,12 @@ if not install_started:
         return None, None
 
     def _build_symbol_json_diagnostic(self, exc, lineno=None):
-        if hasattr(self, "_line_text"):
-            return json_error_diagnostics_core.build_symbol_json_diagnostic(
-                self,
-                exc,
-                lineno=lineno,
-            )
+        return json_error_diagnostics_core.build_symbol_json_diagnostic(self, exc, lineno=lineno)
 
-        msg = getattr(exc, "msg", "") or ""
-        if msg not in (
-            "Expecting ',' delimiter",
-            "Expecting ':' delimiter",
-            "Expecting property name enclosed in double quotes",
-            "Expecting value",
-            "Illegal trailing comma before end of object",
-            "Illegal trailing comma before end of array",
-            "Extra data",
-        ) and not msg.startswith("Invalid control character") and not msg.startswith("Invalid \\escape"):
-            return None
-
-        line_no = lineno or (getattr(exc, "lineno", None) or 1)
-        colno = getattr(exc, "colno", None) or 1
-
-        # Missing closing quote in object key should win over symbol-tail rules,
-        # regardless of which parser message variant was raised.
-        invalid_escape_no, invalid_escape_text = self._find_nearby_property_key_invalid_escape_line(line_no)
-        if invalid_escape_text and invalid_escape_no:
-            raw = self._line_text(invalid_escape_no)
-            span = self._property_key_invalid_escape_span(raw)
-            if span:
-                start_col, end_col = span
-            else:
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-            return {
-                "header": "Invalid Entry: replace the invalid escape with a double quote.",
-                "before": invalid_escape_text.strip(),
-                "after": self._fix_property_key_invalid_escape(invalid_escape_text).strip(),
-                "line": invalid_escape_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_wrong_property_quote_char",
-            }
-
-        # Missing closing quote in object key should win over symbol-tail rules,
-        # regardless of which parser message variant was raised.
-        missing_key_quote_diag = self._missing_key_quote_before_colon_diag(line_no, colno=colno)
-        if missing_key_quote_diag:
-            return missing_key_quote_diag
-
-        # Wrong closer token in Expecting-value paths should use symbol-note
-        # routing so the bad bracket is highlighted in red with a direct fix.
-        # Keep missing-list-close handling prioritized because that path gives a
-        # clearer key-line before/after correction for object-end `}` cases.
-        if msg == "Expecting value":
-            close_line, _insert_col, _before_line, _after_line = self._find_missing_list_close_before_object_end(
-                line_no
-            )
-            if not close_line:
-                wrong_close = self._find_wrong_closing_symbol_line(line_no, lookback=3)
-                if wrong_close:
-                    bad_line, start_col, end_col, bad_token, expected, before_line, after_line = wrong_close
-                    token = str(bad_token or "").strip()
-                    if token.startswith(("]", "}")):
-                        header = (
-                            f'Invalid Entry: replace "{token}" with "{expected}".'
-                            if token
-                            else f'Invalid Entry: replace the wrong bracket with "{expected}".'
-                        )
-                        return {
-                            "header": header,
-                            "before": str(before_line or "").strip(),
-                            "after": str(after_line or "").strip(),
-                            "line": int(bad_line),
-                            "start_col": int(start_col),
-                            "end_col": int(end_col),
-                            "note": "symbol_wrong_closing_bracket",
-                        }
-                raw_line = self._line_text(line_no)
-                stripped_line = str(raw_line or "").strip()
-                if stripped_line.startswith(("]", "}")):
-                    first_col = 0
-                    for idx, ch in enumerate(str(raw_line or "")):
-                        if not ch.isspace():
-                            first_col = idx
-                            break
-                    token = stripped_line.split()[0]
-                    expected = None
-                    if int(line_no) == 1:
-                        next_line_no = self._next_non_empty_line_number(1)
-                        next_text = self._line_text(next_line_no).strip() if next_line_no else ""
-                        if self._line_looks_like_object_property(next_text):
-                            expected = "{"
-                        elif next_text.startswith(("{", '"')):
-                            expected = "["
-                    if not expected:
-                        expected = "}" if token.startswith("]") else "]"
-                    return {
-                        "header": f'Invalid Entry: replace "{token}" with "{expected}".',
-                        "before": token,
-                        "after": expected,
-                        "line": int(line_no),
-                        "start_col": int(first_col),
-                        "end_col": int(first_col + len(token)),
-                        "note": "symbol_wrong_closing_bracket",
-                    }
-                if int(line_no) == 1:
-                    next_line_no = self._next_non_empty_line_number(1)
-                    next_text = self._line_text(next_line_no).strip() if next_line_no else ""
-                    if self._line_looks_like_object_property(next_text):
-                        raw_src = str(raw_line or "")
-                        first_col = None
-                        for idx, ch in enumerate(raw_src):
-                            if ch == "\ufeff":
-                                continue
-                            if not ch.isspace():
-                                first_col = idx
-                                break
-                        if first_col is not None:
-                            end_col = first_col
-                            while end_col < len(raw_src) and not raw_src[end_col].isspace():
-                                end_col += 1
-                            token = raw_src[first_col:end_col]
-                            if token and token != "{" and not token.startswith(("{", '"', "[")):
-                                return {
-                                    "header": f'Invalid Entry: replace "{token}" with "{{".',
-                                    "before": token,
-                                    "after": "{",
-                                    "line": 1,
-                                    "start_col": int(first_col),
-                                    "end_col": int(max(end_col, first_col + 1)),
-                                    "note": "symbol_wrong_opening_bracket",
-                                }
-
-        # Extra-data with an invalid top token before object properties should
-        # flag that token as a red symbol error and suggest object-open "{"
-        # instead of insertion-only missing-open guidance.
-        if msg == "Extra data":
-            first_line_no = self._next_non_empty_line_number(0)
-            if first_line_no == 1:
-                raw_first = self._line_text(1)
-                first_col = None
-                for idx, ch in enumerate(str(raw_first or "")):
-                    if ch == "\ufeff":
-                        continue
-                    if not ch.isspace():
-                        first_col = idx
-                        break
-                if first_col is not None:
-                    end_col = first_col
-                    raw_src = str(raw_first or "")
-                    while end_col < len(raw_src) and not raw_src[end_col].isspace():
-                        end_col += 1
-                    token = raw_src[first_col:end_col]
-                    next_line_no = self._next_non_empty_line_number(1)
-                    next_text = self._line_text(next_line_no).strip() if next_line_no else ""
-                    if (
-                        token
-                        and token != "{"
-                        and not token.startswith(('"', "{", "["))
-                        and self._line_looks_like_object_property(next_text)
-                    ):
-                        return {
-                            "header": f'Invalid Entry: replace "{token}" with "{{".',
-                            "before": token,
-                            "after": "{",
-                            "line": 1,
-                            "start_col": int(first_col),
-                            "end_col": int(max(end_col, first_col + 1)),
-                            "note": "symbol_wrong_opening_bracket",
-                        }
-
-        # Missing colon between key and value: "key" 123 -> "key": 123
-        if msg == "Expecting ':' delimiter":
-            missing_colon_no, missing_colon_text = self._find_nearby_missing_colon_line(line_no)
-            if missing_colon_text and missing_colon_no:
-                raw = self._line_text(missing_colon_no)
-                span = self._missing_colon_key_value_span(raw)
-                if span:
-                    start_col, end_col = span
-                else:
-                    start_col = max(colno - 1, 0)
-                    end_col = start_col
-                return {
-                    "header": "Invalid Entry: add a colon after the highlighted name.",
-                    "before": missing_colon_text.strip(),
-                    "after": self._missing_colon_example(missing_colon_text).strip(),
-                    "line": missing_colon_no,
-                    "start_col": start_col,
-                    "end_col": end_col,
-                    "note": "missing_colon_between_key_value",
-                }
-
-        # Key typo: "key",: value
-        comma_before_no, comma_before_text = self._find_nearby_comma_before_colon_line(line_no)
-        if comma_before_text and comma_before_no:
-            raw = self._line_text(comma_before_no)
-            span = self._comma_before_colon_span(raw)
-            if span:
-                start_col, end_col = span
-            else:
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-            return {
-                "header": "Invalid Entry: remove the extra comma.",
-                "before": comma_before_text.strip(),
-                "after": self._fix_comma_before_colon(comma_before_text).strip(),
-                "line": comma_before_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_comma_before_colon",
-            }
-
-        # Value typo: "key":, value
-        comma_after_no, comma_after_text = self._find_nearby_comma_after_colon_line(line_no)
-        if comma_after_text and comma_after_no:
-            raw = self._line_text(comma_after_no)
-            span = self._comma_after_colon_span(raw)
-            if span:
-                start_col, end_col = span
-            else:
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-            return {
-                "header": "Invalid Entry: remove the extra comma.",
-                "before": comma_after_text.strip(),
-                "after": self._fix_comma_after_colon(comma_after_text).strip(),
-                "line": comma_after_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_comma_after_colon",
-            }
-
-        colon_bad_no, colon_bad_text = self._find_nearby_invalid_prefix_after_colon_line(line_no)
-        if colon_bad_text and colon_bad_no:
-            raw = self._line_text(colon_bad_no)
-            analysis = self._analyze_invalid_prefix_after_colon(raw)
-            if analysis:
-                start_col = analysis["start_col"]
-                end_col = analysis["end_col"]
-                after_line = analysis["after"].strip()
-            else:
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-                after_line = self._fix_invalid_prefix_after_colon(colon_bad_text).strip()
-            header = (
-                "Invalid Entry: remove the invalid symbol after the colon."
-                if after_line and not after_line.endswith(":")
-                else "Invalid Entry: add a valid value after the colon."
-            )
-            return {
-                "header": header,
-                "before": colon_bad_text.strip(),
-                "after": after_line,
-                "line": colon_bad_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_after_colon",
-            }
-
-        # Closer typo: ",}" / ",]" should be "}," / "],".
-        comma_close_no, comma_close_text = self._find_nearby_comma_before_closer_line(line_no)
-        if comma_close_text and comma_close_no:
-            raw = self._line_text(comma_close_no)
-            span = self._comma_before_closer_span(raw)
-            if span:
-                start_col, end_col = span
-            else:
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-            return {
-                "header": "Invalid Entry: move the comma after the closing bracket.",
-                "before": comma_close_text.strip(),
-                "after": self._fix_comma_before_closer(comma_close_text).strip(),
-                "line": comma_close_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_comma_before_closer",
-            }
-
-        # Comma-only separator line with invalid trailing symbols (for example ",)" / ",a").
-        comma_tail_no, comma_tail_text = self._find_nearby_comma_line_invalid_tail_line(line_no)
-        if comma_tail_text and comma_tail_no:
-            raw = self._line_text(comma_tail_no)
-            span = self._comma_line_invalid_tail_span(raw)
-            if span:
-                start_col, end_col = span
-            else:
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-            return {
-                "header": "Invalid Entry: replace the invalid trailing symbol with a closing bracket.",
-                "before": comma_tail_text.strip(),
-                "after": self._fix_comma_line_invalid_tail(comma_tail_text, lineno=comma_tail_no).strip(),
-                "line": comma_tail_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_comma_before_close_tail",
-            }
-
-        # Top-level: "}," / "],," at EOF => remove trailing comma run.
-        if msg == "Extra data":
-            top_tail_no, top_tail_text = self._find_nearby_top_level_close_symbol_run_line(line_no)
-            if top_tail_text and top_tail_no:
-                raw = self._line_text(top_tail_no)
-                span = self._top_level_close_symbol_run_span(raw)
-                if span:
-                    start_col, end_col = span
-                else:
-                    start_col = max(colno - 1, 0)
-                    end_col = start_col + 1
-                tail = raw[start_col:].strip() if start_col < len(raw) else ""
-                if tail and set(tail) == {","}:
-                    header = "Invalid Entry: remove the trailing comma."
-                else:
-                    header = "Invalid Entry: remove the invalid trailing symbol."
-                return {
-                    "header": header,
-                    "before": top_tail_text.strip(),
-                    "after": self._fix_top_level_close_symbol_run(top_tail_text).strip(),
-                    "line": top_tail_no,
-                    "start_col": start_col,
-                    "end_col": end_col,
-                    "note": "symbol_top_level_close_tail_run",
-                }
-            top_close_no, top_close_text = self._find_nearby_illegal_comma_after_top_level_close_line(line_no)
-            if top_close_text and top_close_no:
-                raw = self._line_text(top_close_no)
-                span = self._comma_run_after_top_level_close_span(raw)
-                if span:
-                    start_col, end_col = span
-                else:
-                    start_col = raw.rstrip().rfind(",")
-                    if start_col < 0:
-                        start_col = max(colno - 1, 0)
-                    end_col = start_col + 1
-                return {
-                    "header": "Invalid Entry: remove the trailing comma.",
-                    "before": top_close_text.strip(),
-                    "after": self._fix_illegal_comma_after_top_level_close(top_close_text).strip(),
-                    "line": top_close_no,
-                    "start_col": start_col,
-                    "end_col": end_col,
-                    "note": "symbol_top_level_close_comma_run",
-                }
-
-        # Value line ending in comma before explicit close line.
-        illegal_comma_no, illegal_comma_text = self._find_nearby_illegal_trailing_comma_line(line_no)
-        if illegal_comma_text and illegal_comma_no:
-            raw = self._line_text(illegal_comma_no)
-            start_col = self._trailing_comma_before_close_col(raw)
-            if start_col is None:
-                start_col = max(colno - 1, 0)
-            return {
-                "header": "Invalid Entry: remove the trailing comma.",
-                "before": illegal_comma_text.strip(),
-                "after": self._fix_illegal_trailing_comma_before_close(illegal_comma_text).strip(),
-                "line": illegal_comma_no,
-                "start_col": start_col,
-                "end_col": start_col + 1,
-                "note": "symbol_trailing_comma_before_close",
-            }
-
-        # Generic duplicate-comma run at line end (e.g. "value",,).
-        dup_run_no, dup_run_text = self._find_nearby_duplicate_comma_run_line(line_no)
-        if dup_run_text and dup_run_no:
-            raw = self._line_text(dup_run_no)
-            span = self._duplicate_comma_run_span(raw, lineno=dup_run_no)
-            if span:
-                start_col, end_col = span
-            else:
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-            keep_one = self._line_requires_trailing_comma(dup_run_no)
-            header = (
-                "Invalid Entry: remove the extra comma."
-                if keep_one
-                else "Invalid Entry: remove the trailing comma."
-            )
-            return {
-                "header": header,
-                "before": dup_run_text.strip(),
-                "after": self._fix_duplicate_comma_run(dup_run_text, lineno=dup_run_no).strip(),
-                "line": dup_run_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_duplicate_comma_run",
-            }
-
-        # Quoted array item with mixed invalid tail symbols (e.g. ",,,,,@").
-        bad_tail_no, bad_tail_text = self._find_nearby_invalid_tail_after_quoted_item_line(line_no)
-        if bad_tail_text and bad_tail_no:
-            raw = self._line_text(bad_tail_no)
-            span = self._quoted_item_invalid_tail_span(raw)
-            if span:
-                start_col, end_col = span
-            else:
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-            return {
-                "header": "Invalid Entry: remove the invalid trailing symbol.",
-                "before": bad_tail_text.strip(),
-                "after": self._fix_invalid_tail_after_quoted_item(bad_tail_text, bad_tail_no).strip(),
-                "line": bad_tail_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_quoted_item_invalid_tail",
-            }
-
-        # Invalid symbol run directly after opener ({ or [).
-        open_no, open_text = self._find_nearby_invalid_symbol_after_open_line(line_no)
-        if open_text and open_no:
-            raw = self._line_text(open_no)
-            span = self._invalid_symbol_after_open_span(raw)
-            if span:
-                opener, start_col, end_col, symbol_text = span
-            else:
-                opener = "{"
-                start_col = max(colno - 1, 0)
-                end_col = start_col + 1
-                symbol_text = ""
-            fixed = self._fix_invalid_symbol_after_open(raw).strip()
-            if not fixed:
-                fixed = opener
-            header = (
-                f'Invalid Entry: remove the comma after "{opener}".'
-                if symbol_text == ","
-                else f'Invalid Entry: remove the invalid symbol after "{opener}".'
-            )
-            return {
-                "header": header,
-                "before": open_text,
-                "after": fixed,
-                "line": open_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_after_open",
-            }
-
-        # Duplicate comma at line end.
-        dup_no, dup_text = self._find_nearby_duplicate_trailing_comma_line(line_no)
-        if dup_text and dup_no:
-            raw = self._line_text(dup_no)
-            start_col = raw.rfind(",")
-            if start_col < 0:
-                start_col = max(colno - 1, 0)
-            return {
-                "header": "Invalid Entry: remove the extra comma.",
-                "before": dup_text,
-                "after": self._fix_duplicate_trailing_comma(dup_text),
-                "line": dup_no,
-                "start_col": start_col,
-                "end_col": start_col + 1,
-                "note": "symbol_duplicate_trailing_comma",
-            }
-
-        # Invalid symbol run after a closer (}, ], etc).
-        cl_no, cl_text = self._find_nearby_invalid_symbol_after_closer_line(line_no)
-        if cl_text and cl_no:
-            raw = self._line_text(cl_no)
-            start_col = self._first_invalid_symbol_after_closer_col(raw)
-            if start_col is None:
-                start_col = max(colno - 1, 0)
-            end_col = len(raw.rstrip())
-            if end_col <= start_col:
-                end_col = start_col + 1
-            return {
-                "header": "Invalid Entry: replace the invalid trailing symbol with a comma.",
-                "before": cl_text,
-                "after": self._fix_invalid_symbol_after_closer(cl_text),
-                "line": cl_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_after_closer",
-            }
-
-        # Invalid symbol run after a completed quoted string value.
-        tail_no, tail_text = self._find_nearby_invalid_trailing_symbols_line(line_no)
-        if tail_text and tail_no:
-            raw = self._line_text(tail_no)
-            start_col = self._first_invalid_trailing_symbol_col(raw, lineno=tail_no)
-            if start_col is None:
-                start_col = max(colno - 1, 0)
-            end_col = len(raw.rstrip())
-            if end_col <= start_col:
-                end_col = start_col + 1
-            after_line = self._fix_invalid_trailing_symbols_after_string_value(tail_text, tail_no)
-            header = (
-                "Invalid Entry: replace the invalid trailing symbol with a comma."
-                if after_line.rstrip().endswith(",")
-                else "Invalid Entry: remove the invalid trailing symbol."
-            )
-            return {
-                "header": header,
-                "before": tail_text,
-                "after": after_line,
-                "line": tail_no,
-                "start_col": start_col,
-                "end_col": end_col,
-                "note": "symbol_after_value",
-            }
-
-        return None
 
     def _build_json_diagnostic(self, exc):
-        if hasattr(self, "_line_text"):
-            return json_error_diagnostics_core.build_json_diagnostic(self, exc)
+        return json_error_diagnostics_core.build_json_diagnostic(self, exc)
 
-        msg = getattr(exc, "msg", "") or ""
-        if msg not in (
-            "Expecting ',' delimiter",
-            "Expecting ':' delimiter",
-            "Expecting property name enclosed in double quotes",
-            "Expecting value",
-            "Illegal trailing comma before end of object",
-            "Illegal trailing comma before end of array",
-            "Extra data",
-        ) and not msg.startswith("Invalid control character") and not msg.startswith("Invalid \\escape"):
-            return None
-
-        lineno = getattr(exc, "lineno", None) or 1
-        line_text = self._line_text(lineno)
-        stripped = line_text.strip()
-
-        # 1) key: ,   -> key: [
-        if self._is_key_colon_comma_line(stripped):
-            comma_col = line_text.find(",")
-            if comma_col < 0:
-                comma_col = max((getattr(exc, "colno", 1) or 1) - 1, 0)
-            return {
-                "header": 'Invalid Entry: add "[" after the highlighted line.',
-                "before": stripped,
-                "after": self._key_colon_comma_to_list_open(stripped),
-                "line": lineno,
-                "start_col": comma_col,
-                "end_col": comma_col + 1,
-                "note": "missing_list_open_typed_comma",
-            }
-
-        # Missing closing value quote before comma/EOL should be resolved first
-        # so cursor focus lands on the quote insertion point (before comma).
-        if msg.startswith("Invalid control character") or msg in ("Expecting ',' delimiter", "Expecting value"):
-            invalid_tail_no, invalid_tail_text, invalid_tail_span = (
-                self._find_nearby_unclosed_quoted_value_invalid_tail_line(lineno)
-            )
-            if invalid_tail_text and invalid_tail_no and invalid_tail_span:
-                start_col, end_col = invalid_tail_span
-                if end_col <= start_col:
-                    end_col = start_col + 1
-                return {
-                    "header": "Invalid Entry: remove the invalid trailing symbol.",
-                    "before": str(invalid_tail_text).strip(),
-                    "after": self._fix_missing_quote(str(invalid_tail_text)).strip(),
-                    "line": int(invalid_tail_no),
-                    "start_col": int(start_col),
-                    "end_col": int(end_col),
-                    "note": "invalid_trailing_symbol_after_value",
-                }
-            missing_quote_no, missing_quote_text, insert_col = self._find_nearby_missing_value_close_quote_line(
-                lineno
-            )
-            if missing_quote_text and missing_quote_no and insert_col is not None:
-                return {
-                    "header": "Invalid Entry: add the missing quote.",
-                    "before": str(missing_quote_text).strip(),
-                    "after": self._fix_missing_quote(str(missing_quote_text)).strip(),
-                    "line": int(missing_quote_no),
-                    "start_col": int(insert_col),
-                    "end_col": int(insert_col),
-                    "note": "missing_value_close_quote",
-                }
-
-        symbol_diag_builder = getattr(self, "_build_symbol_json_diagnostic", None)
-        if callable(symbol_diag_builder):
-            symbol_diag = symbol_diag_builder(exc, lineno=lineno)
-        else:
-            # Test harness may bind only a subset of methods onto a namespace.
-            symbol_diag = None
-        if symbol_diag:
-            return symbol_diag
-
-        if (
-            msg == "Expecting ',' delimiter"
-            and not self._is_missing_object_close()
-            and not self._is_missing_list_close()
-        ):
-            missing_comma_line = self._find_missing_comma_between_block_values_line(lineno)
-            if missing_comma_line:
-                raw = self._line_text(missing_comma_line)
-                end_col = len(raw.rstrip())
-                return {
-                    "header": "Invalid Entry: add a comma near the highlighted line.",
-                    "before": raw.strip(),
-                    "after": (raw.rstrip() + ",").strip(),
-                    "line": missing_comma_line,
-                    "start_col": end_col,
-                    "end_col": end_col,
-                    "note": "missing_comma_between_blocks",
-                }
-
-        if msg == "Expecting property name enclosed in double quotes" and self._is_missing_object_close():
-            comma_line = self._find_comma_only_line_before(lineno)
-            if comma_line:
-                raw = self._line_text(comma_line)
-                comma_col = raw.find(",")
-                if comma_col < 0:
-                    comma_col = 0
-                return {
-                    "header": "Invalid Entry: add the missing closing bracket.",
-                    "before": ",",
-                    "after": "},",
-                    "line": comma_line,
-                    "start_col": comma_col,
-                    "end_col": comma_col + 1,
-                    "note": "missing_object_close_before_comma",
-                }
-
-        # 1.5) Bareword literal typo after ":" (e.g. "rue", "flase").
-        if msg in ("Expecting value", "Expecting ',' delimiter"):
-            bool_no, bool_text, bool_diag = self._find_nearby_boolean_literal_typo_line(lineno)
-            if bool_text and bool_no and bool_diag:
-                return {
-                    "header": "Invalid Entry: fix the boolean value.",
-                    "before": bool_text.strip(),
-                    "after": bool_diag["after"].strip(),
-                    "line": bool_no,
-                    "start_col": bool_diag["start_col"],
-                    "end_col": bool_diag["end_col"],
-                    "note": "boolean_literal_typo",
-                }
-
-        # Missing opening value quote should be insertion-focused on the edited
-        # line, but only after symbol + literal typo diagnostics have priority.
-        if msg in ("Expecting value", "Expecting ',' delimiter"):
-            open_quote_no, open_quote_text, insert_col = self._find_nearby_missing_value_open_quote_line(lineno)
-            if open_quote_text and open_quote_no and insert_col is not None:
-                return {
-                    "header": "Invalid Entry: add the missing quote.",
-                    "before": str(open_quote_text).strip(),
-                    "after": self._quote_unquoted_scalar_line(str(open_quote_text)).strip(),
-                    "line": int(open_quote_no),
-                    "start_col": int(insert_col),
-                    "end_col": int(insert_col),
-                    "note": "missing_value_open_quote",
-                }
-
-        # `[` opened list directly followed by object closer `}`.
-        # Show a concrete insertion fix at the `}` line.
-        if msg == "Expecting value":
-            close_line, insert_col, before_line, after_line = self._find_missing_list_close_before_object_end(lineno)
-            if close_line:
-                return {
-                    "header": "Invalid Entry: add the missing closing bracket.",
-                    "before": str(before_line or "").strip() or '"<key>": [',
-                    "after": str(after_line or "").strip() or '"<key>": []',
-                    "line": close_line,
-                    "start_col": int(insert_col),
-                    "end_col": int(insert_col),
-                    "note": "missing_list_close_before_object_end",
-                }
-
-        # 2) Extra-data case: trailing comma after top-level close (e.g. "},").
-        if msg == "Extra data":
-            top_close_no, top_close_text = self._find_nearby_illegal_comma_after_top_level_close_line(lineno)
-            if top_close_text and top_close_no:
-                raw = self._line_text(top_close_no)
-                span = self._comma_run_after_top_level_close_span(raw)
-                if span:
-                    comma_col, end_col = span
-                else:
-                    comma_col = raw.rstrip().rfind(",")
-                    if comma_col < 0:
-                        comma_col = max((getattr(exc, "colno", 1) or 1) - 1, 0)
-                    end_col = comma_col + 1
-                return {
-                    "header": "Invalid Entry: remove the trailing comma.",
-                    "before": top_close_text.strip(),
-                    "after": self._fix_illegal_comma_after_top_level_close(top_close_text).strip(),
-                    "line": top_close_no,
-                    "start_col": comma_col,
-                    "end_col": end_col,
-                    "note": "illegal_comma_after_top_level_close",
-                }
-
-        # 3) "value", followed by object/array closer on next non-empty line.
-        illegal_comma_no, illegal_comma_text = self._find_nearby_illegal_trailing_comma_line(lineno)
-        if illegal_comma_text and illegal_comma_no:
-            raw = self._line_text(illegal_comma_no)
-            comma_col = self._trailing_comma_before_close_col(raw)
-            if comma_col is None:
-                comma_col = max((getattr(exc, "colno", 1) or 1) - 1, 0)
-            return {
-                "header": "Invalid Entry: remove the trailing comma.",
-                "before": illegal_comma_text.strip(),
-                "after": self._fix_illegal_trailing_comma_before_close(illegal_comma_text).strip(),
-                "line": illegal_comma_no,
-                "start_col": comma_col,
-                "end_col": comma_col + 1,
-                "note": "illegal_trailing_comma_before_close",
-            }
-
-        # 4) {, / [@ / etc -> remove invalid symbol(s) after opener
-        open_no, open_text = self._find_nearby_invalid_symbol_after_open_line(lineno)
-        if open_text and open_no:
-            raw = self._line_text(open_no)
-            span = self._invalid_symbol_after_open_span(raw)
-            if span:
-                opener, col_idx, end_col, symbol_text = span
-            else:
-                opener = "{"
-                col_idx = max((getattr(exc, "colno", 1) or 1) - 1, 0)
-                end_col = col_idx + 1
-                symbol_text = ""
-            fixed = self._fix_invalid_symbol_after_open(raw).strip()
-            if not fixed:
-                fixed = opener
-            header = (
-                f'Invalid Entry: remove the comma after "{opener}".'
-                if symbol_text == ","
-                else f'Invalid Entry: remove the invalid symbol after "{opener}".'
-            )
-            return {
-                "header": header,
-                "before": open_text,
-                "after": fixed,
-                "line": open_no,
-                "start_col": col_idx,
-                "end_col": end_col,
-                "note": "invalid_symbol_after_open",
-            }
-
-        # 5) ...","  -> remove extra quote
-        stray_no, stray_text = self._find_nearby_trailing_stray_quote_line(lineno)
-        if stray_text and stray_no:
-            raw = self._line_text(stray_no)
-            qidx = raw.rfind('"')
-            if qidx < 0:
-                qidx = max((getattr(exc, "colno", 1) or 1) - 1, 0)
-            return {
-                "header": "Invalid Entry: remove the extra quote.",
-                "before": stray_text,
-                "after": self._fix_trailing_stray_quote_after_comma(stray_text),
-                "line": stray_no,
-                "start_col": qidx,
-                "end_col": qidx + 1,
-                "note": "trailing_stray_quote_after_comma",
-            }
-
-        # 6) ...""  -> replace extra quote with comma
-        ex_no, ex_text = self._find_nearby_extra_quote_in_value_line(lineno)
-        if ex_text and ex_no:
-            raw = self._line_text(ex_no)
-            qidx = raw.rfind('""')
-            qcol = qidx + 1 if qidx >= 0 else max((getattr(exc, "colno", 1) or 1) - 1, 0)
-            return {
-                "header": "Invalid Entry: add a comma near the highlighted line.",
-                "before": ex_text,
-                "after": self._fix_extra_quote_to_comma(ex_text),
-                "line": ex_no,
-                "start_col": qcol,
-                "end_col": qcol + 1,
-                "note": "extra_quote_missing_comma",
-            }
-
-        # 7) ...,,  -> remove extra comma
-        dup_no, dup_text = self._find_nearby_duplicate_trailing_comma_line(lineno)
-        if dup_text and dup_no:
-            raw = self._line_text(dup_no)
-            comma_col = raw.rfind(",")
-            if comma_col < 0:
-                comma_col = max((getattr(exc, "colno", 1) or 1) - 1, 0)
-            return {
-                "header": "Invalid Entry: remove the extra comma.",
-                "before": dup_text,
-                "after": self._fix_duplicate_trailing_comma(dup_text),
-                "line": dup_no,
-                "start_col": comma_col,
-                "end_col": comma_col + 1,
-                "note": "duplicate_trailing_comma",
-            }
-
-        # 8) }./]@ etc -> invalid symbol after closer
-        cl_no, cl_text = self._find_nearby_invalid_symbol_after_closer_line(lineno)
-        if cl_text and cl_no:
-            raw = self._line_text(cl_no)
-            col_idx = self._first_invalid_symbol_after_closer_col(raw)
-            if col_idx is None:
-                col_idx = max((getattr(exc, "colno", 1) or 1) - 1, 0)
-            end_col = len(raw.rstrip())
-            if end_col <= col_idx:
-                end_col = col_idx + 1
-            return {
-                "header": "Invalid Entry: replace the invalid trailing symbol with a comma.",
-                "before": cl_text,
-                "after": self._fix_invalid_symbol_after_closer(cl_text),
-                "line": cl_no,
-                "start_col": col_idx,
-                "end_col": end_col,
-                "note": "invalid_trailing_symbol_after_closer",
-            }
-
-        # 9) "key": "value",@  or ,11  -> invalid tail after value
-        tail_no, tail_text = self._find_nearby_invalid_trailing_symbols_line(lineno)
-        if tail_text and tail_no:
-            raw = self._line_text(tail_no)
-            col_idx = self._first_invalid_trailing_symbol_col(raw, lineno=tail_no)
-            if col_idx is None:
-                col_idx = max((getattr(exc, "colno", 1) or 1) - 1, 0)
-            end_col = len(raw.rstrip())
-            if end_col <= col_idx:
-                end_col = col_idx + 1
-            after_line = self._fix_invalid_trailing_symbols_after_string_value(tail_text, tail_no)
-            header = (
-                "Invalid Entry: replace the invalid trailing symbol with a comma."
-                if after_line.rstrip().endswith(",")
-                else "Invalid Entry: remove the invalid trailing symbol."
-            )
-            return {
-                "header": header,
-                "before": tail_text,
-                "after": after_line,
-                "line": tail_no,
-                "start_col": col_idx,
-                "end_col": end_col,
-                "note": "invalid_trailing_symbol_after_value",
-            }
-
-        return None
 
     def _quote_unquoted_value(self, line_text):
         if not line_text or ":" not in line_text:
@@ -16084,615 +14251,13 @@ if not install_started:
         self._position_error_overlay(line)
 
     def _highlight_json_error(self, exc):
-        if hasattr(self, "_line_text"):
-            return json_error_highlight_core.highlight_json_error(
-                self,
-                exc,
-                apply_highlight_fn=json_error_highlight_render_service.apply_json_error_highlight,
-                log_error_fn=json_error_highlight_render_service.log_json_error,
-            )
+        return json_error_highlight_core.highlight_json_error(
+            self,
+            exc,
+            apply_highlight_fn=json_error_highlight_render_service.apply_json_error_highlight,
+            log_error_fn=json_error_highlight_render_service.log_json_error,
+        )
 
-        line = getattr(exc, "lineno", None)
-        col = getattr(exc, "colno", None)
-        try:
-            last_line = int(self.text.index("end-1c").split(".")[0])
-            if not line:
-                line = 1
-            if not col:
-                col = 1
-            line = min(max(line, 1), max(last_line, 1))
-            msg = getattr(exc, "msg", None)
-            self._last_json_error_msg = msg
-            diag = self._build_json_diagnostic(exc)
-            if diag:
-                line = diag["line"]
-                start_index = f"{line}.{diag['start_col']}"
-                end_index = f"{line}.{diag['end_col']}"
-                self._apply_json_error_highlight(
-                    exc, line, start_index, end_index, note=diag["note"]
-                )
-                return
-            if msg in (
-                "Illegal trailing comma before end of object",
-                "Illegal trailing comma before end of array",
-            ):
-                illegal_no, illegal_text = self._find_nearby_illegal_trailing_comma_line(line)
-                if illegal_text and illegal_no:
-                    line = illegal_no
-                    raw = self._line_text(line)
-                    comma_col = self._trailing_comma_before_close_col(raw)
-                    if comma_col is None:
-                        comma_col = max(col - 1, 0)
-                    start_index = f"{line}.{comma_col}"
-                    end_index = f"{line}.{comma_col + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="illegal_trailing_comma_before_close"
-                    )
-                    return
-            if msg == "Extra data":
-                try:
-                    debug_char = self._first_non_ws_char()
-                    note = f"highlight_enter_extra first_char={debug_char!r}"
-                    self._log_json_error(exc, line or 1, note=note)
-                except Exception:
-                    pass
-                top_close_no, top_close_text = self._find_nearby_illegal_comma_after_top_level_close_line(line)
-                if top_close_text and top_close_no:
-                    line = top_close_no
-                    raw = self._line_text(line)
-                    span = self._comma_run_after_top_level_close_span(raw)
-                    if span:
-                        comma_col, end_col = span
-                    else:
-                        comma_col = raw.rstrip().rfind(",")
-                        if comma_col < 0:
-                            comma_col = max(col - 1, 0)
-                        end_col = comma_col + 1
-                    start_index = f"{line}.{comma_col}"
-                    end_index = f"{line}.{end_col}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="illegal_comma_after_top_level_close"
-                    )
-                    return
-            if msg == "Extra data" and self._missing_object_open_from_extra_data():
-                first_line = self._next_non_empty_line_number(0) or 1
-                # Highlight the insertion slot before the first key line.
-                # If there is a blank line above, use it; otherwise use line start.
-                if first_line > 1 and not self._line_text(first_line - 1).strip():
-                    line = first_line - 1
-                    start_index = f"{line}.0"
-                    end_index = f"{line}.0"
-                else:
-                    line = max(first_line, 1)
-                    start_index = f"{line}.0"
-                    end_index = f"{line}.0"
-                self._apply_json_error_highlight(
-                    exc, line, start_index, end_index, note="missing_object_open_start"
-                )
-                return
-            if msg and msg.startswith("Invalid control character"):
-                stray_line_no, stray_line_text = self._find_nearby_trailing_stray_quote_line(line)
-                if stray_line_text and stray_line_no:
-                    line = stray_line_no
-                    line_text = self._line_text(line)
-                    qidx = line_text.rfind('"')
-                    if qidx < 0:
-                        qidx = max(col - 1, 0)
-                    start_index = f"{line}.{qidx}"
-                    end_index = f"{line}.{qidx + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="trailing_stray_quote_after_comma"
-                    )
-                    return
-                invalid_tail_no, invalid_tail_text = self._find_nearby_invalid_trailing_symbols_line(line)
-                if invalid_tail_text and invalid_tail_no:
-                    line = invalid_tail_no
-                    line_text = self._line_text(line)
-                    col_idx = self._first_invalid_trailing_symbol_col(line_text, lineno=line)
-                    if col_idx is None:
-                        col_idx = max(col - 1, 0)
-                    start_index = f"{line}.{col_idx}"
-                    end_col = len(line_text.rstrip())
-                    if end_col <= col_idx:
-                        end_col = col_idx + 1
-                    end_index = f"{line}.{end_col}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="invalid_trailing_symbol_after_value"
-                    )
-                    return
-                start_index = f"{line}.{max(col - 1, 0)}"
-                end_index = f"{line}.{col}"
-                self._apply_json_error_highlight(
-                    exc, line, start_index, end_index, note="invalid_control_char"
-                )
-                return
-            if msg in (
-                "Expecting ':' delimiter",
-                "Expecting property name enclosed in double quotes",
-                "Expecting ',' delimiter",
-                "Expecting value",
-                "Expecting ']'",
-                "Expecting '}'",
-            ):
-                if not (msg == "Expecting ',' delimiter" and self._is_missing_object_close()):
-                    missing_key_line, missing_open = self._find_missing_container_open_after_key_line(line)
-                    if missing_key_line and missing_open in ("[", "{"):
-                        line = missing_key_line
-                        line_end = self.text.index(f"{line}.0 lineend")
-                        start_index = line_end
-                        end_index = line_end
-                        missing_note = (
-                            "missing_object_open_after_key"
-                            if missing_open == "{"
-                            else "missing_list_open_after_key"
-                        )
-                        self._apply_json_error_highlight(
-                            exc, line, start_index, end_index, note=missing_note
-                        )
-                        return
-            if self._missing_list_open_from_extra_data():
-                line = 1
-                start_index = f"{line}.0"
-                end_index = f"{line}.0"
-                self._apply_json_error_highlight(
-                    exc, line, start_index, end_index, note="missing_list_open_start"
-                )
-                return
-            if msg == "Expecting ',' delimiter":
-                if not self._is_missing_object_close() and not self._is_missing_list_close():
-                    missing_comma_line = self._find_missing_comma_between_block_values_line(line)
-                    if missing_comma_line:
-                        line = missing_comma_line
-                        line_end = self.text.index(f"{line}.0 lineend")
-                        self._apply_json_error_highlight(
-                            exc, line, line_end, line_end, note="missing_comma_between_blocks"
-                        )
-                        return
-                line_text = self._line_text(line)
-                stray_line_no, stray_line_text = self._find_nearby_trailing_stray_quote_line(line)
-                if stray_line_text and stray_line_no:
-                    line = stray_line_no
-                    line_text = self._line_text(line)
-                    qidx = line_text.rfind('"')
-                    if qidx < 0:
-                        qidx = max(col - 1, 0)
-                    start_index = f"{line}.{qidx}"
-                    end_index = f"{line}.{qidx + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="trailing_stray_quote_after_comma"
-                    )
-                    return
-                invalid_closer_no, invalid_closer_text = self._find_nearby_invalid_symbol_after_closer_line(line)
-                if invalid_closer_text and invalid_closer_no:
-                    line = invalid_closer_no
-                    line_text = self._line_text(line)
-                    col_idx = self._first_invalid_symbol_after_closer_col(line_text)
-                    if col_idx is None:
-                        col_idx = max(col - 1, 0)
-                    start_index = f"{line}.{col_idx}"
-                    end_col = len(line_text.rstrip())
-                    if end_col <= col_idx:
-                        end_col = col_idx + 1
-                    end_index = f"{line}.{end_col}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="invalid_trailing_symbol_after_closer"
-                    )
-                    return
-                if self._line_extra_quote_in_string_value(line_text):
-                    qidx = line_text.rfind('""')
-                    quote_col = qidx + 1 if qidx >= 0 else max(col - 1, 0)
-                    start_index = f"{line}.{quote_col}"
-                    end_index = f"{line}.{quote_col + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="extra_quote_missing_comma"
-                    )
-                    return
-                invalid_tail_no, invalid_tail_text = self._find_nearby_invalid_trailing_symbols_line(line)
-                if invalid_tail_text and invalid_tail_no:
-                    line = invalid_tail_no
-                    line_text = self._line_text(line)
-                    col_idx = self._first_invalid_trailing_symbol_col(line_text, lineno=line)
-                    if col_idx is None:
-                        col_idx = max(col - 1, 0)
-                    start_index = f"{line}.{col_idx}"
-                    end_col = len(line_text.rstrip())
-                    if end_col <= col_idx:
-                        end_col = col_idx + 1
-                    end_index = f"{line}.{end_col}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="invalid_trailing_symbol_after_value"
-                    )
-                    return
-                if self._is_missing_object_close():
-                    # Highlight the EOF insertion point (where the missing '}' belongs),
-                    # not the previous content line.
-                    start_index = self.text.index("end-1c")
-                    end_index = self.text.index("end")
-                    line = int(self.text.index("end").split(".")[0])
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="missing_object_close_eof"
-                    )
-                    return
-                wrong_object_line = self._find_wrong_object_open_line(line)
-                if wrong_object_line:
-                    line = wrong_object_line
-                    line_text = self._line_text(line)
-                    col = line_text.find("[")
-                    if col < 0:
-                        col = 0
-                    start_index = f"{line}.{col}"
-                    end_index = f"{line}.{col + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="wrong_object_open_symbol"
-                    )
-                    return
-                wrong_line = self._find_wrong_list_open_line(line)
-                if wrong_line:
-                    line = wrong_line
-                    line_text = self._line_text(line)
-                    col_idx = line_text.find("[")
-                    if col_idx < 0:
-                        col_idx = max(col - 1, 0)
-                    start_index = f"{line}.{col_idx}"
-                    end_index = f"{line}.{col_idx + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="wrong_list_open_for_object"
-                    )
-                    return
-                if self._is_missing_list_close():
-                    comma_line = self._find_comma_only_line_before(line)
-                    if comma_line:
-                        line = comma_line
-                        line_text = self._line_text(line)
-                        comma_col = line_text.find(",")
-                        if comma_col < 0:
-                            comma_col = 0
-                        start_index = f"{line}.{comma_col}"
-                        end_index = f"{line}.{comma_col + 1}"
-                        self._apply_json_error_highlight(
-                            exc, line, start_index, end_index, note="missing_list_close_before_comma"
-                        )
-                        return
-                    # Insert missing ']' before the object-close line.
-                    line_text = self._line_text(line).strip()
-                    if line_text.startswith("}"):
-                        # Prefer a blank insertion line directly above '}' when available;
-                        # otherwise highlight the start of the '}' line.
-                        blank_line = line - 1 if line > 1 and not self._line_text(line - 1).strip() else None
-                        if blank_line:
-                            line = blank_line
-                        line = max(line, 1)
-                        start_index = f"{line}.0"
-                        end_index = start_index
-                        self._apply_json_error_highlight(
-                            exc, line, start_index, end_index, note="missing_list_close_before_object_end"
-                        )
-                        return
-                    # If the insertion slot is a blank line right below the current value,
-                    # anchor there to keep the caret at the user's actual edit row.
-                    next_line = max(int(line) + 1, 1)
-                    try:
-                        next_text = str(self._line_text(next_line) or "")
-                        after_next_text = str(self._line_text(next_line + 1) or "")
-                        current_line_text = str(self._line_text(line) or "")
-                    except Exception:
-                        next_text = ""
-                        after_next_text = ""
-                        current_line_text = ""
-                    try:
-                        if (not next_text.strip()) and current_line_text.strip().startswith('"'):
-                            line = next_line
-                            start_index = f"{line}.0"
-                            end_index = start_index
-                            self._apply_json_error_highlight(
-                                exc, line, start_index, end_index, note="missing_list_close_before_object_end"
-                            )
-                            return
-                    except Exception:
-                        pass
-                    if (not next_text.strip()) and after_next_text.strip().startswith("}"):
-                        line = next_line
-                        start_index = f"{line}.0"
-                        end_index = start_index
-                        self._apply_json_error_highlight(
-                            exc, line, start_index, end_index, note="missing_list_close_before_object_end"
-                        )
-                        return
-                    line = max(line, 1)
-                    line_end = self.text.index(f"{line}.0 lineend")
-                    start_index = line_end
-                    end_index = line_end
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="missing_list_close_before_object_end"
-                    )
-                    return
-                if self._close_before_list(getattr(exc, "lineno", None)):
-                    blank_line = self._find_blank_line_before(line)
-                    if blank_line:
-                        line = blank_line
-                    start_index = f"{line}.0"
-                    end_index = self.text.index(f"{line}.0 lineend +1c")
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="missing_object_close_before_list"
-                    )
-                    return
-                if self._is_missing_object_open_at(line):
-                    prev_line_num = self._closest_non_empty_line_before(line)
-                    insert_line = line
-                    if prev_line_num:
-                        candidate = prev_line_num + 1
-                        if candidate <= line and not self._line_text(candidate).strip():
-                            insert_line = candidate
-                    line = insert_line
-                    line_text = self._line_text(line)
-                    first_non_space = None
-                    if line_text:
-                        for idx, ch in enumerate(line_text):
-                            if not ch.isspace():
-                                first_non_space = idx
-                                break
-                    if first_non_space is None:
-                        line_end = self.text.index(f"{line}.0 lineend")
-                        start_index = line_end
-                        end_index = line_end
-                    else:
-                        start_index = f"{line}.{first_non_space}"
-                        if self._line_has_missing_open_key_quote(line_text):
-                            end_index = start_index
-                        else:
-                            end_index = f"{line}.{first_non_space + 1}"
-                    self._apply_json_error_highlight(exc, line, start_index, end_index)
-                    return
-                if self._is_missing_object_open(exc):
-                    line = max(line - 1, 1)
-                    line_end = self.text.index(f"{line}.0 lineend")
-                    start_index = line_end
-                    end_index = line_end
-                elif self._is_missing_object_close():
-                    if self._close_before_list(getattr(exc, "lineno", None)):
-                        blank_line = self._find_blank_line_before(line)
-                        if blank_line:
-                            line = blank_line
-                        else:
-                            line = max(line - 1, 1)
-                        start_index = f"{line}.0"
-                        end_index = self.text.index(f"{line}.0 lineend +1c")
-                    else:
-                        line, start_index = self._missing_close_insertion_point("{", "}", exc)
-                        line = max(line, 1)
-                        end_index = start_index
-                elif self._is_missing_list_close():
-                    line, start_index = self._missing_close_insertion_point("[", "]", exc)
-                    line = max(line, 1)
-                    end_index = start_index
-                else:
-                    line = max(line - 1, 1)
-                    line_end = self.text.index(f"{line}.0 lineend")
-                    start_index = line_end
-                    end_index = line_end
-            elif msg == "Expecting ':' delimiter":
-                missing_key_line, missing_open = self._find_missing_container_open_after_key_line(line)
-                if missing_key_line and missing_open in ("[", "{"):
-                    line = missing_key_line
-                    line_end = self.text.index(f"{line}.0 lineend")
-                    start_index = line_end
-                    end_index = line_end
-                    missing_note = (
-                        "missing_object_open_after_key"
-                        if missing_open == "{"
-                        else "missing_list_open_after_key"
-                    )
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note=missing_note
-                    )
-                    return
-                start_index = f"{line}.{max(col - 1, 0)}"
-                end_index = f"{line}.{col}"
-            elif msg == "Expecting property name enclosed in double quotes":
-                missing_key_line, missing_open = self._find_missing_container_open_after_key_line(line)
-                if missing_key_line and missing_open in ("[", "{"):
-                    line = missing_key_line
-                    line_end = self.text.index(f"{line}.0 lineend")
-                    start_index = line_end
-                    end_index = line_end
-                    missing_note = (
-                        "missing_object_open_after_key"
-                        if missing_open == "{"
-                        else "missing_list_open_after_key"
-                    )
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note=missing_note
-                    )
-                    return
-                dup_line_no, dup_line_text = self._find_nearby_duplicate_trailing_comma_line(line)
-                if dup_line_text and dup_line_no:
-                    line = dup_line_no
-                    line_text = self._line_text(line)
-                    comma_col = line_text.rfind(",")
-                    if comma_col < 0:
-                        comma_col = max(col - 1, 0)
-                    start_index = f"{line}.{comma_col}"
-                    end_index = f"{line}.{comma_col + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="duplicate_trailing_comma"
-                    )
-                    return
-                invalid_tail_no, invalid_tail_text = self._find_nearby_invalid_trailing_symbols_line(line)
-                if invalid_tail_text and invalid_tail_no:
-                    line = invalid_tail_no
-                    line_text = self._line_text(line)
-                    col_idx = self._first_invalid_trailing_symbol_col(line_text, lineno=line)
-                    if col_idx is None:
-                        col_idx = max(col - 1, 0)
-                    start_index = f"{line}.{col_idx}"
-                    end_col = len(line_text.rstrip())
-                    if end_col <= col_idx:
-                        end_col = col_idx + 1
-                    end_index = f"{line}.{end_col}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="invalid_trailing_symbol_after_value"
-                    )
-                    return
-                if self._is_missing_object_close():
-                    comma_line = self._find_comma_only_line_before(line)
-                    if comma_line:
-                        line = comma_line
-                        line_text = self._line_text(line)
-                        comma_col = line_text.find(",")
-                        if comma_col < 0:
-                            comma_col = 0
-                        start_index = f"{line}.{comma_col}"
-                        end_index = f"{line}.{comma_col + 1}"
-                        self._apply_json_error_highlight(
-                            exc, line, start_index, end_index, note="missing_object_close_before_comma"
-                        )
-                        return
-                line_text = self._line_text(line).strip()
-                if self._is_missing_object_close() and line_text.startswith("{"):
-                    insert_line = line
-                    prev_non_empty = self._closest_non_empty_line_before(line)
-                    if prev_non_empty:
-                        prev_text = self._line_text(prev_non_empty).strip()
-                        if prev_text in ("},", "],"):
-                            # Missing close often belongs before a sibling-separator close.
-                            if prev_non_empty > 1 and not self._line_text(prev_non_empty - 1).strip():
-                                insert_line = prev_non_empty - 1
-                            else:
-                                insert_line = prev_non_empty
-                        elif line > 1 and not self._line_text(line - 1).strip():
-                            insert_line = line - 1
-                    elif line > 1 and not self._line_text(line - 1).strip():
-                        insert_line = line - 1
-                    line = max(insert_line, 1)
-                    start_index = self.text.index(f"{line}.0 lineend")
-                    end_index = start_index
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="missing_object_close_before_next_object"
-                    )
-                    return
-                comma_line = self._find_comma_only_line_before(line)
-                if comma_line:
-                    line = comma_line
-                    line_text = self._line_text(line)
-                    comma_col = line_text.find(",")
-                    if comma_col < 0:
-                        comma_col = 0
-                    start_index = f"{line}.{comma_col}"
-                    end_index = f"{line}.{comma_col + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="missing_object_close_before_comma"
-                    )
-                    return
-                line_text = self._line_text(line)
-                if line_text.strip().startswith("{"):
-                    key_line = self._missing_list_open_key_line(line)
-                    if key_line:
-                        line = key_line
-                        line_end = self.text.index(f"{line}.0 lineend")
-                        start_index = line_end
-                        end_index = line_end
-                    else:
-                        first_non_space = 0
-                        if line_text:
-                            for idx, ch in enumerate(line_text):
-                                if not ch.isspace():
-                                    first_non_space = idx
-                                    break
-                        start_index = f"{line}.{first_non_space}"
-                        if line_text and first_non_space < len(line_text):
-                            end_index = f"{line}.{first_non_space + 1}"
-                        else:
-                            end_index = self.text.index(f"{line}.0 lineend")
-                else:
-                    first_non_space = 0
-                    if line_text:
-                        for idx, ch in enumerate(line_text):
-                            if not ch.isspace():
-                                first_non_space = idx
-                                break
-                    start_index = f"{line}.{first_non_space}"
-                    missing_open_key_quote = self._line_has_missing_open_key_quote(line_text)
-                    if missing_open_key_quote:
-                        # Place insertion cursor before the property name so the
-                        # missing opening quote can be typed at the fix point.
-                        end_index = start_index
-                    elif line_text and first_non_space < len(line_text):
-                        end_index = f"{line}.{first_non_space + 1}"
-                    else:
-                        end_index = self.text.index(f"{line}.0 lineend")
-            elif msg in ("Expecting ']'", "Expecting '}'"):
-                if exc.msg == "Expecting ']'":
-                    line, start_index = self._missing_close_insertion_point("[", "]", exc)
-                else:
-                    line, start_index = self._missing_close_insertion_point("{", "}", exc)
-                line = max(line, 1)
-                end_index = start_index
-            elif msg == "Invalid control character":
-                start_index = f"{line}.{max(col - 1, 0)}"
-                end_index = f"{line}.{col}"
-            elif msg == "Expecting value":
-                line_text = self._line_text(line)
-                if self._is_key_colon_comma_line(line_text):
-                    comma_col = line_text.find(",")
-                    if comma_col < 0:
-                        comma_col = max(col - 1, 0)
-                    start_index = f"{line}.{comma_col}"
-                    end_index = f"{line}.{comma_col + 1}"
-                    self._apply_json_error_highlight(
-                        exc, line, start_index, end_index, note="missing_list_open_typed_comma"
-                    )
-                    return
-                if self._is_missing_list_open_at_start(exc):
-                    line = 1
-                    start_index = f"{line}.0"
-                    end_index = f"{line}.0"
-                elif self._is_missing_object_open(exc):
-                    line = max(line - 1, 1)
-                    line_end = self.text.index(f"{line}.0 lineend")
-                    start_index = line_end
-                    end_index = line_end
-                elif self._is_missing_list_open(exc):
-                    line = max(line - 1, 1)
-                    line_end = self.text.index(f"{line}.0 lineend")
-                    start_index = line_end
-                    end_index = line_end
-                elif self._is_missing_list_close() or self._is_missing_object_close():
-                    if self._is_missing_object_close():
-                        line, start_index = self._missing_close_insertion_point("{", "}", exc)
-                    else:
-                        line, start_index = self._missing_close_insertion_point("[", "]", exc)
-                    line = max(line, 1)
-                    end_index = start_index
-                else:
-                    start_index = f"{line}.{max(col - 1, 0)}"
-                    end_index = f"{line}.{col}"
-            elif msg in ("Unexpected ']'", "Unexpected '}'", "Unterminated string"):
-                start_index = f"{line}.{max(col - 1, 0)}"
-                end_index = f"{line}.{col}"
-            elif msg == "Extra data":
-                if self._missing_list_open_top_level():
-                    line = 1
-                    start_index = f"{line}.0"
-                    end_index = f"{line}.0"
-                else:
-                    next_line = self._next_non_empty_line(line)
-                    if next_line:
-                        line = next_line
-                    line_end = self.text.index(f"{line}.0 lineend")
-                    start_index = f"{line}.0"
-                    end_index = line_end
-            else:
-                line = max(line - 1, 1)
-                line_end = self.text.index(f"{line}.0 lineend")
-                start_index = line_end
-                end_index = line_end
-            self._apply_json_error_highlight(exc, line, start_index, end_index)
-        except Exception as highlight_exc:
-            try:
-                self._log_json_error(exc, line or 1, note=f"highlight_failed: {highlight_exc}")
-            except Exception:
-                pass
-            return
 
     def _place_error_pin(self, index):
         return error_overlay_service.place_error_pin(self, index)

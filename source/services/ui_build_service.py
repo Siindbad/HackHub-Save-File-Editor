@@ -1,6 +1,245 @@
 """Main editor UI build service."""
 
 
+# Editor mode tabs are built in service so editor class stays orchestration-focused.
+def build_editor_mode_toggle(owner, parent, tk):
+    owner._editor_mode_parent = parent
+    theme = getattr(owner, "_theme", {})
+    host = tk.Frame(
+        parent,
+        bg=theme.get("panel", "#161b24"),
+        bd=0,
+        highlightthickness=0,
+    )
+    owner._editor_mode_host = host
+    owner._editor_mode_labels = {}
+    for idx, mode in enumerate(("INPUT", "JSON")):
+        tab = tk.Label(
+            host,
+            text=mode,
+            compound="center",
+            bd=0,
+            highlightthickness=0,
+            padx=0,
+            pady=0,
+            cursor="hand2",
+            font=(owner._credit_name_font()[0], 10, "bold"),
+        )
+        tab.pack(side="left", padx=(0 if idx == 0 else 3, 0))
+        tab.bind("<Button-1>", lambda _e, target=mode: owner._set_editor_mode(target), add="+")
+        owner._editor_mode_labels[mode] = tab
+    owner._update_editor_mode_controls()
+
+
+def build_theme_selector(owner, parent, tk):
+    owner._theme_selector_host = parent
+    owner._toolbar_style_labels = {}
+    owner._toolbar_style_title_label = None
+    owner._tree_style_labels = {}
+    owner._tree_style_title_label = None
+    theme = getattr(owner, "_theme", {})
+    spec = owner._footer_visual_spec()
+    label = tk.Label(
+        parent,
+        text="THEMES :",
+        bg=theme.get("credit_bg", "#0b1118"),
+        fg=theme.get("credit_label_fg", "#b5cade"),
+        font=spec["label_font"],
+        bd=0,
+        highlightthickness=0,
+    )
+    label.pack(side="left", padx=(0, 6))
+
+    owner._app_theme_labels = {}
+    for idx, variant in enumerate(("SIINDBAD", "KAMUE")):
+        colors = owner._theme_chip_palette(variant)
+        chip = tk.Label(
+            parent,
+            text=variant,
+            bg=colors["bg"],
+            fg=colors["fg"],
+            font=spec["chip_font"],
+            bd=0,
+            padx=spec["theme_chip_padx"],
+            pady=spec["theme_chip_pady"],
+            highlightthickness=1,
+            highlightbackground=colors["border"],
+            highlightcolor=colors["border"],
+            cursor="hand2",
+        )
+        chip.bind(
+            "<Button-1>",
+            lambda _event, target=variant: owner._set_app_theme_variant(target),
+        )
+        chip.pack(side="left", padx=(0 if idx == 0 else spec["theme_chip_gap"], 0))
+        owner._app_theme_labels[variant] = chip
+
+    if bool(getattr(owner, "_show_toolbar_variant_controls", False)):
+        owner._toolbar_style_title_label = tk.Label(
+            parent,
+            text="BTN :",
+            bg=theme.get("credit_bg", "#0b1118"),
+            fg=theme.get("credit_label_fg", "#b5cade"),
+            font=(owner._preferred_mono_family(), 9, "bold"),
+            bd=0,
+            highlightthickness=0,
+        )
+        owner._toolbar_style_title_label.pack(side="left", padx=(8, 6))
+
+        for idx, variant in enumerate(("A", "B")):
+            chip = tk.Label(
+                parent,
+                text=variant,
+                bg="#0f1b29",
+                fg="#7f9bb2",
+                font=owner._credit_name_font(),
+                bd=0,
+                padx=7,
+                pady=spec["chip_text_pady"],
+                highlightthickness=1,
+                highlightbackground="#2f4a61",
+                highlightcolor="#2f4a61",
+                cursor="hand2",
+            )
+            chip.bind(
+                "<Button-1>",
+                lambda _event, target=variant: owner._set_toolbar_style_variant(target),
+            )
+            chip.pack(side="left", padx=(0 if idx == 0 else 4, 0))
+            owner._toolbar_style_labels[variant] = chip
+
+    owner._update_app_theme_controls()
+    owner._update_tree_style_controls()
+    owner._update_toolbar_style_controls()
+
+
+def build_header_variant_switch(owner, parent, show_title, tk):
+    if parent is None:
+        return
+    try:
+        if not parent.winfo_exists():
+            return
+    except Exception:
+        return
+    old_host = getattr(owner, "_header_variant_host", None)
+    if old_host is not None:
+        try:
+            if old_host.winfo_exists():
+                old_host.destroy()
+        except Exception:
+            pass
+    if not bool(getattr(owner, "_show_header_variant_controls", False)):
+        owner._header_variant_host = None
+        owner._header_variant_is_footer = False
+        owner._header_variant_labels = {}
+        return
+    theme = getattr(owner, "_theme", {})
+    host_bg = theme.get("credit_bg", "#0b1118") if not show_title else theme.get("bg", "#0f131a")
+    host = tk.Frame(
+        parent,
+        bg=host_bg,
+        bd=0,
+        highlightthickness=0,
+    )
+    if show_title:
+        host.pack(anchor="center")
+    else:
+        host.pack(side="left", padx=(4, 0))
+    owner._header_variant_host = host
+    owner._header_variant_is_footer = not show_title
+    owner._header_variant_labels = {}
+
+    if show_title:
+        title = tk.Label(
+            host,
+            text="VARIANT :",
+            bg=host_bg,
+            fg=theme.get("credit_label_fg", "#b5cade"),
+            font=(owner._preferred_mono_family(), 9, "bold"),
+            bd=0,
+            highlightthickness=0,
+        )
+        title.pack(side="left", padx=(0, 6))
+
+    for idx, variant in enumerate(("A", "B")):
+        chip = tk.Label(
+            host,
+            text=variant,
+            bg="#0f1b29",
+            fg="#8aa9bf",
+            font=owner._credit_name_font(),
+            bd=0,
+            padx=(5 if not show_title else 7),
+            pady=1,
+            highlightthickness=1,
+            highlightbackground="#2f4a61",
+            highlightcolor="#2f4a61",
+            cursor="hand2",
+        )
+        chip.bind(
+            "<Button-1>",
+            lambda _event, target=variant: owner._set_header_variant(target),
+        )
+        chip.pack(side="left", padx=(0 if idx == 0 else 3, 0))
+        owner._header_variant_labels[variant] = chip
+
+    owner._update_header_variant_controls()
+
+
+def build_input_mode_panel(owner, parent, scroll_style, tk, ttk):
+    theme = getattr(owner, "_theme", {})
+    container = tk.Frame(
+        parent,
+        bg=theme.get("panel", "#161b24"),
+        bd=0,
+        highlightthickness=0,
+    )
+    canvas = tk.Canvas(
+        container,
+        bg=theme.get("panel", "#161b24"),
+        bd=0,
+        highlightthickness=0,
+        relief="flat",
+    )
+    scroll = ttk.Scrollbar(
+        container,
+        orient="vertical",
+        command=canvas.yview,
+        style=scroll_style,
+    )
+    fields_host = tk.Frame(
+        canvas,
+        bg=theme.get("panel", "#161b24"),
+        bd=0,
+        highlightthickness=0,
+    )
+    canvas.configure(yscrollcommand=scroll.set)
+    canvas_window = canvas.create_window((0, 0), window=fields_host, anchor="nw")
+
+    def _sync_width(_event=None):
+        try:
+            width = max(120, canvas.winfo_width())
+            canvas.itemconfigure(canvas_window, width=width)
+        except Exception:
+            pass
+
+    fields_host.bind(
+        "<Configure>",
+        lambda _event: canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0)),
+        add="+",
+    )
+    canvas.bind("<Configure>", _sync_width, add="+")
+
+    canvas.pack(fill="both", expand=True, side="left")
+    scroll.pack(fill="y", side="right")
+
+    owner._input_mode_container = container
+    owner._input_mode_canvas = canvas
+    owner._input_mode_scroll = scroll
+    owner._input_mode_fields_host = fields_host
+    owner._input_mode_field_specs = []
+
+
 # UI composition extraction: owner handles callbacks/state, this service
 # builds and wires the major editor panels.
 def build_ui(owner, tk, ttk):
@@ -288,4 +527,3 @@ def build_ui(owner, tk, ttk):
         owner._schedule_theme_asset_prewarm(targets=(other_variant,), delay_ms=650)
         if owner._auto_update_startup_enabled():
             owner._schedule_auto_update_check(delay_ms=500)
-

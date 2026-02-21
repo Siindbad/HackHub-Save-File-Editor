@@ -48,6 +48,98 @@ HIDDEN_ROOT_TREE_CATEGORIES = (
     "Ftp",
 )
 
+# Mode-scoped root tree hide lists:
+# - JSON keeps the baseline hidden categories.
+# - INPUT can diverge without affecting JSON behavior.
+HIDDEN_ROOT_TREE_CATEGORIES_INPUT = tuple(HIDDEN_ROOT_TREE_CATEGORIES) + (
+    "App.Store",
+    "AppStore",
+    "BCC.News",
+    "BCCNews",
+    "Bookmarks",
+    "Browser.Session",
+    "BrowserSession",
+    "Computer",
+    "Files",
+    "Global.Store",
+    "GlobalStore",
+    "Esc.Menu",
+    "EscMenu",
+    "Global.Variables",
+    "GlobalVariables",
+    "Hacked",
+    "Hackhub",
+    "Installed.Apps",
+    "InstalledApps",
+    "Kisscord",
+    "Mails",
+    "Personal.Info",
+    "PersonalInfo",
+    "Phone.Call",
+    "PhoneCall",
+    "Phone.Messages",
+    "PhoneMessages",
+    "Process",
+    "Program.Sizes",
+    "ProgramSizes",
+    "Quests",
+    "Save",
+    "Scoutify",
+    "Skills",
+    "stats",
+    "Taskbar",
+    "Terminal",
+    "Twotter",
+    "Typewriter",
+    "Website.Templates",
+    "WebsiteTemplates",
+)
+HIDDEN_ROOT_TREE_KEYS_JSON = {str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES}
+HIDDEN_ROOT_TREE_KEYS_INPUT = {str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES_INPUT}
+
+# Add root category names here to disable INPUT-mode editing for that branch.
+INPUT_MODE_DISABLED_ROOT_CATEGORIES = (
+    "Database",
+    "Mail.Accounts",
+    "MailAccounts",
+    "Network",
+    "Phone",
+    "Skypersky",
+    "Suspicion",
+)
+INPUT_MODE_DISABLED_ROOT_KEYS = {
+    str(name).strip().casefold() for name in INPUT_MODE_DISABLED_ROOT_CATEGORIES
+}
+
+# INPUT tree expand-block policy:
+# Root categories listed here stay collapsed in INPUT mode (JSON mode unaffected).
+INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES = (
+    "Bank",
+    "Phone",
+    "Skypersky",
+    "Database",
+    "Mail.Accounts",
+    "MailAccounts",
+)
+INPUT_MODE_NO_EXPAND_ROOT_KEYS = {
+    str(name).strip().casefold() for name in INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES
+}
+
+# INPUT marker override policy:
+# Render red main arrows for selected root categories in INPUT mode only.
+INPUT_MODE_RED_ARROW_ROOT_CATEGORIES = (
+    "Bank",
+    "Phone",
+    "Suspicion",
+    "Skypersky",
+    "Database",
+    "Mail.Accounts",
+    "MailAccounts",
+)
+INPUT_MODE_RED_ARROW_ROOT_KEYS = {
+    str(name).strip().casefold() for name in INPUT_MODE_RED_ARROW_ROOT_CATEGORIES
+}
+
 TREE_B_SAFE_DISPLAY_LABELS = {
     "GlobalStore": "Global.Store",
     "ProgramSizes": "Program.Sizes",

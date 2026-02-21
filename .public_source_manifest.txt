@@ -495,6 +495,7 @@ source/services/bug_report_api_service.py
 source/services/bug_report_service.py
 source/services/bug_report_ui_service.py
 source/services/edit_guard_service.py
+source/services/editor_mode_switch_service.py
 source/services/error_overlay_service.py
 source/services/error_service.py
 source/services/footer_service.py
@@ -511,7 +512,9 @@ source/services/startup_loader_ui_service.py
 source/services/theme_asset_service.py
 source/services/theme_service.py
 source/services/toolbar_service.py
+source/services/tree_engine_service.py
 source/services/tree_mode_service.py
+source/services/tree_policy_service.py
 source/services/tree_view_service.py
 source/services/ui_build_service.py
 source/services/update_orchestrator_service.py

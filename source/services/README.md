@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-20 (added cursor-restore diagnostics note routing bucket for autofix/apply cursor anchor triage).
+Last sync: 2026-02-21 (added editor mode-switch + tree engine services, mode-scoped tree policy routing, and editor mode/theme/header/input panel UI build extractions).
 
 | Module | Purpose |
 | --- | --- |
@@ -8,6 +8,7 @@ Last sync: 2026-02-20 (added cursor-restore diagnostics note routing bucket for 
 | `bug_report_service.py` | Contains bug-report helper logic for markdown composition, screenshot validation/prep, issue URL construction (including optional body-query omission), and submit cooldown math. |
 | `bug_report_ui_service.py` | Provides the bug-report dialog UI builder/orchestration, including screenshot picker, submit worker state updates, and themed dialog lifecycle wiring. |
 | `edit_guard_service.py` | Compatibility shim that forwards legacy imports to `highlight_label_service.py` during the service rename transition. |
+| `editor_mode_switch_service.py` | Provides editor mode-switch decision helpers for rebuild gating and INPUT refresh-skip checks to reduce flicker while preserving correctness. |
 | `error_overlay_service.py` | Provides error-overlay UI helpers for pin placement, tint lifecycle, overlay teardown, and theme refresh behavior. |
 | `error_service.py` | Provides error-system helper logic for before/after suggestion parsing, overlay payload shaping, marker color rules, and theme-aware error palettes. |
 | `footer_service.py` | Provides bottom-footer style and visual spec helpers used by badge/chip layout rendering. |
@@ -24,9 +25,11 @@ Last sync: 2026-02-20 (added cursor-restore diagnostics note routing bucket for 
 | `theme_asset_service.py` | Provides theme-related asset path helpers used by sprite/icon/theme resource lookups. |
 | `theme_service.py` | Provides centralized theme palettes and chip/color mapping helpers for SIINDBAD and KAMUE variants. |
 | `toolbar_service.py` | Provides toolbar helper logic for style resolution, button symbols, display labels, and width presets. |
+| `tree_engine_service.py` | Provides shared tree engine mechanics for child population, marker refresh, and click/double-click toggle behavior used by both JSON and INPUT modes. |
 | `tree_mode_service.py` | Provides mode-scoped tree style application helpers so INPUT and JSON tree visuals can evolve independently with shared selection/data behavior. |
+| `tree_policy_service.py` | Provides mode-scoped tree behavior policy helpers for hidden roots, INPUT disable/no-expand rules, and INPUT-only red-arrow markers while JSON remains fully expandable without red markers. |
 | `tree_view_service.py` | Provides tree-view helper logic for label mapping, path formatting, selected-path text, and value-based toggle eligibility checks. |
-| `ui_build_service.py` | Provides main editor UI composition/wiring for tree pane, editor pane, footer controls, and startup-prewarm bootstrap hooks. |
+| `ui_build_service.py` | Provides main editor UI composition/wiring for tree pane, editor pane, footer controls, startup-prewarm bootstrap hooks, and editor mode/theme/header/input panel builder construction. |
 | `update_orchestrator_service.py` | Provides updater orchestration flow for demo/update checks while reusing owner callbacks and existing update helpers. |
 | `update_service.py` | Provides updater service facade exports consumed by UI entrypoints while core logic stays in `core/update_service.py`. |
 | `update_ui_service.py` | Provides update-related UI dialog/overlay helpers for themed info/confirm prompts (including shared startup-check checkbox state), staged progress/percent rendering, rotating updater header text, and popup lifecycle handling. |
