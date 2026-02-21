@@ -107,10 +107,14 @@ jobs:
           notes_text = (notes or "").strip()
           if len(notes_text) > 3850:
               notes_text = notes_text[:3847] + "..."
+          download_line = f"[Download Latest Release]({url or releases_url})" if (url or releases_url) else ""
           if notes_text:
-              description = f"New Release!\n\n{notes_text}"
+              if download_line:
+                  description = f"New Release!\n{download_line}\n\n{notes_text}"
+              else:
+                  description = f"New Release!\n\n{notes_text}"
           else:
-              description = "New Release!"
+              description = f"New Release!\n{download_line}" if download_line else "New Release!"
 
           embed = {
               "title": embed_title,
@@ -134,20 +138,6 @@ jobs:
               "embeds": [embed],
               "allowed_mentions": {"parse": []},
           }
-          if releases_url:
-              payload["components"] = [
-                  {
-                      "type": 1,
-                      "components": [
-                          {
-                              "type": 2,
-                              "style": 5,
-                              "label": "Download",
-                              "url": releases_url,
-                          }
-                      ],
-                  }
-              ]
 
           username = (os.getenv("DISCORD_USERNAME") or "").strip()
           avatar = (os.getenv("DISCORD_AVATAR_URL") or "").strip()
