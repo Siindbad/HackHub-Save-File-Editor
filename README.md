@@ -8,7 +8,7 @@
 
 
 
-| <img align="left" alt="RELEASES" src="https://img.shields.io/badge/RELEASES-F59E0B?style=for-the-badge&labelColor=0F172A"> |
+| <img align="left" alt="RELEASES" src="https://img.shields.io/badge/RELEASES-2563EB?style=for-the-badge&labelColor=0F172A"> |
 |---|
 | [Download latest release](https://github.com/Siindbad/HackHub-Save-File-Editor/releases/latest) |
 
