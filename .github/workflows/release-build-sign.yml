@@ -134,10 +134,33 @@ jobs:
           }
           Compress-Archive -Path ($proofFiles | ForEach-Object { $_.FullName }) -DestinationPath $zipPath -CompressionLevel Optimal -Force
 
+      - name: Build release page sections
+        shell: pwsh
+        run: |
+          $body = @(
+            "## Download",
+            "- `sins_editor.exe` (main app)",
+            "- `sins_editor-onedir.zip` (portable fallback)",
+            "",
+            "## Verify",
+            "- `sins_editor.exe.sha256`",
+            "- `sigstore-proofs.zip`",
+            "",
+            "## Release Metadata",
+            "- `version.txt`",
+            "- `security-report.txt`",
+            "",
+            "## Changelog Information",
+            "Auto-generated changelog notes are appended below."
+          )
+          Set-Content -Path "dist/release-body.md" -Value ($body -join "`r`n") -Encoding UTF8
+
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
+          body_path: dist/release-body.md
+          append_body: true
           generate_release_notes: true
           files: |
             dist/sins_editor.exe
