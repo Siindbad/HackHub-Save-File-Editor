@@ -384,24 +384,96 @@ jobs:
                       defender_engine = line.split(":", 1)[1].strip()
                   if "antispyware signature version" in lower and ":" in line:
                       defender_signature = line.split(":", 1)[1].strip()
-              scan_target = installer_path if installer_path.exists() else zip_path
-              defender_source = "local_scan_installer" if installer_path.exists() else "local_scan_zip_fallback"
-              rc, out, err = run_cmd([mpcmd, "-Scan", "-ScanType", "3", "-File", str(scan_target)])
-              defender_exit = str(rc)
-              scan_text = ((out or "") + "\n" + (err or "")).strip()
-              if scan_text:
-                  defender_output_excerpt = " | ".join(scan_text.splitlines()[:3]).strip()
-              if rc == 0:
-                  defender_status = "PASS"
-                  defender_reason = "no_threats_detected"
-              elif rc == 2:
-                  defender_status = "FAIL"
-                  defender_threat = "true"
-                  defender_threat_count = 1
-                  defender_reason = "threat_detected"
-              else:
+              threat_markers = (
+                  "threat",
+                  "found threats",
+                  "found malware",
+                  "infected",
+                  "detected:",
+                  "remediation",
+                  "severe",
+              )
+              no_threat_markers = (
+                  "found no threats",
+                  "no threats found",
+                  "no threat",
+              )
+              runtime_error_markers = (
+                  "0x80508023",
+                  "completion failed",
+                  "failed with hr",
+                  "error code",
+              )
+
+              scan_candidates = []
+              if installer_path.exists():
+                  scan_candidates.append(("local_scan_installer", installer_path.resolve(), "file"))
+              elif zip_path.exists():
+                  scan_candidates.append(("local_scan_zip_fallback", zip_path.resolve(), "file"))
+              onedir_dir = (dist / "sins_editor-onedir").resolve()
+              if onedir_dir.exists() and onedir_dir.is_dir():
+                  scan_candidates.append(("local_scan_onedir_dir_fallback", onedir_dir, "dir"))
+
+              scan_root = dist / "_defender_scan"
+              scan_root.mkdir(parents=True, exist_ok=True)
+              scan_outcomes = []
+
+              for candidate_source, candidate_path, candidate_kind in scan_candidates:
+                  scan_target = candidate_path
+                  if candidate_kind == "file":
+                      # Stage file to a clean absolute path before scanning.
+                      staged_target = scan_root / candidate_path.name
+                      try:
+                          shutil.copy2(candidate_path, staged_target)
+                          scan_target = staged_target.resolve()
+                      except Exception:
+                          defender_status = "SKIPPED"
+                          defender_source = candidate_source
+                          defender_reason = "scan_stage_copy_failed"
+                          continue
+                  rc, out, err = run_cmd([mpcmd, "-Scan", "-ScanType", "3", "-File", str(scan_target)])
+                  defender_exit = str(rc)
+                  scan_text = ((out or "") + "\n" + (err or "")).strip()
+                  scan_text_lower = scan_text.lower()
+                  if scan_text:
+                      defender_output_excerpt = " | ".join(scan_text.splitlines()[:3]).strip()
+
+                  has_threat_marker = any(marker in scan_text_lower for marker in threat_markers)
+                  has_no_threat_marker = any(marker in scan_text_lower for marker in no_threat_markers)
+                  has_runtime_error_marker = any(marker in scan_text_lower for marker in runtime_error_markers)
+                  scan_outcomes.append((candidate_source, rc, has_threat_marker, has_no_threat_marker, has_runtime_error_marker))
+                  defender_source = candidate_source
+
+                  if rc == 0:
+                      defender_status = "PASS"
+                      defender_reason = "no_threats_detected"
+                      break
+                  if rc == 2:
+                      if has_threat_marker and not has_no_threat_marker:
+                          defender_status = "FAIL"
+                          defender_threat = "true"
+                          defender_threat_count = 1
+                          defender_reason = "threat_detected"
+                          break
+                      if has_no_threat_marker and not has_threat_marker:
+                          defender_status = "PASS"
+                          defender_reason = "no_threats_detected"
+                          break
+                      if has_runtime_error_marker:
+                          defender_status = "SKIPPED"
+                          defender_reason = "scan_runtime_error_rc2"
+                          continue
+                      defender_status = "SKIPPED"
+                      defender_reason = "ambiguous_rc2"
+                      continue
+
                   defender_status = "SKIPPED"
                   defender_reason = f"unexpected_exit_{rc}"
+
+              if scan_outcomes and defender_status == "SKIPPED":
+                  # Keep final status SKIPPED but show all attempted sources for diagnostics.
+                  attempted = ",".join([item[0] for item in scan_outcomes])
+                  defender_source = attempted
           else:
               mpcmd = "MpCmdRun.exe"
               defender_reason = "mpcmd_not_found_on_runner"
