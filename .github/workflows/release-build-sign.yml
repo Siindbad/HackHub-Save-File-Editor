@@ -217,7 +217,7 @@ jobs:
           trufflehog_verified = 0
           trufflehog_unverified = 0
           trufflehog_unknown = 0
-          trufflehog_strict = "false"
+          trufflehog_strict = "true"
           trufflehog_results = "verified,unknown"
           trufflehog_exclude = "n/a (public workflow)"
           trufflehog_bin = shutil.which("trufflehog")
@@ -258,6 +258,8 @@ jobs:
                   else:
                       trufflehog_unknown += 1
               trufflehog_status = "PASS" if trufflehog_findings == 0 else "FAIL"
+              if trufflehog_findings > 0:
+                  raise SystemExit("TruffleHog strict mode: findings detected.")
 
           # Defender local scan (best-effort)
           # Non-strict policy: capture Defender signal for reporting, but do not fail release on tool availability issues.
