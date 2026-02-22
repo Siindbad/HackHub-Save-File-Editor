@@ -32,7 +32,7 @@ jobs:
 
       - name: Validate local Python (self-hosted runners)
         if: ${{ runner.environment == 'self-hosted' }}
-        shell: pwsh
+        shell: powershell
         run: |
           python -c "import sys; print(sys.version)"
           python - <<'PY'
@@ -44,7 +44,7 @@ jobs:
 
       - name: Resolve tag
         id: vars
-        shell: pwsh
+        shell: powershell
         run: |
           $tag = "${{ github.event.inputs.tag }}"
           if ([string]::IsNullOrWhiteSpace($tag)) {
@@ -60,14 +60,14 @@ jobs:
           "version=$($tag.Substring(1))" >> $env:GITHUB_OUTPUT
 
       - name: Install build requirements
-        shell: pwsh
+        shell: powershell
         run: |
           python -m pip install --upgrade pip
           pip install -r source/requirements-build.txt
           pip install semgrep bandit safety requests
 
       - name: Install TruffleHog
-        shell: pwsh
+        shell: powershell
         run: |
           try {
             $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest" -Headers @{ "User-Agent" = "hackhub-release-build" }
@@ -101,18 +101,18 @@ jobs:
           }
 
       - name: Install Inno Setup
-        shell: pwsh
+        shell: powershell
         run: |
           choco install innosetup --no-progress -y
 
       - name: Build with PyInstaller
         working-directory: source
-        shell: pwsh
+        shell: powershell
         run: |
           python -m PyInstaller --noconfirm --distpath ../dist --workpath ../build sins_editor.spec
 
       - name: Build installer
-        shell: pwsh
+        shell: powershell
         run: |
           $iss = "source\\installer\\sins_editor_installer.iss"
           if (-not (Test-Path $iss)) {
@@ -148,7 +148,7 @@ jobs:
           }
 
       - name: Package fallback zip and metadata
-        shell: pwsh
+        shell: powershell
         run: |
           if (-not (Test-Path "dist/sins_editor.exe")) {
             throw "dist/sins_editor.exe not found after build."
@@ -177,7 +177,7 @@ jobs:
           $zipHash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor-onedir.zip").Hash.ToLowerInvariant()
 
       - name: Generate full security report
-        shell: pwsh
+        shell: powershell
         env:
           RELEASE_TAG: ${{ steps.vars.outputs.tag }}
           VT_API_KEY: ${{ secrets.VT_API_KEY }}
@@ -661,7 +661,7 @@ jobs:
           print("Generated dist/security-report.txt in v2 full format.")
           '@ | python -
       - name: Sync SECURITY.md from security report
-        shell: pwsh
+        shell: powershell
         run: |
           @'
           from pathlib import Path
@@ -771,14 +771,14 @@ jobs:
           '@ | python -
 
       - name: Validate SECURITY.md snapshot sync
-        shell: pwsh
+        shell: powershell
         run: |
           python source/tools/validate_security_snapshot_sync.py --report dist/security-report.txt --security-md SECURITY.md --version "${{ steps.vars.outputs.version }}"
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
       - name: Sigstore keyless sign artifacts
-        shell: pwsh
+        shell: powershell
         run: |
           $artifacts = @(
             "dist/sins_editor-installer.exe",
@@ -799,7 +799,7 @@ jobs:
           }
 
       - name: Bundle Sigstore proofs
-        shell: pwsh
+        shell: powershell
         run: |
           $zipPath = "dist/sigstore-proofs.zip"
           if (Test-Path $zipPath) {
@@ -812,7 +812,7 @@ jobs:
           Compress-Archive -Path ($proofFiles | ForEach-Object { $_.FullName }) -DestinationPath $zipPath -CompressionLevel Optimal -Force
 
       - name: Build release page sections
-        shell: pwsh
+        shell: powershell
         run: |
           $version = "${{ steps.vars.outputs.version }}"
           $changelogPath = "source/assets/Readme.txt"
@@ -867,7 +867,7 @@ jobs:
           Set-Content -Path "dist/release-body.md" -Value ($body -join "`r`n") -Encoding UTF8
 
       - name: Sync public README changelog row
-        shell: pwsh
+        shell: powershell
         run: |
           @'
           from pathlib import Path
@@ -937,7 +937,7 @@ jobs:
           APP_VERSION: ${{ steps.vars.outputs.version }}
 
       - name: Commit README/SECURITY sync
-        shell: pwsh
+        shell: powershell
         run: |
           if ((git status --porcelain README.md SECURITY.md).Length -eq 0) {
             Write-Host "README.md and SECURITY.md already up to date."
@@ -1020,4 +1020,5 @@ jobs:
             dist/version.txt
             dist/security-report.txt
             dist/sigstore-proofs.zip
+
 
