@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-22 (updated APP_VERSION to 1.3.5 for release prep alignment).
+Last sync: 2026-02-22 (exception-handling hardening sync for updater retry/backoff parsing and transfer cleanup diagnostics updates).
 
 | Module | Purpose |
 | --- | --- |

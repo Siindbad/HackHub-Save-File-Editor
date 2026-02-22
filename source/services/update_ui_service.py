@@ -1,3 +1,4 @@
+import logging
 UPDATE_STAGE_DEFAULT_MESSAGE = {
     "preparing": "Preparing update...\nThe app will restart automatically.",
     "downloading": "Downloading update...\nThis may take a moment.",
@@ -19,7 +20,12 @@ UPDATE_LOADER_BAR_COLORS = {
     "bar_top_fill": "#1f7a8f",
     "bar_bottom_fill": "#70479a",
 }
+_LOG = logging.getLogger(__name__)
 
+
+def _log_ignored_exception(context, exc):
+    # Record suppressed UI exceptions for diagnostics without changing flow.
+    _LOG.debug("%s: %s", context, exc)
 
 def _widget_exists(widget):
     if widget is None:
@@ -70,9 +76,8 @@ def _apply_update_window_chrome(owner, overlay, root):
         icon_setter = getattr(owner, "_set_window_icon_for", None)
         if callable(icon_setter):
             icon_setter(overlay)
-    except Exception:
-        pass
-
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     # Force updater popup titlebar to SIINDBAD chrome for consistent update UX.
     siindbad_theme = {}
     try:
@@ -103,10 +108,8 @@ def _apply_update_window_chrome(owner, overlay, root):
                         window_widget=win,
                     ),
                 )
-    except Exception:
-        pass
-
-
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
 def _render_update_overlay_progress(owner, value):
     try:
         pct = max(0.0, min(100.0, float(value)))
@@ -117,23 +120,21 @@ def _render_update_overlay_progress(owner, value):
     if pct_label is not None:
         try:
             pct_label.config(text=f"{int(round(pct))}%")
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
     top_bar = getattr(owner, "_update_overlay_top_bar", None)
     bottom_bar = getattr(owner, "_update_overlay_bottom_bar", None)
     try:
         if top_bar is not None:
             top_bar.configure(value=pct)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         if bottom_bar is not None:
             # Keep the lower bar slightly behind to preserve dual-bar depth.
             bottom_bar.configure(value=max(0.0, min(100.0, pct - 8.0)))
-    except Exception:
-        pass
-
-
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
 def show_themed_update_info(
     owner,
     title,
@@ -148,8 +149,8 @@ def show_themed_update_info(
     if root is None:
         try:
             messagebox.showinfo(title, message)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
         return
 
     theme = getattr(owner, "_theme", {}) or {}
@@ -163,22 +164,21 @@ def show_themed_update_info(
     dlg = tk.Toplevel(root)
     try:
         dlg.withdraw()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     dlg.title(str(title or "Update"))
     try:
         dlg.transient(root)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.configure(bg=window_bg)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.resizable(False, False)
-    except Exception:
-        pass
-
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     shell = tk.Frame(
         dlg,
         bg=panel_bg,
@@ -257,19 +257,18 @@ def show_themed_update_info(
         if callable(on_startup_check_change):
             try:
                 on_startup_check_change(bool(check_var.get()))
-            except Exception:
-                pass
-
+            except Exception as exc:
+                _log_ignored_exception("update_ui_service", exc)
     def close_dialog(event=None):
         apply_startup_toggle()
         try:
             dlg.grab_release()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
         try:
             dlg.destroy()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
         return "break" if event is not None else None
 
     ok_btn = tk.Button(
@@ -300,20 +299,19 @@ def show_themed_update_info(
             max_width_ratio=0.70,
             max_height_ratio=0.45,
         )
-    except Exception:
-        pass
-
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.protocol("WM_DELETE_WINDOW", close_dialog)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     dlg.bind("<Escape>", close_dialog, add="+")
     dlg.bind("<Return>", close_dialog, add="+")
 
     try:
         dlg.deiconify()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         owner._apply_windows_titlebar_theme(
             bg=theme.get("title_bar_bg"),
@@ -330,26 +328,24 @@ def show_themed_update_info(
                 window_widget=win,
             ),
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.lift()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.grab_set()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         ok_btn.focus_set()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.wait_window()
-    except Exception:
-        pass
-
-
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
 def show_themed_update_confirm(
     owner,
     title,
@@ -378,22 +374,21 @@ def show_themed_update_confirm(
     dlg = tk.Toplevel(root)
     try:
         dlg.withdraw()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     dlg.title(str(title or "Update"))
     try:
         dlg.transient(root)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.configure(bg=window_bg)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.resizable(False, False)
-    except Exception:
-        pass
-
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     shell = tk.Frame(
         dlg,
         bg=panel_bg,
@@ -473,19 +468,18 @@ def show_themed_update_confirm(
         if callable(on_startup_check_change):
             try:
                 on_startup_check_change(bool(check_var.get()))
-            except Exception:
-                pass
-
+            except Exception as exc:
+                _log_ignored_exception("update_ui_service", exc)
     def close_dialog(event=None):
         apply_startup_toggle()
         try:
             dlg.grab_release()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
         try:
             dlg.destroy()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
         return "break" if event is not None else None
 
     def choose_yes(event=None):
@@ -541,20 +535,19 @@ def show_themed_update_confirm(
             max_width_ratio=0.70,
             max_height_ratio=0.46,
         )
-    except Exception:
-        pass
-
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.protocol("WM_DELETE_WINDOW", choose_no)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     dlg.bind("<Escape>", choose_no, add="+")
     dlg.bind("<Return>", choose_yes, add="+")
 
     try:
         dlg.deiconify()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         owner._apply_windows_titlebar_theme(
             bg=theme.get("title_bar_bg"),
@@ -571,24 +564,24 @@ def show_themed_update_confirm(
                 window_widget=win,
             ),
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.lift()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.grab_set()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         yes_btn.focus_set()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     try:
         dlg.wait_window()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     return bool(result["value"])
 
 
@@ -680,8 +673,8 @@ def show_update_overlay(owner, message, tk, ttk):
         )
         top_bar.configure(style="Update.Top.Horizontal.TProgressbar")
         bottom_bar.configure(style="Update.Bottom.Horizontal.TProgressbar")
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_ignored_exception("update_ui_service", exc)
     if getattr(owner, "_theme", None):
         theme = owner._theme
         overlay.configure(bg=theme["bg"])
@@ -690,8 +683,8 @@ def show_update_overlay(owner, message, tk, ttk):
             label.configure(background=theme["bg"], foreground=theme["fg"])
             style = ttk.Style(overlay)
             style.configure("Update.TFrame", background=theme["bg"])
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
     _render_update_overlay_progress(owner, UPDATE_STAGE_TARGET_PCT["preparing"])
 
 
@@ -706,8 +699,8 @@ def update_update_overlay(owner, message=None, stage=None, percent=None, pulse=F
         shown_message = _resolve_update_message(stage_token, message)
         try:
             label.config(text=shown_message)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
         target_pct = _resolve_stage_percent(stage_token, percent)
         if target_pct is not None:
             _render_update_overlay_progress(owner, target_pct)
@@ -727,8 +720,8 @@ def close_update_overlay(owner):
     if overlay:
         try:
             overlay.destroy()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_ignored_exception("update_ui_service", exc)
     owner._update_overlay = None
     owner._update_overlay_label = None
     owner._update_overlay_top_bar = None
@@ -739,3 +732,5 @@ def close_update_overlay(owner):
     owner._update_overlay_title_variant = "SIINDBAD"
     owner._update_overlay_progress_pct = 0.0
     owner._update_overlay_stage = ""
+
+

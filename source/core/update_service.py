@@ -1,12 +1,23 @@
 import os
-import random
+import secrets
 import socket
 import ssl
 import time
+import logging
 import urllib.error
 import urllib.request
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+
+_LOG = logging.getLogger(__name__)
+_RETRY_AFTER_PARSE_ERRORS = (TypeError, ValueError, OverflowError)
+_RETRYABLE_TRANSFER_EXCEPTIONS = (
+    RuntimeError,
+    urllib.error.HTTPError,
+    urllib.error.URLError,
+    TimeoutError,
+    OSError,
+)
 
 
 def walk_exception_chain(exc, max_depth=8):
@@ -111,16 +122,16 @@ def parse_retry_after_seconds(value):
         secs = int(raw)
         if secs > 0:
             return secs
-    except Exception:
-        pass
+    except _RETRY_AFTER_PARSE_ERRORS as exc:
+        _LOG.debug("Retry-After parse as seconds failed for value %r: %s", raw, exc)
     try:
         dt = parsedate_to_datetime(raw)
         now = datetime.now(dt.tzinfo) if getattr(dt, "tzinfo", None) else datetime.now()
         delta = (dt - now).total_seconds()
         if delta > 0:
             return int(delta)
-    except Exception:
-        pass
+    except _RETRY_AFTER_PARSE_ERRORS as exc:
+        _LOG.debug("Retry-After parse as HTTP-date failed for value %r: %s", raw, exc)
     return None
 
 
@@ -147,11 +158,12 @@ def download_backoff_delay(exc, attempt_index, base_delay=0.45, max_delay=12.0):
     if isinstance(exc, urllib.error.HTTPError):
         try:
             retry_after = parse_retry_after_seconds(exc.headers.get("Retry-After"))
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             retry_after = None
     if retry_after is not None:
         delay = max(delay, min(float(max_delay), float(retry_after)))
-    jitter = random.uniform(0.05, 0.35)
+    # Use a non-predictable jitter source to satisfy security linting.
+    jitter = 0.05 + (secrets.randbelow(301) / 1000.0)
     return max(0.05, delay + jitter)
 
 
@@ -174,7 +186,7 @@ def download_bytes_with_retries(
             req = request_factory(url, headers=headers)
             with urlopen_fn(req, timeout=timeout) as resp:
                 return resp.read()
-        except Exception as exc:
+        except _RETRYABLE_TRANSFER_EXCEPTIONS as exc:
             last_exc = exc
             if attempt + 1 >= max_attempts:
                 break
@@ -213,13 +225,13 @@ def download_to_file_with_retries(
             if os.path.getsize(out_path) <= 0:
                 raise RuntimeError("Downloaded file is empty.")
             return
-        except Exception as exc:
+        except _RETRYABLE_TRANSFER_EXCEPTIONS as exc:
             last_exc = exc
             try:
                 if os.path.exists(out_path):
                     os.remove(out_path)
-            except Exception:
-                pass
+            except OSError as cleanup_exc:
+                _LOG.debug("Partial download cleanup failed for %s: %s", out_path, cleanup_exc)
             if attempt + 1 >= max_attempts:
                 break
             if not is_retryable_fn(exc):

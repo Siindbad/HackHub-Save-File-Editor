@@ -473,6 +473,16 @@ source/assets/buttons/variants/B/r5_sprites/update_hover_070.png
 source/assets/buttons/variants/B/r5_sprites/update_hover_071.png
 source/assets/fonts/Orbitron-Bold.ttf
 source/assets/fonts/Rajdhani-SemiBold.ttf
+source/assets/installer/themes/CyanNight/Carbon.vsf
+source/assets/installer/themes/CyanNight/CharcoalDarkSlate.vsf
+source/assets/installer/themes/CyanNight/CyanDusk.vsf
+source/assets/installer/themes/CyanNight/CyanNight.vsf
+source/assets/installer/themes/CyanNight/MetroBlack.vsf
+source/assets/installer/themes/CyanNight/README.md
+source/assets/installer/themes/CyanNight/Windows10Dark.vsf
+source/assets/installer/wizard/sin_wizard_left.bmp
+source/assets/installer/wizard/sin_wizard_left_clean.bmp
+source/assets/installer/wizard/sin_wizard_small.bmp
 source/assets/klogo.fw.png
 source/assets/known_email_domains.json
 source/assets/logo2.png
@@ -488,6 +498,7 @@ source/core/json_error_highlight_core.py
 source/core/layout_topbar.py
 source/core/startup_loader.py
 source/core/update_service.py
+source/installer/sins_editor_installer.iss
 source/requirements-build.txt
 source/services/README.md
 source/services/__init__.py

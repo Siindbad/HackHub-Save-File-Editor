@@ -62,9 +62,27 @@ from core import json_error_diagnostics_core
 from core import json_error_highlight_core
 from core import layout_topbar as layout_topbar_core
 from core import startup_loader as startup_loader_core
+
+_EXPECTED_APP_ERRORS = (
+    tk.TclError,
+    RuntimeError,
+    OSError,
+    ValueError,
+    TypeError,
+    KeyError,
+    IndexError,
+    AttributeError,
+    ImportError,
+    json.JSONDecodeError,
+    UnicodeDecodeError,
+    subprocess.SubprocessError,
+    urllib.error.URLError,
+    urllib.error.HTTPError,
+)
+
 try:
     import winreg
-except Exception:
+except ImportError:
     winreg = None
 
 # Backward-compatible module alias for older tests/integrations.
@@ -97,7 +115,7 @@ def _load_known_email_domains():
         # Accept UTF-8 with or without BOM to avoid empty-domain fallbacks.
         with open(path, "r", encoding="utf-8-sig") as fh:
             data = json.load(fh)
-    except Exception:
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
         return set()
     if not isinstance(data, list):
         return set()
@@ -110,25 +128,25 @@ def _enable_windows_dpi_awareness():
         return False
     try:
         user32 = ctypes.windll.user32
-    except Exception:
+    except (AttributeError, OSError):
         return False
 
     # Try Per-Monitor V2 first (Windows 10+), then older fallbacks.
     try:
         if bool(user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))):
             return True
-    except Exception:
+    except (AttributeError, OSError, ValueError):
         pass
     try:
         shcore = ctypes.windll.shcore
         if int(shcore.SetProcessDpiAwareness(2)) == 0:
             return True
-    except Exception:
+    except (AttributeError, OSError, ValueError):
         pass
     try:
         if bool(user32.SetProcessDPIAware()):
             return True
-    except Exception:
+    except (AttributeError, OSError, ValueError):
         pass
     return False
 
@@ -240,7 +258,7 @@ if not install_started:
         # Load saved user settings (font size, etc.) before building UI
         try:
             self._load_user_settings()
-        except Exception:
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
             pass
 
         self._configure_root_display_profile()
@@ -249,7 +267,7 @@ if not install_started:
         self._purge_diag_logs_for_new_session()
         try:
             self.root.bind("<Destroy>", self._on_root_destroy, add="+")
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         if path:
             self.load_file(path)
@@ -267,7 +285,7 @@ if not install_started:
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
                 value, _kind = winreg.QueryValueEx(key, "LongPathsEnabled")
             return int(value) == 1
-        except Exception:
+        except (OSError, ValueError, TypeError):
             return False
 
     def _maybe_warn_windows_long_paths_disabled(self):
@@ -277,7 +295,7 @@ if not install_started:
             return
         try:
             self.set_status("Tip: Enable Windows long paths for better deep-folder compatibility.")
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
 
     @staticmethod
@@ -302,11 +320,11 @@ if not install_started:
             return 1280, 720
         try:
             width = int(root.winfo_screenwidth() or 1280)
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError):
             width = 1280
         try:
             height = int(root.winfo_screenheight() or 720)
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError):
             height = 720
         return max(640, width), max(480, height)
 
@@ -319,13 +337,13 @@ if not install_started:
             dpi = float(root.winfo_fpixels("1i"))
             if dpi > 40.0:
                 candidates.append(dpi / 96.0)
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError):
             pass
         try:
             tk_scaling = float(root.tk.call("tk", "scaling"))
             if tk_scaling > 0.2:
                 candidates.append((tk_scaling * 72.0) / 96.0)
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
             pass
         return display_profile_core.detect_display_scale_from_candidates(candidates)
 
@@ -358,7 +376,7 @@ if not install_started:
             current_scaling = float(root.tk.call("tk", "scaling"))
             if abs(current_scaling - target_scaling) >= 0.03:
                 root.tk.call("tk", "scaling", target_scaling)
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
             pass
 
         base_width = int(round(1000 * window_boost))
@@ -373,17 +391,17 @@ if not install_started:
         self._window_layout = layout
         try:
             root.minsize(int(layout["min_width"]), int(layout["min_height"]))
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError):
             pass
         try:
             root.geometry(
                 f"{int(layout['width'])}x{int(layout['height'])}"
                 f"+{int(layout['x'])}+{int(layout['y'])}"
             )
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError):
             try:
                 root.geometry(f"{int(layout['width'])}x{int(layout['height'])}")
-            except Exception:
+            except (tk.TclError, RuntimeError, TypeError, ValueError):
                 pass
 
     def _apply_centered_toplevel_geometry(
@@ -417,7 +435,7 @@ if not install_started:
                     max(1, int(anchor_window.winfo_vrootwidth())),
                     max(1, int(anchor_window.winfo_vrootheight())),
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
                 anchor_rect = None
                 virtual_root_rect = None
 
@@ -435,14 +453,14 @@ if not install_started:
         )
         try:
             window.minsize(int(geom["min_width"]), int(geom["min_height"]))
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
             pass
         try:
             window.geometry(
                 f"{int(geom['width'])}x{int(geom['height'])}"
                 f"+{int(geom['x'])}+{int(geom['y'])}"
             )
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
             pass
 
     def _build_ui(self):
@@ -452,7 +470,7 @@ if not install_started:
         try:
             if getattr(self, "text", None):
                 self.text.edit_undo()
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         return "break"
 
@@ -460,7 +478,7 @@ if not install_started:
         try:
             if getattr(self, "text", None):
                 self.text.edit_redo()
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         return "break"
 
@@ -484,7 +502,7 @@ if not install_started:
             root.bind_all("<Button-4>", self._on_input_mode_mousewheel_linux_up, add="+")
             root.bind_all("<Button-5>", self._on_input_mode_mousewheel_linux_down, add="+")
             self._input_mode_mousewheel_bound = True
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             self._input_mode_mousewheel_bound = False
 
     @staticmethod
@@ -508,7 +526,7 @@ if not install_started:
                 return False
             px, py = root.winfo_pointerxy()
             target = root.winfo_containing(px, py)
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
             return False
         if target is None:
             return False
@@ -527,7 +545,7 @@ if not install_started:
             units = -1 if delta > 0 else 1
             canvas.yview_scroll(units, "units")
             return "break"
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError):
             return
 
     def _on_input_mode_mousewheel_linux_up(self, _event):
@@ -539,7 +557,7 @@ if not install_started:
         try:
             canvas.yview_scroll(-1, "units")
             return "break"
-        except Exception:
+        except (tk.TclError, RuntimeError):
             return
 
     def _on_input_mode_mousewheel_linux_down(self, _event):
@@ -551,7 +569,7 @@ if not install_started:
         try:
             canvas.yview_scroll(1, "units")
             return "break"
-        except Exception:
+        except (tk.TclError, RuntimeError):
             return
 
     @staticmethod
@@ -598,7 +616,7 @@ if not install_started:
                 fg=label_fg,
                 font=(label_family, label_size, "bold"),
             )
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         try:
             if input_container is not None:
@@ -607,7 +625,7 @@ if not install_started:
                     bd=0,
                     highlightthickness=0,
                 )
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         try:
             input_widget.configure(
@@ -621,14 +639,14 @@ if not install_started:
                 highlightcolor=field_edge,
                 font=(input_family, input_size, "bold"),
             )
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
 
     def _input_mode_font_size(self, base_size, min_size=7, max_size=18):
         # Keep INPUT rows synced with editor FONT +/- without breaking compact layouts.
         try:
             base = int(base_size)
-        except Exception:
+        except (TypeError, ValueError):
             base = 9
         editor_size = max(6, min(32, int(round(float(getattr(self, "_font_size", 10) or 10)))))
         delta = editor_size - 10
@@ -839,7 +857,7 @@ if not install_started:
                     try:
                         canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
                         canvas.yview_moveto(0.0)
-                    except Exception:
+                    except (tk.TclError, RuntimeError, AttributeError):
                         pass
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
@@ -856,7 +874,7 @@ if not install_started:
                     try:
                         canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
                         canvas.yview_moveto(0.0)
-                    except Exception:
+                    except (tk.TclError, RuntimeError, AttributeError):
                         pass
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
@@ -871,7 +889,7 @@ if not install_started:
                     try:
                         canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
                         canvas.yview_moveto(0.0)
-                    except Exception:
+                    except (tk.TclError, RuntimeError, AttributeError):
                         pass
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
@@ -900,7 +918,7 @@ if not install_started:
                     try:
                         canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
                         canvas.yview_moveto(0.0)
-                    except Exception:
+                    except (tk.TclError, RuntimeError, AttributeError):
                         pass
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
@@ -917,7 +935,7 @@ if not install_started:
                     try:
                         canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
                         canvas.yview_moveto(0.0)
-                    except Exception:
+                    except (tk.TclError, RuntimeError, AttributeError):
                         pass
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
@@ -985,14 +1003,14 @@ if not install_started:
                 continue
             try:
                 token = str(var.get() or "").strip().lower()
-            except Exception:
+            except (tk.TclError, RuntimeError, TypeError, ValueError):
                 continue
             if token not in ("true", "false"):
                 continue
             value_fg = bool_true_fg if token == "true" else bool_false_fg
             try:
                 widget.configure(fg=value_fg, insertbackground=value_fg)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 continue
 
     def _can_skip_input_mode_refresh(self, item_id, target_path):
@@ -1008,7 +1026,7 @@ if not install_started:
             return
         try:
             root.after_cancel(after_id)
-        except Exception:
+        except (tk.TclError, RuntimeError, ValueError):
             return
 
     def _cancel_pending_router_input_batches(self):
@@ -1021,7 +1039,7 @@ if not install_started:
             return
         try:
             root.after_cancel(after_id)
-        except Exception:
+        except (tk.TclError, RuntimeError, ValueError):
             return
 
     def _schedule_router_input_render_batches(self, host, normalized_path, pending_rows, render_token, chunk_size=10):
@@ -1056,18 +1074,18 @@ if not install_started:
             self._refresh_input_mode_bool_widget_colors()
             try:
                 host.update_idletasks()
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
             canvas = getattr(self, "_input_mode_canvas", None)
             if canvas is not None:
                 try:
                     canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-                except Exception:
+                except (tk.TclError, RuntimeError, AttributeError):
                     pass
 
         try:
             self._input_mode_router_batch_after_id = root.after_idle(_run_next_batch)
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             self._input_mode_router_batch_after_id = None
 
     def _resolve_input_mode_selection_payload(self, item_id):
@@ -1084,7 +1102,7 @@ if not install_started:
             return list_path, group_items, f"group {group} ({len(group_items)})"
         try:
             value = self._get_value(path)
-        except Exception:
+        except (KeyError, IndexError, TypeError, ValueError):
             value = {}
         return path, value, self._describe(value)
 
@@ -1109,7 +1127,7 @@ if not install_started:
             self._update_find_controls_for_mode()
             if status_text:
                 self.set_status(status_text)
-        except Exception:
+        except (KeyError, IndexError, TypeError, ValueError, tk.TclError, RuntimeError, AttributeError):
             return
 
     def _schedule_input_mode_refresh(self, item_id=None, immediate=False):
@@ -1127,7 +1145,7 @@ if not install_started:
             return
         try:
             self._input_mode_refresh_after_id = root.after_idle(self._run_pending_input_mode_refresh)
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             self._input_mode_refresh_after_id = None
             self._run_pending_input_mode_refresh()
 
@@ -1145,7 +1163,7 @@ if not install_started:
             try:
                 text.pack_forget()
                 text_scroll.pack_forget()
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
             if not input_container.winfo_ismapped():
                 input_container.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
@@ -1157,7 +1175,7 @@ if not install_started:
             self._cancel_pending_input_mode_refresh()
             self._cancel_pending_router_input_batches()
             input_container.pack_forget()
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         if not text.winfo_ismapped():
             text.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
@@ -1331,7 +1349,7 @@ if not install_started:
             draw.rectangle((0, 0, w - 1, max(1, radius // 3)), fill=fill)
             small = canvas.resize((tab_w, tab_h), image_module.LANCZOS)
             photo = self._pil_to_photo(small)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             photo = None
         self._bounded_cache_put(cache, signature, photo, max_items=16)
         return photo
@@ -1352,7 +1370,7 @@ if not install_started:
         if mode == "JSON":
             try:
                 self.on_select(None)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 pass
 
     def _update_find_controls_for_mode(self):
@@ -1363,7 +1381,7 @@ if not install_started:
             try:
                 if entry.winfo_exists():
                     entry.configure(state="normal")
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
 
     def _update_editor_mode_controls(self):
@@ -1374,23 +1392,23 @@ if not install_started:
         try:
             if not (host.winfo_exists() and parent.winfo_exists()):
                 return
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             return
         show = True
         theme = getattr(self, "_theme", {})
         try:
             host.configure(bg=theme.get("panel", "#161b24"))
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         if not show:
             try:
                 host.place_forget()
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
             return
         try:
             host.place(relx=1.0, y=0, x=-16, anchor="ne")
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         active_mode = str(getattr(self, "_editor_mode", "JSON")).upper()
         for mode, label in self._editor_mode_labels.items():
@@ -1407,7 +1425,7 @@ if not install_started:
                     font=(self._credit_name_font()[0], 8, "bold"),
                     text=mode,
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 continue
         # Avoid duplicate mode-view refresh here; _set_editor_mode performs one canonical refresh pass.
 
@@ -1424,28 +1442,28 @@ if not install_started:
             try:
                 if container.winfo_exists():
                     container.configure(bg=panel_bg)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         canvas = getattr(self, "_input_mode_canvas", None)
         if canvas is not None:
             try:
                 if canvas.winfo_exists():
                     canvas.configure(bg=panel_bg, highlightbackground=panel_bg, highlightcolor=panel_bg)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         host = getattr(self, "_input_mode_fields_host", None)
         if host is not None:
             try:
                 if host.winfo_exists():
                     host.configure(bg=panel_bg)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         notice = getattr(self, "_input_mode_no_fields_label", None)
         if notice is not None:
             try:
                 if notice.winfo_exists():
                     notice.configure(bg=panel_bg, fg=notice_fg)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         # Theme switch must repaint custom INPUT renderers (Bank/Database) so variant palettes apply.
         if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
@@ -1459,11 +1477,11 @@ if not install_started:
                 if not path:
                     return
                 value = self._get_value(path)
-        except Exception:
+        except (KeyError, IndexError, TypeError, ValueError, tk.TclError, RuntimeError, AttributeError):
             return
         try:
             self._refresh_input_mode_fields(path, value)
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError, KeyError, IndexError, TypeError, ValueError):
             pass
 
     def _reset_toolbar_runtime_refs(self):
@@ -1493,7 +1511,7 @@ if not install_started:
         if preserve_find_text and self.find_entry and self.find_entry.winfo_exists():
             try:
                 find_query = self.find_entry.get()
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 find_query = ""
 
         for child in host.winfo_children():
@@ -1525,7 +1543,7 @@ if not install_started:
             try:
                 self.find_entry.insert(0, find_query)
                 self.find_entry.icursor("end")
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         self._update_find_controls_for_mode()
         self._update_find_entry_layout()
@@ -1635,11 +1653,11 @@ if not install_started:
         if after_id:
             try:
                 root.after_cancel(after_id)
-            except Exception:
-                pass
+            except _EXPECTED_APP_ERRORS:
+                self._updates_auto_after_id = None
         try:
             self._updates_auto_after_id = root.after(max(1, int(delay_ms)), self._run_check_for_updates_auto)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._updates_auto_after_id = None
 
     def _auto_update_startup_enabled(self):
@@ -1678,8 +1696,8 @@ if not install_started:
             if after_id:
                 try:
                     root.after_cancel(after_id)
-                except Exception:
-                    pass
+                except _EXPECTED_APP_ERRORS:
+                    setattr(self, attr, None)
             setattr(self, attr, None)
 
     def _on_root_destroy(self, event):
@@ -1738,8 +1756,8 @@ if not install_started:
         self._startup_update_check_enabled = bool(enabled)
         try:
             self._save_user_settings()
-        except Exception:
-            pass
+        except _EXPECTED_APP_ERRORS:
+            self._set_status("Could not save startup update preference.")
 
     def _run_update_ui_demo(self, auto=False, sleep_fn=time.sleep):
         return update_orchestrator_service.run_update_ui_demo(
@@ -1762,19 +1780,19 @@ if not install_started:
         if threading.current_thread() is threading.main_thread():
             try:
                 return callback(*args, **kwargs)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return default
 
         if not wait:
             def invoke_async():
                 try:
                     callback(*args, **kwargs)
-                except Exception:
-                    pass
+                except _EXPECTED_APP_ERRORS:
+                    return None
 
             try:
                 root.after(0, invoke_async)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return default
             return default
 
@@ -1784,14 +1802,14 @@ if not install_started:
         def invoke_sync():
             try:
                 result["value"] = callback(*args, **kwargs)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 result["value"] = default
             finally:
                 done.set()
 
         try:
             root.after(0, invoke_sync)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return default
         done.wait(max(0.0, float(timeout)))
         return result["value"]
@@ -1833,7 +1851,7 @@ if not install_started:
             webbrowser.open(url)
             self._set_status("Opened manual update download page.")
             return True
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._set_status("Could not open browser for manual update download.")
             return False
 
@@ -1857,7 +1875,7 @@ if not install_started:
             )
             with open(path, "a", encoding="utf-8") as fh:
                 fh.write(entry)
-        except Exception:
+        except (OSError, ValueError, TypeError):
             return
 
     def _fetch_dist_version(self):
@@ -1865,7 +1883,7 @@ if not install_started:
         release_info = None
         try:
             release_info = self._fetch_latest_release_info()
-        except Exception:
+        except RuntimeError:
             release_info = None
         if isinstance(release_info, dict):
             tag_name = str(release_info.get("tag_name", "")).strip()
@@ -1882,7 +1900,7 @@ if not install_started:
         release_info = None
         try:
             release_info = self._fetch_latest_release_info()
-        except Exception:
+        except RuntimeError:
             release_info = None
         url = self._release_asset_download_url(release_info, self.GITHUB_ASSET_NAME)
         if not url:
@@ -1948,9 +1966,20 @@ if not install_started:
             for item in (getattr(self, "UPDATE_AUTHENTICODE_ALLOWED_SUBJECTS", ()) or ())
             if str(item).strip()
         )
+        # Prefer absolute system PowerShell path to avoid PATH-hijack risk on updater signature checks.
+        ps_exe = os.path.join(
+            os.environ.get("WINDIR", r"C:\Windows"),
+            "System32",
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe",
+        )
+        if not os.path.isfile(ps_exe):
+            ps_exe = "powershell.exe"
         try:
-            probe = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+            # Trusted local signature probe using fixed executable + static args.
+            probe = subprocess.run(  # nosec B603
+                [ps_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -1961,7 +1990,7 @@ if not install_started:
             status = str(payload.get("Status", "")).strip()
             subject = str(payload.get("Subject", "")).strip()
             status_msg = str(payload.get("StatusMessage", "")).strip()
-        except Exception as exc:
+        except (subprocess.SubprocessError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
             if strict:
                 raise RuntimeError(f"Downloaded update signature check failed: {exc}") from exc
             return
@@ -2004,19 +2033,22 @@ if not install_started:
         if release_info is None:
             try:
                 release_info = self._fetch_latest_release_info()
-            except Exception:
+            except RuntimeError:
                 release_info = None
         candidates = [f"{self.GITHUB_ASSET_NAME}.sha256"]
         for name in self.DIST_ASSET_SHA256_CANDIDATES:
             if name not in candidates:
                 candidates.append(name)
         for name in candidates:
+            data = None
             try:
                 url = self._release_asset_download_url(release_info, name)
                 if not url:
                     url = self._dist_url(name)
                 data = self._download_bytes_with_retries(url)
-            except Exception:
+            except RuntimeError:
+                data = None
+            if data is None:
                 continue
             parsed = self._extract_sha256_from_text(
                 data.decode("utf-8", errors="replace"),
@@ -2034,7 +2066,7 @@ if not install_started:
         raw = self._download_bytes_with_retries(url)
         try:
             parsed = json.loads(raw.decode("utf-8", errors="replace"))
-        except Exception as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError) as exc:
             raise RuntimeError("No release info available.") from exc
         if not isinstance(parsed, dict):
             raise RuntimeError("No release info available.")
@@ -2241,13 +2273,13 @@ if not install_started:
             return
         try:
             self.root.after(0, lambda: self.status.config(text=text))
-        except Exception:
+        except (RuntimeError, tk.TclError, AttributeError):
             return
 
     def _selected_tree_path_text(self):
         try:
             item_id = self.tree.focus()
-        except Exception:
+        except (RuntimeError, tk.TclError, AttributeError):
             item_id = None
         return tree_view_service.selected_tree_path_text(item_id, self.item_to_path)
 
@@ -2270,7 +2302,7 @@ if not install_started:
 
         try:
             entries = list(os.scandir(runtime_dir))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             entries = []
         for entry in entries:
             if not entry.is_file():
@@ -2287,7 +2319,7 @@ if not install_started:
                 continue
             try:
                 os.remove(entry.path)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
 
         # Remove legacy diagnostics names from temp/runtime locations.
@@ -2299,7 +2331,7 @@ if not install_started:
                 try:
                     if os.path.isfile(path):
                         os.remove(path)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     continue
 
     def _runtime_data_dir(self, create=False):
@@ -2316,13 +2348,13 @@ if not install_started:
                     base = home
                 else:
                     base = os.path.join(home, ".local", "state")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 base = os.getcwd()
         target = os.path.join(base, self.RUNTIME_DIR_NAME)
         if create:
             try:
                 os.makedirs(target, exist_ok=True)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return os.getcwd()
         return target
 
@@ -2351,7 +2383,7 @@ if not install_started:
                 parsed = json.load(fh)
             if isinstance(parsed, dict):
                 return parsed
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         return {}
 
@@ -2367,7 +2399,7 @@ if not install_started:
         )
         try:
             self._write_text_file_atomic(path, payload, encoding="utf-8")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _pending_crash_report_payload(self):
@@ -2377,7 +2409,7 @@ if not install_started:
         try:
             if os.path.getsize(path) <= 0:
                 return None
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         crash_tail = self._read_latest_crash_block()
         if not crash_tail.strip():
@@ -2396,7 +2428,7 @@ if not install_started:
         if existing:
             try:
                 root.after_cancel(existing)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self._crash_report_offer_after_id = None
         try:
@@ -2404,7 +2436,7 @@ if not install_started:
                 max(1, int(delay_ms)),
                 self._offer_crash_report_if_available,
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._crash_report_offer_after_id = None
 
     def _offer_crash_report_if_available(self):
@@ -2458,7 +2490,7 @@ if not install_started:
                 fh.write(header)
                 fh.write(detail.rstrip())
                 fh.write("\n")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _show_crash_notice_once(self):
@@ -2483,7 +2515,7 @@ if not install_started:
         if callable(prev) and prev is not self._handle_sys_excepthook:
             try:
                 prev(exc_type, exc_value, exc_tb)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
     def _handle_threading_excepthook(self, args):
@@ -2497,7 +2529,7 @@ if not install_started:
         if callable(prev) and prev is not self._handle_threading_excepthook:
             try:
                 prev(args)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
     def _handle_tk_callback_exception(self, exc_type, exc_value, exc_tb):
@@ -2510,17 +2542,17 @@ if not install_started:
         try:
             self._prev_sys_excepthook = sys.excepthook
             sys.excepthook = self._handle_sys_excepthook
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         if hasattr(threading, "excepthook"):
             try:
                 self._prev_threading_excepthook = threading.excepthook
                 threading.excepthook = self._handle_threading_excepthook
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         try:
             self.root.report_callback_exception = self._handle_tk_callback_exception
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _read_diag_log_tail(self, max_chars=8000):
@@ -2669,7 +2701,7 @@ if not install_started:
             root.clipboard_append(payload)
             root.update_idletasks()
             return True
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _open_bug_report_in_browser(self, title, body_markdown):
@@ -2721,23 +2753,23 @@ if not install_started:
                 if dlg.winfo_exists():
                     try:
                         dlg.grab_release()
-                    except Exception:
+                    except _EXPECTED_APP_ERRORS:
                         pass
                     try:
                         dlg.destroy()
-                    except Exception:
+                    except _EXPECTED_APP_ERRORS:
                         pass
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if root is not None:
             try:
                 current = root.grab_current()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 current = None
             if current is not None:
                 try:
                     current.grab_release()
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
 
     def _hide_bug_submit_splash(self):
@@ -2746,7 +2778,7 @@ if not install_started:
         if after_id:
             try:
                 self.root.after_cancel(after_id)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         splash = getattr(self, "_bug_submit_splash", None)
         self._bug_submit_splash = None
@@ -2754,7 +2786,7 @@ if not install_started:
             try:
                 if splash.winfo_exists():
                     splash.destroy()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
     def _show_bug_submit_splash(self, message="BUG REPORT SUBMITTED", duration_ms=1600):
@@ -2806,7 +2838,7 @@ if not install_started:
                 max(700, int(duration_ms)),
                 self._hide_bug_submit_splash,
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._hide_bug_submit_splash()
 
     def _bug_report_header_pulse_palette(self):
@@ -2839,7 +2871,7 @@ if not install_started:
             if root is not None:
                 try:
                     root.after_cancel(after_id)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
 
     def _tick_bug_report_header_pulse(self):
@@ -2851,7 +2883,7 @@ if not install_started:
         try:
             if not dlg.winfo_exists() or not card.winfo_exists():
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         palette = self._bug_report_header_pulse_palette()
         cycle_steps = 44  # slower pulse
@@ -2868,13 +2900,13 @@ if not install_started:
         try:
             card.configure(highlightbackground=border_color, highlightcolor=border_color)
             dlg.configure(bg=edge_color)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         root = getattr(self, "root", None)
         if root is not None:
             try:
                 self._bug_report_pulse_after_id = root.after(210, self._tick_bug_report_header_pulse)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 self._bug_report_pulse_after_id = None
 
     def _activate_bug_report_custom_chrome(self, dialog, header=None, drag_widgets=(), close_widget=None):
@@ -2887,19 +2919,19 @@ if not install_started:
             try:
                 dialog.attributes("-topmost", True)
                 dialog.after(120, lambda: dialog.attributes("-topmost", False))
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             try:
                 dialog.overrideredirect(False)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             return False
 
         if close_widget is not None:
             try:
                 close_widget.bind("<Button-1>", lambda _e: self._close_bug_report_dialog(), add="+")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
         move_state = {"x": 0, "y": 0}
@@ -2921,7 +2953,7 @@ if not install_started:
                 dialog.geometry(f"+{cx + dx}+{cy + dy}")
                 move_state["x"] = px
                 move_state["y"] = py
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
 
         def _end_move(_event):
@@ -2933,7 +2965,7 @@ if not install_started:
                     widget.bind("<ButtonPress-1>", _start_move, add="+")
                     widget.bind("<B1-Motion>", _on_move, add="+")
                     widget.bind("<ButtonRelease-1>", _end_move, add="+")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
         return True
 
@@ -2944,7 +2976,7 @@ if not install_started:
             return
         try:
             size = os.path.getsize(path)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         if size <= max_bytes:
             return
@@ -2956,7 +2988,7 @@ if not install_started:
             with open(path, "wb") as dst:
                 dst.write(b"\n--- log truncated ---\n")
                 dst.write(tail)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     @staticmethod
@@ -3129,7 +3161,7 @@ if not install_started:
         if style is None:
             try:
                 style = ttk.Style(self.root)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
         theme = getattr(self, "_theme", {}) or {}
         panel = panel or theme.get("panel", "#161b24")
@@ -3187,7 +3219,7 @@ if not install_started:
         try:
             if not tree.winfo_exists():
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         profile = self._tree_font_profile()
         family_main = tree_font_family or self._tree_font_family(profile["is_variant_b"])
@@ -3209,7 +3241,7 @@ if not install_started:
         try:
             tree.tag_configure("tree-main-level", font=main_font)
             tree.tag_configure("tree-sub-level", font=sub_font)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _apply_tree_indicator_layout(self, style):
@@ -3217,7 +3249,7 @@ if not install_started:
         try:
             if self._tree_item_layout_default is None:
                 self._tree_item_layout_default = style.layout("Treeview.Item")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
         variant = str(getattr(self, "_tree_style_variant", "B")).upper()
@@ -3244,14 +3276,14 @@ if not install_started:
                 ]
             try:
                 style.layout("Treeview.Item", self._tree_item_layout_no_indicator)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             return
 
         try:
             if self._tree_item_layout_default:
                 style.layout("Treeview.Item", self._tree_item_layout_default)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     @staticmethod
@@ -3280,7 +3312,7 @@ if not install_started:
             user32 = ctypes.windll.user32
             target.update_idletasks()
             hwnd = user32.GetParent(target.winfo_id()) or target.winfo_id()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
         hwnd_value = ctypes.c_void_p(hwnd)
@@ -3294,7 +3326,7 @@ if not install_started:
                     ctypes.c_uint(ctypes.sizeof(value)),
                 )
                 return result == 0
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return False
 
         dark_flag = ctypes.c_int(1)
@@ -3345,7 +3377,7 @@ if not install_started:
             # against custom error tint/highlight tags.
             self.text.tag_config("sel", background=theme["select_bg"], foreground=theme["select_fg"])
             self.text.tag_raise("sel")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         self._configure_json_lock_tags()
         self._style_text_context_menu()
@@ -3362,7 +3394,7 @@ if not install_started:
             popup.overrideredirect(True)
             try:
                 popup.attributes("-topmost", True)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
             anchor = tk.Frame(popup, bd=0, highlightthickness=1)
@@ -3436,7 +3468,7 @@ if not install_started:
                 if action in ("copy", "autofix"):
                     try:
                         self._text_context_menu_separators.append(separator)
-                    except Exception:
+                    except _EXPECTED_APP_ERRORS:
                         pass
 
             popup.bind("<Escape>", self._on_text_context_menu_escape, add="+")
@@ -3453,7 +3485,7 @@ if not install_started:
             self._text_context_menu_item_states = {key: True for key in items}
             self._text_context_menu_hover_action = None
             self._style_text_context_menu()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._destroy_text_context_menu()
 
     def _text_context_menu_palette(self):
@@ -3513,7 +3545,7 @@ if not install_started:
         try:
             if not popup.winfo_exists():
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
         palette = self._text_context_menu_palette()
@@ -3526,7 +3558,7 @@ if not install_started:
         )
         try:
             popup.configure(bg=palette["frame_bg"])
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
         anchor = getattr(self, "_text_context_menu_anchor", None)
@@ -3543,7 +3575,7 @@ if not install_started:
                     highlightbackground=palette["border"],
                     highlightcolor=palette["border"],
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if frame is not None:
             try:
@@ -3552,7 +3584,7 @@ if not install_started:
                     highlightbackground=palette["inset_border"],
                     highlightcolor=palette["inset_border"],
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if panel is not None:
             try:
@@ -3561,23 +3593,23 @@ if not install_started:
                     highlightbackground=palette["panel_border"],
                     highlightcolor=palette["panel_border"],
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if body is not None:
             try:
                 body.configure(bg=palette["bg"])
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if separator is not None:
             try:
                 separator.configure(bg=palette["separator"])
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         for sep in separators:
             try:
                 if sep is not None and sep.winfo_exists():
                     sep.configure(bg=palette["separator"])
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
         self._style_text_context_menu_rows(
@@ -3698,12 +3730,12 @@ if not install_started:
                 highlightcolor=row_border,
                 cursor=cursor,
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         for widget in (title, shortcut):
             try:
                 widget.configure(bg=row_bg)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         try:
             if action == "autofix":
@@ -3721,7 +3753,7 @@ if not install_started:
             if apply_fonts:
                 title_kwargs["font"] = (font_family, title_size, "bold")
             title.configure(**title_kwargs)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             shortcut_kwargs = {
@@ -3731,32 +3763,32 @@ if not install_started:
             if apply_fonts:
                 shortcut_kwargs["font"] = (shortcut_font_family, small_size)
             shortcut.configure(**shortcut_kwargs)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _has_text_selection(self):
         try:
             return bool(self.text.tag_ranges("sel"))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _clipboard_has_text(self):
         try:
             value = self.root.clipboard_get()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
         return bool(value)
 
     def _text_can_undo(self):
         try:
             return bool(int(self.text.tk.call(self.text._w, "edit", "canundo")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _text_can_redo(self):
         try:
             return bool(int(self.text.tk.call(self.text._w, "edit", "canredo")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _destroy_text_context_menu(self):
@@ -3766,7 +3798,7 @@ if not install_started:
             try:
                 if popup.winfo_exists():
                     popup.destroy()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self._text_context_menu = None
         self._text_context_menu_anchor = None
@@ -3820,7 +3852,7 @@ if not install_started:
                 return action
             try:
                 current = current.master
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 current = None
         return None
 
@@ -3833,7 +3865,7 @@ if not install_started:
             pointer_x = root.winfo_pointerx()
             pointer_y = root.winfo_pointery()
             under_pointer = root.winfo_containing(pointer_x, pointer_y)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None, False
         action = self._text_context_menu_action_for_widget(under_pointer)
         if action:
@@ -3861,7 +3893,7 @@ if not install_started:
             return "break"
         try:
             under_pointer = root.winfo_containing(root.winfo_pointerx(), root.winfo_pointery())
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             under_pointer = None
         if self._widget_is_popup_child(under_pointer, popup):
             return "break"
@@ -3908,7 +3940,7 @@ if not install_started:
         for sequence in ("<Button-1>", "<Button-2>", "<Button-3>", "<MouseWheel>", "<Escape>"):
             try:
                 bind_id = root.bind(sequence, self._on_text_context_menu_global_dismiss, add="+")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 bind_id = None
             if bind_id:
                 bindings.append((sequence, bind_id))
@@ -3922,7 +3954,7 @@ if not install_started:
         for sequence, bind_id in list(getattr(self, "_text_context_menu_global_bindings", [])):
             try:
                 root.unbind(sequence, bind_id)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self._text_context_menu_global_bindings = []
 
@@ -3933,7 +3965,7 @@ if not install_started:
         try:
             if not popup.winfo_exists() or not popup.winfo_ismapped():
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         widget = getattr(event, "widget", None)
         if self._widget_is_popup_child(widget, popup):
@@ -3947,11 +3979,11 @@ if not install_started:
         try:
             if not popup.winfo_exists() or not popup.winfo_ismapped():
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         try:
             self.root.after(30, self._hide_text_context_menu_if_app_inactive)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._hide_text_context_menu_if_app_inactive()
 
     def _on_root_focus_in(self, event=None):
@@ -3959,7 +3991,7 @@ if not install_started:
             return
         try:
             self.root.after(50, self._ensure_bug_report_dialog_visible)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._ensure_bug_report_dialog_visible()
 
     def _ensure_bug_report_dialog_visible(self):
@@ -3974,9 +4006,9 @@ if not install_started:
             dlg.lift()
             try:
                 dlg.focus_force()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _arm_bug_report_follow_root(self, dialog=None):
@@ -3998,7 +4030,7 @@ if not install_started:
             self._bug_report_offset_y = int(dlg.winfo_y()) - int(root.winfo_y())
             self._bug_report_follow_root = True
             self._bug_report_is_dragging = False
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._bug_report_follow_root = False
 
     def _on_root_configure(self, event=None):
@@ -4032,7 +4064,7 @@ if not install_started:
             target_y = max(vroot_y, min(max_y, target_y))
             if target_x != int(dlg.winfo_x()) or target_y != int(dlg.winfo_y()):
                 dlg.geometry(f"+{target_x}+{target_y}")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _hide_text_context_menu_if_app_inactive(self):
@@ -4042,7 +4074,7 @@ if not install_started:
         try:
             if not popup.winfo_exists() or not popup.winfo_ismapped():
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         root = getattr(self, "root", None)
         if root is None:
@@ -4050,7 +4082,7 @@ if not install_started:
             return
         try:
             focused = root.focus_displayof()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             focused = None
         if focused is None:
             self._hide_text_context_menu()
@@ -4078,7 +4110,7 @@ if not install_started:
             if root is not None:
                 try:
                     root.after_cancel(after_id)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
 
     def _tick_text_context_menu_pulse(self):
@@ -4089,7 +4121,7 @@ if not install_started:
         try:
             if not popup.winfo_exists() or not popup.winfo_ismapped():
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         palette = self._text_context_menu_palette()
         hover_action = getattr(self, "_text_context_menu_hover_action", None)
@@ -4099,7 +4131,7 @@ if not install_started:
                 return
             try:
                 self._text_context_menu_pulse_after_id = root.after(140, self._tick_text_context_menu_pulse)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 self._text_context_menu_pulse_after_id = None
             return
         else:
@@ -4124,17 +4156,17 @@ if not install_started:
         if anchor is not None:
             try:
                 anchor.configure(highlightbackground=border_color, highlightcolor=border_color)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if frame is not None:
             try:
                 frame.configure(highlightbackground=inset_color, highlightcolor=inset_color)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if panel is not None:
             try:
                 panel.configure(highlightbackground=panel_color, highlightcolor=panel_color)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         root = getattr(self, "root", None)
         if root is None:
@@ -4142,7 +4174,7 @@ if not install_started:
         try:
             delay_ms = 140 if hover_action else 100
             self._text_context_menu_pulse_after_id = root.after(delay_ms, self._tick_text_context_menu_pulse)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._text_context_menu_pulse_after_id = None
 
     def _hide_text_context_menu(self):
@@ -4155,7 +4187,7 @@ if not install_started:
         try:
             if popup.winfo_exists():
                 popup.withdraw()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         self._style_text_context_menu()
 
@@ -4166,7 +4198,7 @@ if not install_started:
         try:
             if not popup.winfo_exists():
                 return False
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
         self._style_text_context_menu()
         try:
@@ -4198,7 +4230,7 @@ if not install_started:
             x = max(vroot_x + 2, min(int(popup_x), max_x))
             y = max(vroot_y + 2, min(int(popup_y), max_y))
             popup.geometry(f"+{x}+{y}")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
         self._bind_text_context_menu_global_dismiss()
         self._start_text_context_menu_pulse()
@@ -4213,7 +4245,7 @@ if not install_started:
             return "break"
         try:
             self.text.focus_set()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
         anchor_index = "insert"
@@ -4223,7 +4255,7 @@ if not install_started:
                 anchor_index = idx
                 if not self._has_text_selection():
                     self.text.mark_set("insert", idx)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
         self._set_text_context_menu_item_state("undo", self._text_can_undo())
@@ -4247,13 +4279,13 @@ if not install_started:
             vroot_bottom = vroot_y + vroot_h
             try:
                 text_bottom = int(self.text.winfo_rooty()) + int(self.text.winfo_height())
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 text_bottom = None
             try:
                 root_bottom = int(self.root.winfo_rooty()) + int(self.root.winfo_height())
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 root_bottom = None
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             menu_req_h = 0
             vroot_top = 2
             vroot_bottom = 0
@@ -4263,7 +4295,7 @@ if not install_started:
         def _resolve_menu_y(preferred_y, anchor_top=None):
             try:
                 y = int(preferred_y)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return preferred_y
             if menu_req_h <= 0:
                 return y
@@ -4271,17 +4303,17 @@ if not install_started:
             if container_bottom <= 0:
                 try:
                     container_bottom = max(menu_req_h + 2, int(self.root.winfo_screenheight()))
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     container_bottom = menu_req_h + 2
             try:
                 if text_bottom is not None and int(text_bottom) > 0:
                     container_bottom = min(container_bottom, int(text_bottom))
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             try:
                 if root_bottom is not None and int(root_bottom) > 0:
                     container_bottom = min(container_bottom, int(root_bottom))
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             bottom_limit = container_bottom - menu_req_h - 2
             if y > bottom_limit and anchor_top is not None:
@@ -4289,7 +4321,7 @@ if not install_started:
                     above_y = int(anchor_top) - menu_req_h - 2
                     if above_y >= int(vroot_top):
                         return above_y
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
             if y > bottom_limit:
                 y = max(int(vroot_top), bottom_limit)
@@ -4302,7 +4334,7 @@ if not install_started:
         if event is not None and hasattr(event, "x_root"):
             try:
                 popup_x = int(event.x_root)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 popup_x = None
         try:
             box = self.text.bbox(anchor_index)
@@ -4312,7 +4344,7 @@ if not install_started:
                 popup_y = _resolve_menu_y(anchor_top + int(box[3]) + 2, anchor_top=anchor_top)
                 if popup_x is None:
                     popup_x = self.text.winfo_rootx() + int(box[0]) + 6
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             popup_y = None
         if popup_x is None or popup_y is None:
             try:
@@ -4321,21 +4353,21 @@ if not install_started:
                     popup_x = self.text.winfo_rootx() + int(box[0]) + 6
                     anchor_top = self.text.winfo_rooty() + int(box[1])
                     popup_y = _resolve_menu_y(anchor_top + int(box[3]) + 2, anchor_top=anchor_top)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 popup_x = None
                 popup_y = None
         if (popup_x is None or popup_y is None) and event is not None and hasattr(event, "x_root") and hasattr(event, "y_root"):
             try:
                 popup_x = int(event.x_root)
                 popup_y = _resolve_menu_y(int(event.y_root), anchor_top=int(event.y_root))
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 popup_x = None
                 popup_y = None
         if popup_x is None or popup_y is None:
             try:
                 popup_x = self.root.winfo_rootx() + 40
                 popup_y = self.root.winfo_rooty() + 40
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return "break"
 
         self._hide_text_context_menu()
@@ -4348,12 +4380,12 @@ if not install_started:
             return
         try:
             text = self.text.get("sel.first", "sel.last")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         try:
             self.root.clipboard_clear()
             self.root.clipboard_append(text)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _on_context_undo(self):
@@ -4364,7 +4396,7 @@ if not install_started:
             self.text.edit_undo()
             self.text.see("insert")
             self._auto_apply_pending = True
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _on_context_redo(self):
@@ -4375,13 +4407,13 @@ if not install_started:
             self.text.edit_redo()
             self.text.see("insert")
             self._auto_apply_pending = True
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _on_context_paste(self):
         try:
             pasted = self.root.clipboard_get()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         if pasted is None:
             return
@@ -4391,13 +4423,13 @@ if not install_started:
         try:
             if self._has_text_selection():
                 self.text.delete("sel.first", "sel.last")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             self.text.insert("insert", pasted)
             self.text.see("insert")
             self._auto_apply_pending = True
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     @staticmethod
@@ -4409,13 +4441,13 @@ if not install_started:
         if focus_idx:
             try:
                 return int(str(focus_idx).split(".")[0])
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         try:
             ranges = self.text.tag_ranges("json_error")
             if ranges:
                 return int(str(ranges[0]).split(".")[0])
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         return None
 
@@ -4423,7 +4455,7 @@ if not install_started:
         overlay = getattr(self, "error_overlay", None)
         try:
             has_overlay = bool(overlay is not None and overlay.winfo_exists())
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             has_overlay = False
         line_no = self._current_error_line_number()
         return error_service.build_overlay_suggestion_payload(
@@ -4470,7 +4502,7 @@ if not install_started:
             self.text.mark_set("insert", f"{int(line_no)}.{caret_col}")
             self.text.see(f"{int(line_no)}.{caret_col}")
             return True
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _restore_insert_index(self, restore_index, log_failure=False):
@@ -4480,7 +4512,7 @@ if not install_started:
         target_line = 1
         try:
             target_line = int(self._line_number_from_index(restore_index) or 1)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             target_line = 1
         try:
             line_text = str(restore_index).split(".", 1)
@@ -4493,7 +4525,7 @@ if not install_started:
             restore_index = f"{line_no}.{col_no}"
             self.text.mark_set("insert", restore_index)
             self.text.see(restore_index)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             if not bool(log_failure):
                 return
             try:
@@ -4511,7 +4543,7 @@ if not install_started:
                     target_line,
                     note=f"cursor_restore_failed requested={str(restore_index)}",
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             return
 
@@ -4524,7 +4556,7 @@ if not install_started:
         restore_index = ""
         try:
             restore_index = str(self.text.index("insert") or "")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             restore_index = ""
         if self.error_overlay is not None:
             self._destroy_error_overlay()
@@ -4538,7 +4570,7 @@ if not install_started:
             self._restore_insert_index(restore_index)
             try:
                 self._apply_json_view_lock_state(path)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             # Defer final cursor restore until apply_edit() completes and repaints this node.
             self._pending_insert_restore_index = str(restore_index or "")
@@ -4557,7 +4589,7 @@ if not install_started:
     def _tag_has_ranges(self, tag_name):
         try:
             return bool(self.text.tag_ranges(tag_name))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _current_error_palette(self):
@@ -4578,7 +4610,7 @@ if not install_started:
             self.text.configure(selectbackground=sel_bg, selectforeground=sel_fg)
             self.text.tag_config("sel", background=sel_bg, foreground=sel_fg)
             self.text.tag_raise("sel")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _preferred_mono_family(self):
@@ -4598,7 +4630,7 @@ if not install_started:
                 if hit:
                     self._mono_family = hit
                     return self._mono_family
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         self._mono_family = "Consolas"
         return self._mono_family
@@ -4609,7 +4641,7 @@ if not install_started:
             families = {}
             try:
                 families = {name.lower(): name for name in tkfont.families(self.root)}
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 families = {}
             self._font_family_lookup_cache = families
         try:
@@ -4617,7 +4649,7 @@ if not install_started:
                 hit = families.get(str(family).lower())
                 if hit:
                     return hit
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         return fallback
 
@@ -4694,16 +4726,16 @@ if not install_started:
                 return
             try:
                 position_hint = (int(window.winfo_x()), int(window.winfo_y()))
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 position_hint = None
             window.destroy()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._readme_window = None
             return
         self._readme_window = None
         try:
             self.show_readme(position_hint=position_hint)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _on_font_size_selected(self, event=None):
@@ -4728,7 +4760,7 @@ if not install_started:
             if combo is not None:
                 try:
                     combo.set(str(self._font_size))
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
 
     def decrease_font_size(self):
@@ -4740,7 +4772,7 @@ if not install_started:
             if combo is not None:
                 try:
                     combo.set(str(self._font_size))
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
 
     def _update_font_size(self):
@@ -4751,17 +4783,17 @@ if not install_started:
         # Keep tree text tied to editor font while preserving icon alignment.
         try:
             self._apply_tree_style()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         if self._font_size_value_label and self._font_size_value_label.winfo_exists():
             try:
                 self._font_size_value_label.configure(text=str(int(self._font_size)))
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         # Persist the chosen font size for future runs
         try:
             self._save_user_settings()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         self._refresh_open_readme_window()
         # Keep active warning/error overlays synchronized with font-size changes.
@@ -4781,7 +4813,7 @@ if not install_started:
                 if size != self._font_size:
                     self._font_size = size
                     self._update_font_size()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _settings_path(self):
@@ -4793,7 +4825,7 @@ if not install_started:
         try:
             home = os.path.expanduser("~")
             return os.path.join(home, JsonEditor.LEGACY_SETTINGS_FILENAME)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return os.path.join(os.getcwd(), JsonEditor.SETTINGS_FILENAME)
 
     def _load_user_settings(self):
@@ -4804,7 +4836,7 @@ if not install_started:
         if callable(legacy_fn):
             try:
                 legacy_path = legacy_fn()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 legacy_path = None
         if legacy_path:
             paths.append(legacy_path)
@@ -4833,7 +4865,7 @@ if not install_started:
                     elif token in ("0", "false", "no", "off"):
                         self._startup_update_check_enabled = False
                 return
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
 
     def _save_user_settings(self):
@@ -4852,7 +4884,7 @@ if not install_started:
             else:
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write(payload)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     @staticmethod
@@ -4921,7 +4953,7 @@ if not install_started:
             if len(raw) != 6:
                 return default_rgb
             return (int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return default_rgb
 
     @staticmethod
@@ -5245,10 +5277,10 @@ if not install_started:
             limit = max(8, int(max_items))
             while len(cache) > limit:
                 cache.pop(next(iter(cache)), None)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             try:
                 cache[key] = value
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
     def _siindbad_toolbar_style_palette(self):
@@ -5329,7 +5361,7 @@ if not install_started:
         if style == "C":
             try:
                 draw.rounded_rectangle((0, 0, 15, 15), radius=4, outline=accent, width=1)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 draw.rectangle((0, 0, 15, 15), outline=accent, width=1)
         elif style == "B":
             # Bracket frame corners (R5 concept style).
@@ -5447,7 +5479,7 @@ if not install_started:
                     accent2_hex=palette.get("inner_border", palette.get("border_active", "#a9ddf0")),
                 )
                 self._siindbad_button_icons[key] = image_tk_module.PhotoImage(icon)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._siindbad_button_icons = {}
 
     def _find_entry_target_width(self):
@@ -5479,7 +5511,7 @@ if not install_started:
                 host.pack_configure(fill="x", expand=True, padx=(3, 2))
                 host.pack_propagate(True)
                 self.find_entry.pack_configure(fill="x", expand=True, padx=(2, 2), pady=0, ipady=2)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
             return
         if style == "A":
@@ -5511,7 +5543,7 @@ if not install_started:
                     ipady=1,
                     anchor="center",
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
             return
         if style == "B":
@@ -5530,7 +5562,7 @@ if not install_started:
                 host.pack_propagate(False)
                 try:
                     host.update_idletasks()
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
                 actual_host_width = int(host.winfo_width() or 0)
                 actual_host_height = int(host.winfo_height() or 0)
@@ -5638,7 +5670,7 @@ if not install_started:
                 inner_edge = getattr(self, "_find_entry_inner_edge_line", None)
                 if inner_edge and inner_edge.winfo_exists():
                     inner_edge.lift()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
             return
         width_px = self._find_entry_target_width()
@@ -5662,7 +5694,7 @@ if not install_started:
                 highlightthickness=1,
             )
             self.find_entry.pack_configure(fill="x", expand=True, padx=(2, 2), pady=0, ipady=1)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _schedule_topbar_alignment(self, delay_ms=35):
@@ -5673,7 +5705,7 @@ if not install_started:
         if existing:
             try:
                 root.after_cancel(existing)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self._topbar_align_after_id = None
         try:
@@ -5681,7 +5713,7 @@ if not install_started:
                 max(0, int(delay_ms)),
                 self._align_topbar_to_logo,
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._topbar_align_after_id = None
 
     @staticmethod
@@ -5690,7 +5722,7 @@ if not install_started:
             return False
         try:
             return str(window.state()).lower() == "zoomed"
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _apply_toolbar_layout_mode(self, force=False):
@@ -5701,7 +5733,7 @@ if not install_started:
         try:
             if not (host.winfo_exists() and center.winfo_exists()):
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
         mode = "maximized" if self._window_is_maximized(getattr(self, "root", None)) else "normal"
@@ -5729,7 +5761,7 @@ if not install_started:
         try:
             if not (find_host.winfo_exists() and find_btn.winfo_exists()):
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
         style = str(self._siindbad_effective_style()).upper()
@@ -5744,12 +5776,12 @@ if not install_started:
 
         try:
             find_host.pack_configure(padx=target_host_padx)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             find_btn_host = getattr(find_btn, "_siindbad_frame_host", find_btn)
             find_btn_host.pack_configure(padx=target_btn_padx)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _find_entry_base_width(self):
@@ -5788,15 +5820,15 @@ if not install_started:
             self._update_find_entry_layout()
         try:
             center.place_forget()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             center.pack_forget()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             center.pack(anchor="center")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _apply_toolbar_layout_max(self, center, host):
@@ -5805,7 +5837,7 @@ if not install_started:
         try:
             center.update_idletasks()
             host.update_idletasks()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
         try:
@@ -5813,7 +5845,7 @@ if not install_started:
             toolbar_h = int(center.winfo_reqheight() or center.winfo_height() or 0)
             host_w = int(host.winfo_width() or host.winfo_reqwidth() or 0)
             host_h = int(host.winfo_height() or host.winfo_reqheight() or 0)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         if toolbar_w <= 0 or host_w <= 0:
             return
@@ -5830,7 +5862,7 @@ if not install_started:
                     + (logo_visual_w / 2.0)
                     - float(host.winfo_rootx())
                 )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             logo_center_rel = None
             logo_visual_w = None
         if logo_center_rel is None:
@@ -5844,7 +5876,7 @@ if not install_started:
                 toolbar_h = int(center.winfo_reqheight() or center.winfo_height() or toolbar_h)
                 host_w = int(host.winfo_width() or host.winfo_reqwidth() or host_w)
                 host_h = int(host.winfo_height() or host.winfo_reqheight() or host_h)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
         placement = layout_topbar_core.compute_centered_toolbar_position(
@@ -5860,11 +5892,11 @@ if not install_started:
 
         try:
             center.pack_forget()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             center.place(x=x, y=y)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _align_topbar_to_logo(self):
@@ -5919,7 +5951,7 @@ if not install_started:
                     parsed = json.load(fh)
                 if isinstance(parsed, dict):
                     data = parsed
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             data = {}
         self._siindbad_b_sprite_manifest_cache = data
         return data
@@ -5930,7 +5962,7 @@ if not install_started:
         if root is not None and after_id:
             try:
                 root.after_cancel(after_id)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self._theme_prewarm_after_id = None
         self._siindbad_b_sprite_manifest_cache = None
@@ -5972,18 +6004,18 @@ if not install_started:
 
         try:
             base_image = image_module.open(base_path).convert("RGBA")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
             try:
                 base_image = self._shade_toolbar_button_for_theme(base_image)
                 base_image = self._harmonize_kamue_b_outer_frame(base_image)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if base_image.width != width or base_image.height != height:
             try:
                 base_image = base_image.resize((width, height), image_module.LANCZOS)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return None
 
         hover_files = meta.get("hover_frames", [])
@@ -5993,7 +6025,7 @@ if not install_started:
                 hover_files = sorted(
                     name for name in os.listdir(sprite_dir) if name.startswith(prefix) and name.endswith(".png")
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 hover_files = []
 
         hover_images = []
@@ -6007,12 +6039,12 @@ if not install_started:
                     try:
                         hover_image = self._shade_toolbar_button_for_theme(hover_image)
                         hover_image = self._harmonize_kamue_b_outer_frame(hover_image)
-                    except Exception:
+                    except _EXPECTED_APP_ERRORS:
                         pass
                 if hover_image.width != width or hover_image.height != height:
                     hover_image = hover_image.resize((width, height), image_module.LANCZOS)
                 hover_images.append(hover_image)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
         if not hover_images:
             hover_images = [base_image.copy()]
@@ -6024,7 +6056,7 @@ if not install_started:
             for hover_img in hover_images:
                 try:
                     softened.append(image_module.blend(base_image, hover_img, hover_mix))
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     softened.append(hover_img)
             hover_images = softened
 
@@ -6050,7 +6082,7 @@ if not install_started:
                             diff = image_chops_module.difference(a, b)
                             stat = image_stat_module.Stat(diff)
                             return float(stat.sum[0])
-                        except Exception:
+                        except _EXPECTED_APP_ERRORS:
                             return 0.0
 
                     n = len(hover_images)
@@ -6077,7 +6109,7 @@ if not install_started:
                 nxt = hover_images[(idx + 1) % total]
                 try:
                     smoothed.append(image_module.blend(frame, nxt, 0.5))
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
             if smoothed:
                 hover_images = smoothed
@@ -6141,12 +6173,12 @@ if not install_started:
                 with image_module.open(base_path) as base_img:
                     spec["width"] = int(base_img.width)
                     spec["height"] = int(base_img.height)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if isinstance(input_box, (list, tuple)) and len(input_box) == 4:
             try:
                 spec["input_box"] = tuple(int(v) for v in input_box)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         return spec
 
@@ -6180,14 +6212,14 @@ if not install_started:
                 try:
                     image = self._shade_toolbar_button_for_theme(image)
                     image = self._harmonize_kamue_b_outer_frame(image)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
             if image.width != int(width) or image.height != int(height):
                 image = image.resize((max(1, int(width)), max(1, int(height))), image_module.LANCZOS)
             photo = image_tk_module.PhotoImage(image)
             self._bounded_cache_put(cache, signature, photo, max_items=48)
             return photo
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
 
     def _siindbad_b_font_sprite_spec(self):
@@ -6217,7 +6249,7 @@ if not install_started:
                 image_module = importlib.import_module("PIL.Image")
                 probe = image_module.open(base_path)
                 width, height = probe.size
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return None
         return {
             "path": base_path,
@@ -6278,7 +6310,7 @@ if not install_started:
             x2 = x1 + widget.winfo_width()
             y2 = y1 + widget.winfo_height()
             return x1 <= px < x2 and y1 <= py < y2
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _siindbad_b_render_button_bundle(self, key, text, width, height, palette, render_mode=None):
@@ -6365,7 +6397,7 @@ if not install_started:
                 }
                 self._bounded_cache_put(cache, signature, bundle, max_items=64)
                 return bundle
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
         def _mix(rgb_a, rgb_b, amount):
@@ -6476,12 +6508,12 @@ if not install_started:
                 if os.path.isfile(font_path):
                     text_font = font_module.truetype(font_path, 14)
                     break
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
         if text_font is None:
             try:
                 text_font = font_module.load_default()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 text_font = None
         tx = ix + iw + 8
         bbox = draw.textbbox((0, 0), text, font=text_font)
@@ -6529,7 +6561,7 @@ if not install_started:
         if host is not None and after_id:
             try:
                 host.after_cancel(after_id)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         button._siindbad_scan_after_id = None
         button._siindbad_scan_running = False
@@ -6539,7 +6571,7 @@ if not install_started:
         if base_image is not None:
             try:
                 button.configure(image=base_image)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
     def _stop_all_siindbad_b_button_scans(self):
@@ -6554,12 +6586,12 @@ if not install_started:
         # and re-enters the button hit area.
         try:
             button._siindbad_hover_require_reenter = True
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         self._stop_all_siindbad_b_button_scans()
         try:
             command()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             raise
 
     def _tick_siindbad_b_button_scan(self, button):
@@ -6584,7 +6616,7 @@ if not install_started:
         if idx != prev_idx:
             try:
                 button.configure(image=frames[idx])
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
             button._siindbad_scan_idx = idx
 
@@ -6596,7 +6628,7 @@ if not install_started:
             button._siindbad_scan_after_id = host.after(
                 next_delay, lambda b=button: self._tick_siindbad_b_button_scan(b)
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             button._siindbad_scan_after_id = None
 
     def _start_siindbad_b_button_scan(self, button):
@@ -6617,7 +6649,7 @@ if not install_started:
         if host is not None and leave_after:
             try:
                 host.after_cancel(leave_after)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             button._siindbad_hover_leave_after_id = None
         self._start_siindbad_b_button_scan(button)
@@ -6648,11 +6680,11 @@ if not install_started:
         if after_id:
             try:
                 host.after_cancel(after_id)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         try:
             button._siindbad_hover_leave_after_id = host.after(40, _settle)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._stop_siindbad_b_button_scan(button)
 
     def _apply_siindbad_toolbar_button_style(self, button, key, text):
@@ -6666,7 +6698,7 @@ if not install_started:
                     highlightbackground=palette["border"],
                     highlightcolor=palette["border_active"],
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
         display_text = self._siindbad_toolbar_label_text(style, key, text)
@@ -6677,7 +6709,7 @@ if not install_started:
                 if frame_host is not None and frame_host.winfo_exists():
                     frame_host.configure(width=max(1, int(width)), height=height)
                     frame_host.pack_propagate(False)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
             bundle = self._siindbad_b_render_button_bundle(
@@ -6736,7 +6768,7 @@ if not install_started:
                         overrelief="flat",
                         height=0,
                     )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
             return
 
@@ -6791,7 +6823,7 @@ if not install_started:
                 overrelief="flat",
                 height=0,
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _apply_asset_toolbar_button_style(self, button):
@@ -6814,7 +6846,7 @@ if not install_started:
                 width=0,
                 height=0,
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _make_siindbad_stepper_button(self, parent, symbol, command):
@@ -7160,7 +7192,7 @@ if not install_started:
             if font:
                 args.extend(["-font", font])
             combo.tk.call(*args)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     @staticmethod
@@ -7327,7 +7359,7 @@ if not install_started:
             return
         try:
             entries = os.listdir(folder_path)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
         for name in entries:
@@ -7435,14 +7467,14 @@ if not install_started:
             try:
                 self._apply_asset_toolbar_button_style(button)
                 button.configure(image=image, text="", compound="none")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
         if self._font_stepper_label and self._font_stepper_label.winfo_exists():
             image = self._toolbar_button_images.get("font")
             if image is not None:
                 try:
                     self._font_stepper_label.configure(image=image)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
 
     @staticmethod
@@ -7526,7 +7558,7 @@ if not install_started:
             widget.bind("<Button-1>", lambda _event: self._open_bug_report_dialog())
             try:
                 widget.configure(cursor="hand2")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         chip.pack(side="left")
         self._bug_report_chip = chip
@@ -7541,7 +7573,7 @@ if not install_started:
         try:
             if not chip.winfo_exists():
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         spec = self._footer_visual_spec()
         colors = self._bug_chip_palette(getattr(self, "_app_theme_variant", "SIINDBAD"))
@@ -7584,7 +7616,7 @@ if not install_started:
             if label is not None and label.winfo_exists():
                 label.configure(font=spec["label_font"])
                 label.pack_configure(padx=(0, spec["label_gap"]))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _on_bug_report_chip_enter(self, _event=None):
@@ -7630,7 +7662,7 @@ if not install_started:
             photo = self._pil_to_photo(icon)
             self._bounded_cache_put(cache, signature, photo, max_items=32)
             return photo
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._bounded_cache_put(cache, signature, None, max_items=32)
             return None
 
@@ -7650,7 +7682,7 @@ if not install_started:
         self._update_editor_mode_controls()
         try:
             self._refresh_runtime_theme_widgets()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _update_header_variant_controls(self):
@@ -7661,7 +7693,7 @@ if not install_started:
         if host and host.winfo_exists():
             try:
                 host.configure(bg=host_bg)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         active = str(getattr(self, "_header_variant", "A")).upper()
         is_kamue = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE"
@@ -7672,7 +7704,7 @@ if not install_started:
             if isinstance(child, tk.Label):
                 try:
                     child.configure(bg=host_bg, fg=label_fg)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
         for variant, chip in self._header_variant_labels.items():
             is_active = variant == active
@@ -7691,7 +7723,7 @@ if not install_started:
                     highlightbackground=border,
                     highlightcolor=border,
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
 
     def _apply_footer_layout_variant(self):
@@ -7705,7 +7737,7 @@ if not install_started:
         try:
             if not (bar.winfo_exists() and content.winfo_exists()):
                 return
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
         is_b = self._footer_style_variant() == "B"
@@ -7713,14 +7745,14 @@ if not install_started:
             # Keep content owned by left slot; only adjust grid placement for alignment.
             if not content.winfo_manager():
                 content.pack(side="left")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
         if is_b:
             try:
                 center_slot.grid_remove()
                 right_slot.grid_remove()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             try:
                 left_slot.grid_configure(column=0, columnspan=3, sticky="ew", padx=(6, 6), pady=(1, 1))
@@ -7728,7 +7760,7 @@ if not install_started:
                 bar.grid_columnconfigure(1, weight=0)
                 bar.grid_columnconfigure(2, weight=0)
                 content.pack_configure(side="left", fill="none", expand=False)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         else:
             try:
@@ -7739,7 +7771,7 @@ if not install_started:
                 bar.grid_columnconfigure(1, weight=1)
                 bar.grid_columnconfigure(2, weight=0)
                 content.pack_configure(side="left", fill="none", expand=False)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
         divider_pad = (5, 4) if is_b else (8, 6)
@@ -7758,7 +7790,7 @@ if not install_started:
             try:
                 if widget.winfo_exists():
                     widget.pack_configure(side="left")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
         for divider in (
             getattr(self, "_credit_badges_divider", None),
@@ -7770,7 +7802,7 @@ if not install_started:
             try:
                 if divider.winfo_exists():
                     divider.pack_configure(padx=divider_pad)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
 
     def _update_app_theme_controls(self):
@@ -7812,7 +7844,7 @@ if not install_started:
                         fg=self._theme.get("credit_label_fg", "#b5cade"),
                         font=spec["label_font"],
                     )
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     continue
 
     def _update_tree_style_controls(self):
@@ -7831,7 +7863,7 @@ if not install_started:
                     highlightbackground=colors["border"],
                     highlightcolor=colors["border"],
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
 
     def _set_tree_style_variant(self, variant):
@@ -7880,7 +7912,7 @@ if not install_started:
         if save:
             try:
                 self._save_user_settings()
-            except Exception:
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 pass
         self._log_theme_perf(f"switch {previous_variant}->{variant}", started_ts=switch_started)
 
@@ -7890,7 +7922,7 @@ if not install_started:
             return
         try:
             self.root.configure(bg=theme["bg"])
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError, KeyError, TypeError):
             pass
 
         self._update_logo_for_theme(force=False)
@@ -7898,12 +7930,12 @@ if not install_started:
         if self._font_stepper_label and self._font_stepper_label.winfo_exists():
             try:
                 self._font_stepper_label.configure(bg=theme["bg"])
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, KeyError, TypeError):
                 pass
         if self.logo_label and self.logo_label.winfo_exists():
             try:
                 self.logo_label.configure(bg=theme["bg"])
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, KeyError, TypeError):
                 pass
         self._apply_logo_frame_theme()
 
@@ -7918,13 +7950,13 @@ if not install_started:
                     highlightbackground=theme.get("find_border", "#ffffff"),
                     highlightcolor=theme.get("find_border", "#ffffff"),
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError):
                 pass
         toolbar_center = getattr(self, "_toolbar_center_frame", None)
         if toolbar_center and toolbar_center.winfo_exists():
             try:
                 toolbar_center.configure(bg=theme.get("bg", "#0f131a"))
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         separator = getattr(self, "_body_top_separator", None)
         if separator and separator.winfo_exists():
@@ -7935,7 +7967,7 @@ if not install_started:
                     highlightbackground=border,
                     highlightcolor=border,
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         separator_inner = getattr(self, "_body_top_separator_inner", None)
         if separator_inner and separator_inner.winfo_exists():
@@ -7946,7 +7978,7 @@ if not install_started:
                     highlightbackground=inner,
                     highlightcolor=inner,
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         self._refresh_input_mode_theme_widgets()
         self._update_find_entry_layout()
@@ -7958,12 +7990,12 @@ if not install_started:
                     highlightbackground=theme.get("credit_border", "#1f2f3f"),
                     highlightcolor=theme.get("credit_border", "#1f2f3f"),
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if self._credit_content and self._credit_content.winfo_exists():
             try:
                 self._credit_content.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if self._credit_label and self._credit_label.winfo_exists():
             try:
@@ -7971,23 +8003,23 @@ if not install_started:
                     bg=theme.get("credit_bg", "#0b1118"),
                     fg=theme.get("credit_label_fg", "#b5cade"),
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if self._credit_badge_host and self._credit_badge_host.winfo_exists():
             try:
                 self._credit_badge_host.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
             self._render_credit_badges()
         if self._header_variant_bar and self._header_variant_bar.winfo_exists():
             try:
                 self._header_variant_bar.configure(bg=theme.get("bg", "#0f131a"))
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if self._credit_discord_badge_host and self._credit_discord_badge_host.winfo_exists():
             try:
                 self._credit_discord_badge_host.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
             self._render_credit_discord_badges()
         divider = getattr(self, "_credit_badges_divider", None)
@@ -8002,7 +8034,7 @@ if not install_started:
                 if len(line_ids) >= 2:
                     divider.itemconfigure(line_ids[0], fill=main_line)
                     divider.itemconfigure(line_ids[1], fill=glow_line)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 pass
         divider = getattr(self, "_credit_discord_divider", None)
         if divider and divider.winfo_exists():
@@ -8016,7 +8048,7 @@ if not install_started:
                 if len(line_ids) >= 2:
                     divider.itemconfigure(line_ids[0], fill=main_line)
                     divider.itemconfigure(line_ids[1], fill=glow_line)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 pass
         divider = getattr(self, "_credit_theme_divider", None)
         if divider and divider.winfo_exists():
@@ -8030,17 +8062,17 @@ if not install_started:
                 if len(line_ids) >= 2:
                     divider.itemconfigure(line_ids[0], fill=main_line)
                     divider.itemconfigure(line_ids[1], fill=glow_line)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 pass
         if self._theme_selector_host and self._theme_selector_host.winfo_exists():
             try:
                 self._theme_selector_host.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if self._bug_report_host and self._bug_report_host.winfo_exists():
             try:
                 self._bug_report_host.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if self._bug_report_label and self._bug_report_label.winfo_exists():
             try:
@@ -8048,7 +8080,7 @@ if not install_started:
                     bg=theme.get("credit_bg", "#0b1118"),
                     fg=theme.get("credit_label_fg", "#b5cade"),
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if self._bug_report_chip and self._bug_report_chip.winfo_exists():
             self._sync_bug_report_chip_colors()
@@ -8059,7 +8091,7 @@ if not install_started:
             try:
                 if bug_dialog.winfo_exists():
                     self._apply_windows_titlebar_theme(bug_dialog)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         bug_header = getattr(self, "_bug_report_header_frame", None)
         bug_card = getattr(self, "_bug_report_card_frame", None)
@@ -8083,7 +8115,7 @@ if not install_started:
                         bug_icon_photo = self._load_bug_report_chip_icon(max_size=18, tint=header_fg)
                         self._bug_report_header_icon_photo = bug_icon_photo
                         bug_icon.configure(image=bug_icon_photo if bug_icon_photo is not None else "")
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 pass
         if bug_card is not None:
             try:
@@ -8093,7 +8125,7 @@ if not install_started:
                     if bug_dialog is not None and bug_dialog.winfo_exists():
                         bug_dialog.configure(bg=theme.get("bg", "#0f131a"))
                     self._start_bug_report_header_pulse()
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 pass
 
         self._update_app_theme_controls()
@@ -8133,7 +8165,7 @@ if not install_started:
             draw_module = importlib.import_module("PIL.ImageDraw")
             font_module = importlib.import_module("PIL.ImageFont")
             image_tk_module = importlib.import_module("PIL.ImageTk")
-        except Exception:
+        except (ImportError, AttributeError):
             self._bounded_cache_put(cache, key, None, max_items=16)
             return None
 
@@ -8148,7 +8180,7 @@ if not install_started:
                 if os.path.isfile(path):
                     text_font = font_module.truetype(path, font_size)
                     break
-            except Exception:
+            except (OSError, ValueError, TypeError, AttributeError):
                 continue
         if text_font is None:
             self._bounded_cache_put(cache, key, None, max_items=16)
@@ -8166,7 +8198,7 @@ if not install_started:
             photo = image_tk_module.PhotoImage(canvas)
             self._bounded_cache_put(cache, key, photo, max_items=16)
             return photo
-        except Exception:
+        except (OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
             self._bounded_cache_put(cache, key, None, max_items=16)
             return None
 
@@ -8190,7 +8222,7 @@ if not install_started:
         if after_id:
             try:
                 root.after_cancel(after_id)
-            except Exception:
+            except (tk.TclError, RuntimeError, ValueError):
                 pass
         interval = max(70, int(getattr(self, "_startup_loader_progress_interval_ms", 90) or 90))
         self._startup_loader_progress_after_id = root.after(interval, self._tick_startup_loader_progress)
@@ -8224,7 +8256,7 @@ if not install_started:
         if after_id:
             try:
                 root.after_cancel(after_id)
-            except Exception:
+            except (tk.TclError, RuntimeError, ValueError):
                 pass
         self._startup_loader_text_after_id = root.after(interval, self._tick_startup_loader_statement)
 
@@ -8249,12 +8281,12 @@ if not install_started:
                 text=variant,
                 fg=self._startup_loader_title_color_for_variant(variant),
             )
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         if suffix is not None and suffix.winfo_exists():
             try:
                 suffix.configure(text=" SHELL SYSTEM SYNC")
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
 
     def _tick_startup_loader_title(self):
@@ -8274,7 +8306,7 @@ if not install_started:
         if after_id:
             try:
                 root.after_cancel(after_id)
-            except Exception:
+            except (tk.TclError, RuntimeError, ValueError):
                 pass
         cycle_ms = max(2200, int(getattr(self, "_startup_loader_title_cycle_ms", 4200) or 4200))
         self._startup_loader_title_after_id = root.after(cycle_ms, self._tick_startup_loader_title)
@@ -8312,7 +8344,7 @@ if not install_started:
             photo = image_tk_module.PhotoImage(rgba)
             self._bounded_cache_put(cache, key, photo, max_items=256)
             return photo
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
             self._bounded_cache_put(cache, key, None, max_items=256)
             return None
 
@@ -8367,7 +8399,7 @@ if not install_started:
             photo = image_tk_module.PhotoImage(rgba)
             self._bounded_cache_put(cache, key, photo, max_items=256)
             return photo
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
             self._bounded_cache_put(cache, key, None, max_items=256)
             return None
 
@@ -8489,7 +8521,7 @@ if not install_started:
         if after_id:
             try:
                 root.after_cancel(after_id)
-            except Exception:
+            except (tk.TclError, RuntimeError, ValueError):
                 pass
         started = float(getattr(self, "_startup_loader_started_ts", 0.0) or 0.0)
         elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0) if started > 0 else 0.0
@@ -8514,7 +8546,7 @@ if not install_started:
                 if after_id:
                     try:
                         root.after_cancel(after_id)
-                    except Exception:
+                    except (tk.TclError, RuntimeError, ValueError):
                         pass
                 setattr(self, attr, None)
 
@@ -8522,14 +8554,14 @@ if not install_started:
         if overlay is not None and overlay.winfo_exists():
             try:
                 overlay.destroy()
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if root is not None and bool(getattr(self, "_startup_loader_window_mode", False)):
             try:
                 root.deiconify()
                 root.lift()
                 root.focus_force()
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         self._startup_loader_overlay = None
         self._startup_loader_pct_label = None
@@ -8545,7 +8577,7 @@ if not install_started:
         if root is not None and deferred:
             try:
                 self._schedule_theme_asset_prewarm(targets=deferred, delay_ms=180)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 pass
         # Run auto update-check after loader teardown so startup stays responsive.
         if root is not None and self._auto_update_startup_enabled():
@@ -8672,7 +8704,7 @@ if not install_started:
         if current == variant and getattr(self, "_toolbar_buttons", {}):
             try:
                 self.root.after(1, self._refresh_toolbar_button_images)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         self._update_startup_loader_progress()
         self._on_startup_full_load_ready()
@@ -8726,7 +8758,7 @@ if not install_started:
         if after_id:
             try:
                 root.after_cancel(after_id)
-            except Exception:
+            except (tk.TclError, RuntimeError, ValueError):
                 pass
         self._theme_prewarm_after_id = root.after(max(1, int(delay_ms)), self._run_theme_asset_prewarm)
 
@@ -8750,7 +8782,7 @@ if not install_started:
         try:
             overlay = getattr(self, "_startup_loader_overlay", None)
             loader_visible = bool(overlay is not None and overlay.winfo_exists())
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             loader_visible = False
         budget_ms, max_tasks_this_tick, next_tick_ms = startup_loader_core.prewarm_tick_policy(
             loader_visible=loader_visible,
@@ -8772,7 +8804,7 @@ if not install_started:
             self._theme_prewarm_active_variant = variant
             try:
                 self._execute_theme_prewarm_task(task)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, OSError, TypeError, ValueError, ImportError):
                 pass
             total = int(totals.get(variant, 0) or 0)
             if total > 0:
@@ -8799,7 +8831,7 @@ if not install_started:
         for task in tasks:
             try:
                 self._execute_theme_prewarm_task(task)
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, OSError, TypeError, ValueError, ImportError):
                 continue
 
     def _set_toolbar_style_variant(self, variant):
@@ -8864,7 +8896,7 @@ if not install_started:
                     bg=self._theme.get("credit_bg", "#0b1118"),
                     fg=self._theme.get("credit_label_fg", "#b5cade"),
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
 
         for variant, label in self._toolbar_style_labels.items():
@@ -8926,7 +8958,7 @@ if not install_started:
             out = rgb.convert("RGBA")
             out.putalpha(alpha_chan)
             return out
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
             return image
 
     def _harmonize_kamue_b_outer_frame(self, image):
@@ -8948,7 +8980,7 @@ if not install_started:
                     width=1,
                 )
             return out
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
             return image
 
     def _load_toolbar_button_image(self, path, max_width=208, max_height=40, stretch_to_fit=False):
@@ -8989,12 +9021,12 @@ if not install_started:
             photo = image_tk_module.PhotoImage(image)
             self._bounded_cache_put(cache, signature, photo, max_items=192)
             return photo
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
             pass
 
         try:
             image = tk.PhotoImage(file=path)
-        except Exception:
+        except (tk.TclError, RuntimeError, OSError, ValueError):
             return None
         scale = 1
         if image.width() > max_width:
@@ -9009,7 +9041,7 @@ if not install_started:
     def _open_external_link(self, url):
         try:
             webbrowser.open_new_tab(url)
-        except Exception:
+        except (webbrowser.Error, OSError, RuntimeError):
             messagebox.showerror("Open Link", f"Failed to open link:\n{url}")
 
     @staticmethod
@@ -9017,7 +9049,7 @@ if not install_started:
         widget.bind("<Button-1>", callback)
         try:
             widget.configure(cursor="hand2")
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             pass
         for child in widget.winfo_children():
             JsonEditor._bind_click_recursive(child, callback)
@@ -9129,7 +9161,7 @@ if not install_started:
             result = [source.crop(box).copy() for box in boxes[:2]]
             self._credit_badge_sources_cache = result
             return result
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
             self._credit_badge_sources_cache = []
             return []
 
@@ -9202,7 +9234,7 @@ if not install_started:
             photo = self._pil_to_photo(icon)
             self._bounded_cache_put(cache, signature, photo, max_items=64)
             return photo
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
             self._bounded_cache_put(cache, signature, None, max_items=64)
             return None
 
@@ -9274,7 +9306,7 @@ if not install_started:
             photo = self._pil_to_photo(icon)
             self._bounded_cache_put(cache, signature, photo, max_items=64)
             return photo
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
             self._bounded_cache_put(cache, signature, None, max_items=64)
             return None
 
@@ -9286,7 +9318,7 @@ if not install_started:
             scale = max_height / float(image.height)
             new_size = (max(1, int(round(image.width * scale))), max_height)
             return image.resize(new_size, image_module.LANCZOS)
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
             return image
 
     def _enhance_badge_image(self, image):
@@ -9295,14 +9327,14 @@ if not install_started:
             boosted = image_enhance_module.Contrast(image).enhance(1.18)
             boosted = image_enhance_module.Sharpness(boosted).enhance(1.28)
             return boosted
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
             return image
 
     def _pil_to_photo(self, image):
         try:
             image_tk_module = importlib.import_module("PIL.ImageTk")
             return image_tk_module.PhotoImage(image)
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
             return None
 
     def _render_credit_badges(self):
@@ -9523,12 +9555,12 @@ if not install_started:
         if self.logo_frame and self.logo_frame.winfo_exists():
             try:
                 self.logo_frame.destroy()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         elif self.logo_label and self.logo_label.winfo_exists():
             try:
                 self.logo_label.destroy()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self.logo_frame = None
         self._logo_frame_inner = None
@@ -9574,7 +9606,7 @@ if not install_started:
         else:
             try:
                 self.logo_label.configure(image=self.logo_image)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
         # Keep logo centered even when theme changes or window is resized/maximized.
@@ -9582,7 +9614,7 @@ if not install_started:
         try:
             if pack_target is not None and pack_target.winfo_exists():
                 pack_target.pack_configure(anchor="center", pady=0)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
         self._apply_logo_frame_theme()
@@ -9630,7 +9662,7 @@ if not install_started:
                 try:
                     window.iconbitmap(icon_path)
                     return
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     continue
 
     def _build_logo_glow_frame(self, parent, image):
@@ -9681,7 +9713,7 @@ if not install_started:
                     highlightbackground=outer,
                     highlightcolor=outer,
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if self._logo_frame_inner and self._logo_frame_inner.winfo_exists():
             try:
@@ -9690,12 +9722,12 @@ if not install_started:
                     highlightbackground=inner,
                     highlightcolor=inner,
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if self.logo_label and self.logo_label.winfo_exists():
             try:
                 self.logo_label.configure(bg=bg)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
     def _load_logo_image(self, path):
@@ -9715,7 +9747,7 @@ if not install_started:
                 try:
                     self.root.update_idletasks()
                     available_width = int(self.root.winfo_width())
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     available_width = 0
                 if available_width > 120:
                     side_padding = 4 * 2
@@ -9735,7 +9767,7 @@ if not install_started:
             photo = image_tk_module.PhotoImage(image)
             self._bounded_cache_put(cache, signature, photo, max_items=48)
             return photo
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
         try:
@@ -9747,7 +9779,7 @@ if not install_started:
                 photo = tk.PhotoImage(file=path)
                 self._bounded_cache_put(cache, signature, photo, max_items=48)
                 return photo
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         return None
 
@@ -9893,7 +9925,7 @@ if not install_started:
             try:
                 with open(readme_path, "r", encoding="utf-8") as handle:
                     content = handle.read()
-            except Exception as exc:
+            except _EXPECTED_APP_ERRORS as exc:
                 messagebox.showerror("ReadMe", f"Failed to load README.md: {exc}")
                 return
         else:
@@ -9906,7 +9938,7 @@ if not install_started:
             try:
                 if existing.winfo_exists():
                     existing.destroy()
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
 
         window = tk.Toplevel(self.root)
@@ -9938,7 +9970,7 @@ if not install_started:
                         window_widget=win,
                     ),
                 )
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
                 pass
 
         frame = ttk.Frame(window)
@@ -10030,9 +10062,9 @@ if not install_started:
                     px = max(0, min(max_x, px))
                     py = max(0, min(max_y, py))
                     window.geometry(f"{w}x{h}+{px}+{py}")
-                except Exception:
+                except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
                     pass
-        except Exception:
+        except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
             self._apply_centered_toplevel_geometry(
                 window,
                 width_px=760,
@@ -10054,7 +10086,7 @@ if not install_started:
                     px = max(0, min(max_x, px))
                     py = max(0, min(max_y, py))
                     window.geometry(f"{w}x{h}+{px}+{py}")
-                except Exception:
+                except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
                     pass
 
     def set_status(self, msg):
@@ -10078,7 +10110,7 @@ if not install_started:
             else:
                 with open(path, "r", encoding="utf-8") as f:
                     self.data = json.load(f)
-        except Exception as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
             messagebox.showerror("Load failed", str(exc))
             return
 
@@ -10127,13 +10159,13 @@ if not install_started:
                 actual = self._sha256_file(marker_path)
                 if str(actual).lower() != str(expected).lower():
                     self._tree_marker_integrity_ok = False
-        except Exception:
+        except (OSError, RuntimeError, TypeError, ValueError):
             self._tree_marker_integrity_ok = False
         if not self._tree_marker_integrity_ok:
             try:
                 if getattr(self, "status", None) is not None:
                     self.set_status("Warning: locked tree marker assets changed or missing.")
-            except Exception:
+            except (tk.TclError, RuntimeError, AttributeError):
                 pass
         return self._tree_marker_integrity_ok
 
@@ -10205,7 +10237,7 @@ if not install_started:
             photo = self._pil_to_photo(canvas)
             self._bounded_cache_put(cache, key, photo, max_items=64)
             return photo
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
             self._bounded_cache_put(cache, key, None, max_items=64)
             return None
 
@@ -10214,7 +10246,7 @@ if not install_started:
         """Shift marker pixels vertically while preserving image size."""
         try:
             dy = float(delta_y)
-        except Exception:
+        except (TypeError, ValueError):
             dy = -1.0
         if abs(dy) < 0.001 or image is None:
             return image
@@ -10231,7 +10263,7 @@ if not install_started:
             nxt = image_module.new("RGBA", image.size, (0, 0, 0, 0))
             nxt.alpha_composite(image, (0, step * (whole + 1)))
             return image_module.blend(base, nxt, max(0.0, min(1.0, frac)))
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
             return image
 
     def _is_input_red_arrow_root_path(self, path):
@@ -10267,12 +10299,12 @@ if not install_started:
                 shifted = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
                 shifted.alpha_composite(canvas, (-1, 0))
                 canvas = shifted
-            except Exception:
+            except (OSError, ValueError, TypeError, AttributeError):
                 pass
             photo = self._pil_to_photo(canvas)
             self._bounded_cache_put(cache, key, photo, max_items=128)
             return photo
-        except Exception:
+        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
             self._bounded_cache_put(cache, key, None, max_items=128)
             return None
 
@@ -10306,7 +10338,7 @@ if not install_started:
         try:
             previous_item = tree.focus()
             previous_path = self.item_to_path.get(previous_item)
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError):
             previous_item = None
             previous_path = None
         self._rebuild_tree()
@@ -10325,7 +10357,7 @@ if not install_started:
                 tree.focus(target_item)
                 tree.selection_set(target_item)
                 tree.see(target_item)
-        except Exception:
+        except (tk.TclError, RuntimeError, AttributeError, KeyError, IndexError, TypeError, ValueError):
             pass
 
     def _add_placeholder_if_container(self, item_id, value):
@@ -10602,19 +10634,19 @@ if not install_started:
                 focus_fn = getattr(tree_widget, "focus", None)
                 if callable(focus_fn):
                     focus_fn(item_id)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             try:
                 select_fn = getattr(tree_widget, "selection_set", None)
                 if callable(select_fn):
                     select_fn(item_id)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             try:
                 see_fn = getattr(tree_widget, "see", None)
                 if callable(see_fn):
                     see_fn(item_id)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self.on_select(None)
         focus_match_fn = getattr(self, "_focus_json_find_match", None)
@@ -10646,7 +10678,7 @@ if not install_started:
             )
             text_widget.mark_set("insert", start)
             text_widget.see(start)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _find_next_input_mode(self):
@@ -10682,7 +10714,7 @@ if not install_started:
                 if isinstance(focus_target, tk.Entry):
                     focus_target.selection_range(0, "end")
                     focus_target.icursor("end")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self.set_status(f'Find: {self.find_index}/{len(self.find_matches)}')
 
@@ -10695,7 +10727,7 @@ if not install_started:
         def _walk(widget):
             try:
                 children = list(widget.winfo_children())
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 children = []
             for child in children:
                 _add_entry(child)
@@ -10711,7 +10743,7 @@ if not install_started:
                 elif isinstance(widget, tk.Label):
                     text = str(widget.cget("text") or "")
                     focus_widget = self._find_first_entry_descendant(widget.master)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
             text = text.strip()
             if not text:
@@ -10732,7 +10764,7 @@ if not install_started:
                 return current
             try:
                 queue.extend(list(current.winfo_children()))
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 continue
         return None
 
@@ -10751,7 +10783,7 @@ if not install_started:
             denom = max(1, total_height - view_height)
             fraction = max(0.0, min(1.0, float(target_y) / float(denom)))
             canvas.yview_moveto(fraction)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _populate_children(self, item_id):
@@ -10794,7 +10826,7 @@ if not install_started:
                 try:
                     self.tree.item(item_id, open=False)
                     self.root.after_idle(lambda iid=item_id: self.tree.item(iid, open=False))
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
                 self.set_status("INPUT mode: selected subcategory is locked.")
                 return "break"
@@ -10862,7 +10894,7 @@ if not install_started:
         render_seq = int(self._json_render_seq)
         try:
             self.text.configure(state="normal")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         self.text.delete("1.0", "end")
         try:
@@ -10879,7 +10911,7 @@ if not install_started:
             # Keep undo/redo scoped to the current node content.
             self.text.edit_reset()
             self.text.edit_modified(False)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
 
     def _initial_highlight_line_limit(self):
@@ -10891,7 +10923,7 @@ if not install_started:
             top_line = int(top_idx.split(".", 1)[0])
             bottom_line = int(bottom_idx.split(".", 1)[0])
             return max(80, int(bottom_line - top_line + 30))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return 160
 
     def _cancel_pending_json_view_lock_state(self):
@@ -10901,7 +10933,7 @@ if not install_started:
             return
         try:
             self.root.after_cancel(after_id)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _schedule_json_view_lock_state(self, path, render_seq=None):
@@ -10918,7 +10950,7 @@ if not install_started:
 
         try:
             self._json_lock_apply_after_id = self.root.after_idle(_apply_pending)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             self._json_lock_apply_after_id = None
             self._apply_json_view_key_highlights(snapshot_path)
             self._apply_json_view_value_highlights(snapshot_path)
@@ -10960,7 +10992,7 @@ if not install_started:
             self.text.tag_raise("json_locked_key")
             self.text.tag_raise("json_property_key")
             self.text.tag_raise("json_xy_key")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _clear_json_lock_highlight(self):
@@ -10974,7 +11006,7 @@ if not install_started:
             self.text.tag_remove("json_locked_key", "1.0", "end")
             self.text.tag_remove("json_locked_block", "1.0", "end")
             self.text.tag_remove("json_xy_key", "1.0", "end")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _set_json_text_editable(self, editable=True):
@@ -10985,7 +11017,7 @@ if not install_started:
         try:
             if str(text.cget("state")) != target_state:
                 text.configure(state=target_state)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _json_token_followed_by_colon(self, end_index, lookahead_chars=24):
@@ -10995,7 +11027,7 @@ if not install_started:
             return False
         try:
             tail = self.text.get(end_index, f"{end_index}+{max(1, int(lookahead_chars))}c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
         if not tail:
             return False
@@ -11013,7 +11045,7 @@ if not install_started:
         while True:
             try:
                 hit = self.text.search(token, index, stopindex="end", nocase=True)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 hit = ""
             if not hit:
                 break
@@ -11021,7 +11053,7 @@ if not install_started:
                 end = f"{hit}+{len(token)}c"
                 if self._json_token_followed_by_colon(end):
                     self.text.tag_add("json_locked_key", hit, end)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             index = end
         # Parse-error continuity: keep key labels highlighted when one quote is removed
@@ -11031,7 +11063,7 @@ if not install_started:
             while True:
                 try:
                     hit = self.text.search(malformed_token, index, stopindex="end", nocase=True)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     hit = ""
                 if not hit:
                     break
@@ -11042,7 +11074,7 @@ if not install_started:
                         end = f"{hit}+{len(malformed_token)}c"
                     if self._json_token_followed_by_colon(end):
                         self.text.tag_add("json_locked_key", hit, end)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     break
                 index = end
 
@@ -11052,7 +11084,7 @@ if not install_started:
         while True:
             try:
                 hit = self.text.search(token, index, stopindex="end", nocase=False)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 hit = ""
             if not hit:
                 break
@@ -11060,7 +11092,7 @@ if not install_started:
                 end = f"{hit}+{len(token)}c"
                 if self._json_token_followed_by_colon(end):
                     self.text.tag_add("json_xy_key", hit, end)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             index = end
 
@@ -11074,11 +11106,11 @@ if not install_started:
         try:
             if getattr(self, "error_overlay", None) is not None:
                 return False
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
         try:
             raw = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
         if len(raw or "") < 4000:
             return False
@@ -11099,7 +11131,7 @@ if not install_started:
             return
         try:
             raw = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         line_no = 1
         key_pattern = re.compile(r'"([^"\r\n:]+)"\s*:')
@@ -11122,7 +11154,7 @@ if not install_started:
                         self.text.tag_add("json_locked_key", start, end)
                     if xy_match:
                         self.text.tag_add("json_xy_key", start, end)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     continue
             line_no += 1
 
@@ -11130,7 +11162,7 @@ if not install_started:
         # Value accent pass: tag quoted JSON string values while leaving object keys untagged.
         try:
             raw = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         line_no = 1
         max_lines = int(line_limit or 0)
@@ -11152,7 +11184,7 @@ if not install_started:
                     continue
                 try:
                     self.text.tag_add("json_value_green", f"{line_no}.{start_col}", f"{line_no}.{end_col}")
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     continue
             line_no += 1
 
@@ -11160,7 +11192,7 @@ if not install_started:
         # Structural accent pass: color object/list tokens without touching quoted strings.
         try:
             raw = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         line_no = 1
         max_lines = int(line_limit or 0)
@@ -11187,7 +11219,7 @@ if not install_started:
                     try:
                         token_tag = "json_brace_token" if ch in ("{", "}") else "json_bracket_token"
                         self.text.tag_add(token_tag, f"{line_no}.{col_no}", f"{line_no}.{col_no + 1}")
-                    except Exception:
+                    except _EXPECTED_APP_ERRORS:
                         pass
                 col_no += 1
             line_no += 1
@@ -11196,7 +11228,7 @@ if not install_started:
         # Boolean accent pass: color JSON literals true/false outside quoted strings.
         try:
             raw = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         line_no = 1
         max_lines = int(line_limit or 0)
@@ -11227,7 +11259,7 @@ if not install_started:
                 tag_name = "json_bool_true" if token == "true" else "json_bool_false"
                 try:
                     self.text.tag_add(tag_name, f"{line_no}.{start_col}", f"{line_no}.{end_col}")
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     continue
             line_no += 1
 
@@ -11235,7 +11267,7 @@ if not install_started:
         # Property-key accent pass: color all JSON object key tokens including quotes.
         try:
             raw = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
         line_no = 1
         max_lines = int(line_limit or 0)
@@ -11254,7 +11286,7 @@ if not install_started:
                     end_col -= 1
                 try:
                     self.text.tag_add("json_property_key", f"{line_no}.{start_col}", f"{line_no}.{end_col}")
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     continue
             line_no += 1
 
@@ -11266,7 +11298,7 @@ if not install_started:
             return None
         try:
             tail = self.text.get(key_end_index, f"{key_end_index}+{max(1, int(lookahead_chars))}c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         if not tail:
             return None
@@ -11301,7 +11333,7 @@ if not install_started:
         while True:
             try:
                 hit = self.text.search(key_token, index, stopindex="end", nocase=True)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 hit = ""
             if not hit:
                 break
@@ -11316,7 +11348,7 @@ if not install_started:
                     value_start = f"{key_end}+{int(offsets[0])}c"
                     value_end = f"{key_end}+{int(offsets[1])}c"
                     self.text.tag_add("json_locked_key", value_start, value_end)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             index = key_end
 
@@ -11392,7 +11424,7 @@ if not install_started:
         raw = self.text.get("1.0", "end").strip()
         try:
             new_value = json.loads(raw)
-        except Exception as exc:
+        except _EXPECTED_APP_ERRORS as exc:
             message = self._format_json_error(exc)
             self._error_visual_mode = "guide"
             self._show_error_overlay("Invalid Entry", message)
@@ -11409,7 +11441,7 @@ if not install_started:
             ):
                 try:
                     self._log_json_error(exc, getattr(exc, "lineno", None) or 1, note="overlay_parse")
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
             return
         self._clear_json_error_highlight()
@@ -11435,7 +11467,7 @@ if not install_started:
                 self._apply_json_error_highlight(
                     dummy, line, start_index, end_index, note="spacing_missing_space_after_colon"
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 self._highlight_custom_range(line, start_col, end_col)
             return
 
@@ -11464,7 +11496,7 @@ if not install_started:
                 log_col = (span[1] + 1) if span else 1
                 dummy = type("E", (), {"msg": email_issue["log_msg"], "lineno": log_line, "colno": log_col})
                 self._log_json_error(dummy, log_line, note=email_issue["note"])
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             return
 
@@ -11482,7 +11514,7 @@ if not install_started:
             try:
                 dummy = type("E", (), {"msg": "Missing '-' in phone", "lineno": line, "colno": start_col + 1})
                 self._log_json_error(dummy, line, note="missing_phone_dash")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             return
 
@@ -11507,7 +11539,7 @@ if not install_started:
                     self.root.after_idle(lambda idx=pending_restore: self._restore_insert_index(idx, log_failure=True))
                 else:
                     self._restore_insert_index(pending_restore, log_failure=True)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self.set_status("Edited")
 
@@ -11550,7 +11582,7 @@ if not install_started:
         try:
             if normalized_preferred:
                 normalized_preferred = str(self.text.index(normalized_preferred))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         if not token:
             return normalized_preferred
@@ -11571,13 +11603,13 @@ if not install_started:
                 forward_hit = self.text.search(token, normalized_preferred, stopindex="end", nocase=True)
                 if forward_hit:
                     return forward_hit
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             hit = self.text.search(token, "1.0", stopindex="end", nocase=True)
             if hit:
                 return hit
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         return normalized_preferred
 
@@ -11586,7 +11618,7 @@ if not install_started:
             return False
         try:
             line_text = str(self._line_text(int(line_no)) or "")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
         if not line_text.strip():
             return False
@@ -11619,21 +11651,21 @@ if not install_started:
             return False
         try:
             insert_line = self._line_number_from_index(self.text.index("insert")) or 0
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             insert_line = 0
         try:
             insert_line_text = str(self._line_text(int(insert_line)) or "") if insert_line else ""
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             insert_line_text = ""
         try:
             diag_line = int((diag or {}).get("line") or 0)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             diag_line = 0
         # Strict handoff gate:
         # diagnostic line must match parser-reported line for this exact Apply Edit parse failure.
         try:
             parse_line = int(getattr(exc, "lineno", 0) or 0)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             parse_line = 0
         if parse_line and diag_line and int(parse_line) != int(diag_line):
             return False
@@ -11651,7 +11683,7 @@ if not install_started:
         if diag_line:
             try:
                 diag_line_text = str(self._line_text(diag_line) or "")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 diag_line_text = ""
             has_key_quote_issue = False
             try:
@@ -11659,7 +11691,7 @@ if not install_started:
                     self._line_has_missing_key_quote_before_colon(diag_line_text)
                     or self._line_has_property_key_invalid_escape(diag_line_text)
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 has_key_quote_issue = False
             if not has_key_quote_issue:
                 return False
@@ -11672,7 +11704,7 @@ if not install_started:
                 self._line_has_missing_key_quote_before_colon(insert_line_text)
                 or self._line_has_property_key_invalid_escape(insert_line_text)
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             insert_has_key_quote_issue = False
         if not insert_has_key_quote_issue:
             return False
@@ -11681,12 +11713,12 @@ if not install_started:
             return False
         try:
             current_value = self._get_value(use_path)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
         try:
             previous_insert = self.text.index("insert")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             previous_insert = "1.0"
         self._show_value(current_value, path=use_path)
         self._clear_json_error_highlight()
@@ -11699,34 +11731,34 @@ if not install_started:
         if not anchor_index:
             try:
                 anchor_index = str(previous_insert or self.text.index("insert"))
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 anchor_index = "1.0"
         self._error_focus_index = anchor_index
         try:
             self.text.mark_set("insert", anchor_index)
             self.text.see(anchor_index)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             anchor_line = self._line_number_from_index(anchor_index) or 1
             self._position_error_overlay(anchor_line)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             self._tag_json_locked_key_occurrences(field_name)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             self.set_status(
                 str(policy.get("status_restored") or "Auto-fixed: protected field restored.")
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             log_line = int((diag or {}).get("line") or 1)
             marker = type("E", (), {"msg": "Locked parse edit restored", "lineno": log_line, "colno": 1})
             self._log_json_error(marker, log_line, note="locked_parse_auto_restore")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         return True
 
@@ -11740,7 +11772,7 @@ if not install_started:
         if lineno:
             try:
                 line_text = self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 line_text = ""
 
         msg = getattr(exc, "msg", None)
@@ -11838,7 +11870,7 @@ if not install_started:
                         if line_text.rstrip().endswith(",") and not result.rstrip().endswith(","):
                             result = result.rstrip() + ","
                         return result
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         if not stripped.startswith("\""):
             stripped = f"\"{stripped.strip()}\""
@@ -11891,14 +11923,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -11953,14 +11985,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt:
                 candidates.append((line, txt))
@@ -11987,14 +12019,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt:
                 candidates.append((line, txt))
@@ -12065,14 +12097,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12115,14 +12147,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12297,14 +12329,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12431,14 +12463,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12488,14 +12520,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12537,7 +12569,7 @@ if not install_started:
                 return "}"
             if self._is_missing_list_close():
                 return "]"
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         next_line = self._next_non_empty_line_number(lineno or 1) if lineno else None
         next_text = self._line_text(next_line).strip() if next_line else ""
@@ -12562,14 +12594,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12662,14 +12694,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12709,14 +12741,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12822,14 +12854,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12880,14 +12912,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12946,14 +12978,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -12991,14 +13023,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt.strip():
                 candidates.append((line, txt))
@@ -13119,14 +13151,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt:
                 candidates.append((line, txt))
@@ -13177,14 +13209,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt:
                 candidates.append((line, txt))
@@ -13252,14 +13284,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt:
                 candidates.append((line, txt))
@@ -13276,14 +13308,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt:
                 candidates.append((line, txt))
@@ -13460,14 +13492,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if str(txt or "").strip():
                 candidates.append((line, txt))
@@ -13485,14 +13517,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if str(txt or "").strip():
                 candidates.append((line, txt))
@@ -13511,14 +13543,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if txt:
                 candidates.append((line, txt))
@@ -13614,7 +13646,7 @@ if not install_started:
     def _next_non_empty_line_number(self, start_line):
         try:
             last_line = int(self.text.index("end-1c").split(".")[0])
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         line = max(start_line + 1, 1)
         while line <= last_line:
@@ -13731,7 +13763,7 @@ if not install_started:
     def _line_text(self, lineno):
         try:
             return self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return ""
 
     def _line_has_missing_open_key_quote(self, line_text):
@@ -13816,7 +13848,7 @@ if not install_started:
         open_line = self._last_unmatched_bracket_line(open_bracket, close_bracket)
         try:
             max_line = int(self.text.index("end-1c").split(".")[0])
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             max_line = 1
         if not open_line:
             fallback_line = self._last_non_empty_line_number() or 1
@@ -13877,7 +13909,7 @@ if not install_started:
         while line >= 1:
             try:
                 text = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return None
             if text == ",":
                 return line
@@ -13905,7 +13937,7 @@ if not install_started:
         while line >= 1:
             try:
                 text = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return None
             if text.strip() == "":
                 return line
@@ -13917,7 +13949,7 @@ if not install_started:
         while line >= 1:
             try:
                 text = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return None
             if text:
                 return line
@@ -13927,12 +13959,12 @@ if not install_started:
     def _last_non_empty_line_number(self):
         try:
             line = int(self.text.index("end-1c").split(".")[0])
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         while line >= 1:
             try:
                 text = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return None
             if text:
                 return line
@@ -13949,7 +13981,7 @@ if not install_started:
         while line <= last_line:
             try:
                 text = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return open_line
             if text.strip():
                 return line
@@ -14033,7 +14065,7 @@ if not install_started:
     def _first_non_ws_char(self):
         try:
             text = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return ""
         for ch in text:
             if ch == "\ufeff":
@@ -14059,7 +14091,7 @@ if not install_started:
         while line >= 1:
             try:
                 text = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return ""
             if text.strip():
                 return text
@@ -14072,7 +14104,7 @@ if not install_started:
         while line <= last_line:
             try:
                 text = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return ""
             if text.strip():
                 return text
@@ -14131,7 +14163,7 @@ if not install_started:
             self.text.mark_set("insert", insert_index)
             self.text.see(insert_index)
             self._position_error_overlay(line)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _fix_missing_at(self, value, domain_roots=None):
@@ -14197,7 +14229,7 @@ if not install_started:
     def _find_phone_format_issue(self):
         try:
             text = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         for idx, line_text in enumerate(text.splitlines(), start=1):
             match = self.PHONE_FIELD_PATTERN.search(line_text)
@@ -14230,7 +14262,7 @@ if not install_started:
         """
         try:
             text = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         for line_no, line_text in enumerate(text.splitlines(), start=1):
             # Match object-member lines where ":" is immediately followed by a
@@ -14253,7 +14285,7 @@ if not install_started:
     def _find_missing_email_at(self):
         try:
             text = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         lines = text.splitlines()
         domain_roots = set()
@@ -14348,7 +14380,7 @@ if not install_started:
     def _find_value_span_in_editor(self, value, preferred_key=None):
         try:
             text = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         if not text or not value:
             return None
@@ -14582,7 +14614,7 @@ if not install_started:
     def _find_invalid_email_format_issue(self):
         try:
             text = self.text.get("1.0", "end-1c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
         for idx, line_text in enumerate(text.splitlines(), start=1):
             match = self.EMAIL_FIELD_PATTERN.search(line_text)
@@ -14712,14 +14744,14 @@ if not install_started:
         candidates = []
         try:
             candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         line = max(lineno - 1, 1)
         scanned = 0
         while line >= 1 and scanned < lookback:
             try:
                 txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 break
             if str(txt or "").strip():
                 candidates.append((line, txt))
@@ -14737,7 +14769,7 @@ if not install_started:
         target_line = max(lineno - 1, 1)
         try:
             line_text = self.text.get(f"{target_line}.0", f"{target_line}.0 lineend").strip()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             line_text = ""
         if not line_text:
             return "\"item1\",\n\"item2\""
@@ -14755,7 +14787,7 @@ if not install_started:
             if trimmed <= 0:
                 return end_index
             return self.text.index(f"{start_index} +{trimmed}c")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return end_index
 
     def _apply_json_error_highlight(self, exc, line, start_index, end_index, note=""):
@@ -14781,7 +14813,7 @@ if not install_started:
                 str(note or "") in missing_key_quote_notes
                 and self._line_has_missing_open_key_quote(self._line_text(line))
             )
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             missing_key_quote_focus = False
         insertion_only = start_index == end_index
         self._last_error_insertion_only = bool(insertion_only)
@@ -14806,7 +14838,7 @@ if not install_started:
                 comma_col = raw.find(",")
                 if comma_col >= 0:
                     focus_index = f"{line}.{comma_col}"
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
         self._error_focus_index = focus_index
         if insertion_only:
@@ -14814,7 +14846,7 @@ if not install_started:
             try:
                 self.text.see(start_index)
                 self.text.update_idletasks()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             # For comma-focus insertion hints, keep only cursor+overlay guidance
             # and avoid token/line fill so the comma itself is not highlighted.
@@ -14862,7 +14894,7 @@ if not install_started:
                         fallback_start = start_index
                         fallback_end = self.text.index(f"{start_index} +1c")
                     self.text.tag_add("json_error", fallback_start, fallback_end)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
             else:
                 # Keep a subtle marker immediately before the insertion point so
@@ -14879,13 +14911,13 @@ if not install_started:
                             if prev_char == "," and col > 1:
                                 subtle_start = f"{lno}.{col - 2}"
                                 subtle_end = f"{lno}.{col - 1}"
-                        except Exception:
+                        except _EXPECTED_APP_ERRORS:
                             pass
                     else:
                         subtle_start = start_index
                         subtle_end = self.text.index(f"{start_index} +1c")
                     self.text.tag_add("json_error", subtle_start, subtle_end)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
         else:
             self.text.tag_add("json_error", start_index, end_index)
@@ -14900,7 +14932,7 @@ if not install_started:
         # Keep drag-selection visible above error tags.
         try:
             self.text.tag_raise("sel")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         # For insertion errors, keep focus at the insertion target so the
         # marker/overlay does not jump away during live validation.
@@ -14967,7 +14999,7 @@ if not install_started:
             )
             with open(log_path, "a", encoding="utf-8") as fh:
                 fh.write(entry)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _log_input_mode_apply_result(self, path, changed):
@@ -14986,7 +15018,7 @@ if not install_started:
             )
             with open(log_path, "a", encoding="utf-8") as fh:
                 fh.write(entry)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _log_input_mode_apply_trace(self, stage, path, specs_count, changed=None):
@@ -15013,7 +15045,7 @@ if not install_started:
             )
             with open(log_path, "a", encoding="utf-8") as fh:
                 fh.write(entry)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _begin_diag_action(self, action_name):
@@ -15029,7 +15061,7 @@ if not install_started:
             self._error_focus_index = None
             self._last_error_highlight_note = ""
             self._last_error_insertion_only = False
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _on_text_keypress(self, event):
@@ -15049,7 +15081,7 @@ if not install_started:
                 self._destroy_error_overlay()
                 self._clear_json_error_highlight()
                 self._auto_apply_pending = True
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _on_text_nav_attempt(self, event):
@@ -15061,7 +15093,7 @@ if not install_started:
                 return
             self._enforce_error_focus()
             return "break"
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return "break"
 
     def _is_index_on_error_line(self, index):
@@ -15071,7 +15103,7 @@ if not install_started:
             err_line = int(str(self._error_focus_index).split(".")[0])
             idx_line = int(str(index).split(".")[0])
             return err_line == idx_line
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
 
     def _line_number_from_index(self, index):
@@ -15079,7 +15111,7 @@ if not install_started:
             return None
         try:
             return int(str(index).split(".")[0])
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return None
 
     def _preferred_error_insert_index(self, line, fallback_index):
@@ -15092,7 +15124,7 @@ if not install_started:
             if self._line_number_from_index(current_insert) != int(line):
                 return fallback_index
             return current_insert
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return fallback_index
 
     def _enforce_error_focus(self):
@@ -15101,7 +15133,7 @@ if not install_started:
         try:
             self.text.mark_set("insert", self._error_focus_index)
             self.text.see(self._error_focus_index)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _on_text_keyrelease(self, event):
@@ -15126,7 +15158,7 @@ if not install_started:
             else:
                 # User is actively fixing but still wrong: show a stronger visual cue.
                 self._show_live_error_feedback()
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return
 
     def _can_auto_apply_current_edit(self):
@@ -15139,7 +15171,7 @@ if not install_started:
         raw = self.text.get("1.0", "end").strip()
         try:
             new_value = json.loads(raw)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             return False
         if self._find_invalid_email_in_value(path, new_value):
             return False
@@ -15163,7 +15195,7 @@ if not install_started:
         raw = self.text.get("1.0", "end").strip()
         try:
             new_value = json.loads(raw)
-        except Exception as exc:
+        except _EXPECTED_APP_ERRORS as exc:
             self._error_visual_mode = "guide"
             self._show_error_overlay("Invalid Entry", self._format_json_error(exc))
             # Keep highlight-label colors active while JSON is temporarily invalid.
@@ -15192,7 +15224,7 @@ if not install_started:
                 self._apply_json_error_highlight(
                     dummy, line, start_index, end_index, note="spacing_missing_space_after_colon"
                 )
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 self._highlight_custom_range(line, start_col, end_col)
             return
 
@@ -15250,7 +15282,7 @@ if not install_started:
         try:
             payload = json.dumps(self.data, indent=2, ensure_ascii=False) + "\n"
             self._write_text_file_atomic(self.path, payload, encoding="utf-8")
-        except Exception as exc:
+        except _EXPECTED_APP_ERRORS as exc:
             messagebox.showerror("Save failed", str(exc))
             return
         self.set_status("Saved")
@@ -15304,7 +15336,7 @@ if not install_started:
                 if not os.path.isfile(gzip_path) or os.path.getsize(gzip_path) <= 0:
                     raise RuntimeError("Exported .hhsav is empty.")
                 self._commit_file_to_destination_with_retries(gzip_path, path)
-        except Exception as exc:
+        except _EXPECTED_APP_ERRORS as exc:
             messagebox.showerror("Export failed", str(exc))
             return
         self.set_status("Exported .hhsav")
@@ -15401,7 +15433,7 @@ if not install_started:
             return True
         try:
             current_value = self._get_value(path)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             current_value = None
         payload = highlight_label_service.edit_allowed_payload(
             path=path,
@@ -15422,15 +15454,15 @@ if not install_started:
             restore_index = ""
             try:
                 restore_index = str(self.text.index("insert") or "")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 restore_index = ""
             try:
                 self._destroy_error_overlay()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             try:
                 self._show_value(current_value, path=path)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 return
             if restore_index:
                 try:
@@ -15444,26 +15476,26 @@ if not install_started:
                     restore_index = f"{line_no}.{col_no}"
                     self.text.mark_set("insert", restore_index)
                     self.text.see(restore_index)
-                except Exception:
+                except _EXPECTED_APP_ERRORS:
                     pass
             try:
                 self.set_status(f'Auto-fixed: restored highlighted field "{recommended_name}".')
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
 
         def _overlay_continue():
             try:
                 self._destroy_error_overlay()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             self._allow_highlight_key_change_once = True
             try:
                 self.set_status("Warning acknowledged: continuing highlighted field edit.")
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 pass
             try:
                 self.apply_edit()
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 self._allow_highlight_key_change_once = False
 
         self._show_error_overlay(
@@ -15479,7 +15511,7 @@ if not install_started:
         )
         try:
             preferred_index = str(self.text.index("insert") or "")
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             preferred_index = ""
         # Warning anchor priority:
         # 1) exact changed-key token near caret (for example `"":` after deleting `x`)
@@ -15506,31 +15538,31 @@ if not install_started:
                     )
                     if forward_hit:
                         anchor_index = str(forward_hit)
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 anchor_index = ""
         try:
             if not anchor_index:
                 anchor_index = self._find_lock_anchor_index(recommended_name, preferred_index=preferred_index) or ""
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             anchor_index = ""
         if not anchor_index and entered_name:
             try:
                 anchor_index = self._find_lock_anchor_index(entered_name, preferred_index=preferred_index) or ""
-            except Exception:
+            except _EXPECTED_APP_ERRORS:
                 anchor_index = ""
         if not anchor_index:
             anchor_index = preferred_index or "1.0"
         try:
             self._error_focus_index = anchor_index
             self._position_error_overlay(self._line_number_from_index(anchor_index) or 1)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         try:
             status_text = "Warning: highlighted field key change detected."
             if entered_name:
                 status_text = f'Warning: highlighted key "{entered_name}" differs from "{recommended_name}".'
             self.set_status(status_text)
-        except Exception:
+        except _EXPECTED_APP_ERRORS:
             pass
         return False
 
@@ -15556,3 +15588,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
