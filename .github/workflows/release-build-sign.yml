@@ -669,21 +669,39 @@ jobs:
 
           # Safety
           safety_status = "SKIPPED"
-          safety_mode = "check"
+          safety_mode = "scan"
           safety_packages = 0
           safety_vuln = 0
           safety_ignored = 0
-          rc, out, err = run_cmd([os.sys.executable, "-m", "safety", "check", "--output", "json"])
-          try:
-              s = json.loads(out or "{}")
+          def load_mixed_json(payload_text: str):
+              text = str(payload_text or "").strip()
+              if not text:
+                  return {}
+              # safety can emit banners around JSON; extract outer JSON object.
+              first = text.find("{")
+              last = text.rfind("}")
+              if first >= 0 and last > first:
+                  text = text[first:last + 1]
+              return json.loads(text)
+
+          safety_commands = [
+              ("scan", [os.sys.executable, "-m", "safety", "scan", "--output", "json"]),
+              ("check", [os.sys.executable, "-m", "safety", "check", "--output", "json"]),
+          ]
+          for mode_name, cmd in safety_commands:
+              rc, out, err = run_cmd(cmd)
+              try:
+                  s = load_mixed_json((out or "") + "\n" + (err or ""))
+              except Exception:
+                  continue
+              safety_mode = mode_name
               vulns = s.get("vulnerabilities") if isinstance(s, dict) else []
               if vulns is None:
                   vulns = []
               safety_vuln = len(vulns)
               safety_packages = len(s.get("scanned_packages", {}) or {})
               safety_status = "PASS" if safety_vuln == 0 else "FAIL"
-          except Exception:
-              safety_status = "SKIPPED"
+              break
 
           lines = [
               "HackHub Release Security Report",
