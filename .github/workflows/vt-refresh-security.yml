@@ -1,0 +1,239 @@
+name: VT Refresh SECURITY Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to refresh (example: v1.3.6). Leave blank for latest."
+        required: false
+        default: ""
+      wait_seconds:
+        description: "Max seconds to wait for VT analysis completion."
+        required: false
+        default: "900"
+
+permissions:
+  contents: write
+
+jobs:
+  vt-refresh:
+    runs-on: [self-hosted, Windows, X64, defender]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release assets
+        id: resolve
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          $repo = "${{ github.repository }}"
+          $tag = "$env:INPUT_TAG".Trim()
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $release = gh api "repos/$repo/releases/latest" | ConvertFrom-Json
+          } else {
+            $release = gh api "repos/$repo/releases/tags/$tag" | ConvertFrom-Json
+          }
+          if (-not $release) { throw "Unable to resolve release metadata." }
+          $resolvedTag = [string]$release.tag_name
+          if ([string]::IsNullOrWhiteSpace($resolvedTag)) { throw "Resolved release tag is empty." }
+          $zipAsset = $release.assets | Where-Object { $_.name -eq "sins_editor-onedir.zip" } | Select-Object -First 1
+          $secAsset = $release.assets | Where-Object { $_.name -eq "security-report.txt" } | Select-Object -First 1
+          if (-not $zipAsset) { throw "sins_editor-onedir.zip not found on release $resolvedTag." }
+          if (-not $secAsset) { throw "security-report.txt not found on release $resolvedTag." }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile "dist/sins_editor-onedir.zip"
+          Invoke-WebRequest -Uri $secAsset.browser_download_url -OutFile "dist/security-report.txt"
+          "release_tag=$resolvedTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_version=$($resolvedTag.TrimStart('v'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Run strict VT check
+        shell: powershell
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          WAIT_SECONDS: ${{ github.event.inputs.wait_seconds }}
+        run: |
+          $wait = "$env:WAIT_SECONDS".Trim()
+          if ([string]::IsNullOrWhiteSpace($wait)) { $wait = "900" }
+          $raw = & python source/tools/validate_virustotal.py --file dist/sins_editor-onedir.zip --allow-upload --strict --fail-on-suspicious --wait-seconds $wait 2>&1
+          $raw | Tee-Object -FilePath dist/vt-refresh.log
+          if ($LASTEXITCODE -ne 0) { throw "VirusTotal strict gate failed." }
+
+      - name: Inject VT results into security report
+        shell: powershell
+        run: |
+          @'
+          import re
+          from pathlib import Path
+
+          report_path = Path("dist/security-report.txt")
+          log_path = Path("dist/vt-refresh.log")
+          if not report_path.exists():
+              raise SystemExit("dist/security-report.txt not found.")
+          if not log_path.exists():
+              raise SystemExit("dist/vt-refresh.log not found.")
+
+          summary = ""
+          permalink = ""
+          for raw in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+              line = raw.strip()
+              if line.startswith("VirusTotal summary:"):
+                  summary = line
+              elif line.startswith("VirusTotal permalink:"):
+                  permalink = line.split(":", 1)[1].strip()
+          if not summary:
+              raise SystemExit("Unable to parse VirusTotal summary from vt-refresh.log.")
+
+          data = {}
+          payload = summary.split(":", 1)[1]
+          for part in payload.split(","):
+              if "=" not in part:
+                  continue
+              k, v = part.split("=", 1)
+              data[k.strip()] = v.strip()
+
+          vt_map = {
+              "virustotal_status": data.get("status", "UNKNOWN"),
+              "virustotal_source": data.get("source", "unknown"),
+              "virustotal_sha256": data.get("sha256", ""),
+              "virustotal_malicious": data.get("malicious", "0"),
+              "virustotal_suspicious": data.get("suspicious", "0"),
+              "virustotal_harmless": data.get("harmless", "0"),
+              "virustotal_undetected": data.get("undetected", "0"),
+              "virustotal_timeout": data.get("timeout", "false"),
+              "virustotal_permalink": permalink,
+          }
+
+          lines = report_path.read_text(encoding="utf-8", errors="replace").splitlines()
+          seen = set()
+          out = []
+          for line in lines:
+              if ":" not in line:
+                  out.append(line)
+                  continue
+              key = line.split(":", 1)[0].strip().lower()
+              if key in vt_map:
+                  out.append(f"{key}: {vt_map[key]}")
+                  seen.add(key)
+              else:
+                  out.append(line)
+          for key, value in vt_map.items():
+              if key not in seen:
+                  out.append(f"{key}: {value}")
+
+          report_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+          print("Updated dist/security-report.txt with refreshed VT verdict.")
+          '@ | python -
+
+      - name: Sync SECURITY.md from security report
+        shell: powershell
+        run: |
+          @'
+          from pathlib import Path
+          from urllib.parse import quote
+
+          report = Path("dist/security-report.txt")
+          out_md = Path("SECURITY.md")
+          if not report.exists():
+              raise SystemExit("dist/security-report.txt not found")
+
+          values = {}
+          for raw in report.read_text(encoding="utf-8", errors="replace").splitlines():
+              if ":" not in raw:
+                  continue
+              k, v = raw.split(":", 1)
+              key = k.strip().lower()
+              val = v.strip()
+              if key and key not in values:
+                  values[key] = val
+
+          def resolve_gate_result(status_text: str) -> str:
+              raw = (status_text or "").strip().lower()
+              if not raw:
+                  return "UNKNOWN"
+              if any(token in raw for token in ("fail", "error", "blocked")):
+                  return "FAIL"
+              if raw.startswith("skip") or "not_run" in raw:
+                  return "SKIP"
+              if any(token in raw for token in ("pass", "ok", "clean", "success", "found_existing", "uploaded", "no_threat", "no_issues", "safe")):
+                  return "PASS"
+              return "UNKNOWN"
+
+          def badge_color(result: str) -> str:
+              if result == "PASS":
+                  return "brightgreen"
+              if result == "FAIL":
+                  return "red"
+              if result == "SKIP":
+                  return "lightgrey"
+              return "blue"
+
+          def gate_badge_line(gate_label: str, status_value: str) -> str:
+              result = resolve_gate_result(status_value)
+              color = badge_color(result)
+              token = quote(gate_label, safe="")
+              return f"- ![{gate_label} {result}](https://img.shields.io/badge/{token}-{result}-{color}?style=flat-square)"
+
+          semgrep = values.get("semgrep_status", "UNKNOWN")
+          trufflehog = values.get("trufflehog_status", "UNKNOWN")
+          bandit = values.get("bandit_status", "UNKNOWN")
+          safety = values.get("safety_status", "UNKNOWN")
+          defender = values.get("defender_status", "UNKNOWN")
+          vt = values.get("virustotal_status", "UNKNOWN")
+          sha_match = values.get("asset_sha256_match", "unknown").lower()
+          sha_status = "PASS" if sha_match == "true" else ("FAIL" if sha_match == "false" else "UNKNOWN")
+          vt_link = values.get("virustotal_permalink", "")
+          app_version = values.get("app_version", "unknown")
+
+          lines = [
+              "# Verification Report",
+              "",
+              "Generated from `dist/security-report.txt`.",
+              f"Release version: **v{app_version}**",
+              "",
+              "## Security Gate Status",
+              "",
+              gate_badge_line("SEMGREP", semgrep),
+              gate_badge_line("TRUFFLEHOG", trufflehog),
+              gate_badge_line("BANDIT", bandit),
+              gate_badge_line("SAFETY STATUS", safety),
+              gate_badge_line("MICROSOFT DEFENDER", defender),
+              gate_badge_line("VIRUS TOTAL", vt),
+              f"- ![SHA256 {sha_status}](https://img.shields.io/badge/SHA256-{sha_status}-{badge_color(sha_status)}?style=flat-square)",
+              "",
+              "## VirusTotal Report",
+              "",
+          ]
+          if vt_link:
+              lines.append(f"- VirusTotal permalink: [{vt_link}]({vt_link})")
+          else:
+              lines.append("- VirusTotal permalink: not available in this report.")
+          lines += [
+              "",
+              "See GitHub Releases for the matching release artifacts.",
+          ]
+
+          out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print("Synced SECURITY.md from dist/security-report.txt")
+          '@ | python -
+
+      - name: Validate snapshot sync
+        shell: powershell
+        run: |
+          python source/tools/validate_security_snapshot_sync.py --report dist/security-report.txt --security-md SECURITY.md --version "${{ steps.resolve.outputs.release_version }}"
+
+      - name: Commit SECURITY.md update
+        shell: powershell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ((git status --porcelain SECURITY.md).Length -eq 0) {
+            Write-Host "SECURITY.md already up to date."
+            exit 0
+          }
+          git add SECURITY.md
+          git commit -m "Refresh SECURITY.md VirusTotal verdict for ${{ steps.resolve.outputs.release_tag }}"
+          git push
