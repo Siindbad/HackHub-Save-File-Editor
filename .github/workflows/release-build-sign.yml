@@ -652,6 +652,8 @@ jobs:
                   str(src_root / "sins_editor.py"),
                   str(src_root / "core"),
                   str(src_root / "services"),
+                  "-ll",
+                  "-iii",
                   "-f",
                   "json",
                   "-s",
