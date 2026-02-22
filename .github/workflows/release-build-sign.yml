@@ -615,6 +615,26 @@ jobs:
                   vt_status = "FAIL" if vt_strict else "SKIPPED"
           elif vt_strict:
               vt_status = "FAIL"
+
+          # Best-effort timeout recovery: if upload polling timed out but hash stats are
+          # now available and clean, mark PASS so badges reflect the real final verdict.
+          if vt_api_key and vt_status == "SKIPPED" and vt_source in {"upload_timeout", "upload_completed_hash_pending"}:
+              try:
+                  late_stats = vt_fetch_hash(vt_api_key, zip_sha)
+                  vt_mal = late_stats["mal"]
+                  vt_susp = late_stats["susp"]
+                  vt_harm = late_stats["harm"]
+                  vt_und = late_stats["und"]
+                  if vt_mal > 0 or (vt_fail_on_susp and vt_susp > 0):
+                      vt_status = "FAIL"
+                      vt_source = "post_timeout_hash_lookup_detected"
+                  else:
+                      vt_status = "PASS"
+                      vt_source = "post_timeout_hash_lookup_clean"
+                      vt_timeout = "false"
+              except Exception:
+                  pass
+
           if vt_strict and vt_status == "FAIL":
               raise SystemExit("VirusTotal strict mode: failing status detected.")
 
