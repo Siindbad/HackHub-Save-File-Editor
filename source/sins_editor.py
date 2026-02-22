@@ -1161,6 +1161,9 @@ if not install_started:
         show_input = (mode == "INPUT")
         editor_mode_top_inset = 24
         if show_input:
+            # Enforce INPUT no-expand policy on mode entry so JSON-expanded branches
+            # (for example Bank children opened via Find Next) do not remain visible.
+            self._enforce_input_tree_expand_locks()
             try:
                 text.pack_forget()
                 text_scroll.pack_forget()
@@ -10392,6 +10395,63 @@ if not install_started:
         except (tk.TclError, RuntimeError, AttributeError, KeyError, IndexError, TypeError, ValueError):
             pass
 
+    def _enforce_input_tree_expand_locks(self):
+        # Collapse INPUT no-expand categories/groups even when tree state was expanded in JSON mode.
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return
+        tree = getattr(self, "tree", None)
+        if tree is None:
+            return
+        try:
+            if not tree.winfo_exists():
+                return
+        except _EXPECTED_APP_ERRORS:
+            return
+
+        items = self._collect_tree_items("")
+        locked_ids = set()
+        for item_id in items:
+            if not self._is_input_tree_expand_blocked(item_id):
+                continue
+            try:
+                tree.item(item_id, open=False)
+                locked_ids.add(item_id)
+            except _EXPECTED_APP_ERRORS:
+                continue
+
+        if not locked_ids:
+            return
+
+        # Keep selection visible/valid when the selected node is inside a locked branch.
+        try:
+            focused = tree.focus()
+        except _EXPECTED_APP_ERRORS:
+            focused = ""
+        if not focused:
+            return
+
+        target = None
+        cursor = focused
+        while cursor:
+            parent = ""
+            try:
+                parent = tree.parent(cursor)
+            except _EXPECTED_APP_ERRORS:
+                parent = ""
+            if parent in locked_ids:
+                target = parent
+                break
+            cursor = parent
+
+        if not target:
+            return
+        try:
+            tree.focus(target)
+            tree.selection_set(target)
+            tree.see(target)
+        except _EXPECTED_APP_ERRORS:
+            return
+
     def _add_placeholder_if_container(self, item_id, value):
         if isinstance(value, (dict, list)) and len(value) > 0:
             self.tree.insert(item_id, "end", text="(loading)")
@@ -10401,6 +10461,14 @@ if not install_started:
         self.find_index = 0
         self.last_find_query = ""
         self._find_search_entries = []
+        self._json_find_last_query = ""
+        self._find_last_root_item = ""
+        text_widget = getattr(self, "text", None)
+        if text_widget is not None:
+            try:
+                text_widget.tag_remove("find_next_match", "1.0", "end")
+            except _EXPECTED_APP_ERRORS:
+                pass
 
     def _collect_tree_items(self, root_id=""):
         items = []
@@ -10432,6 +10500,36 @@ if not install_started:
         self._append_find_search_entries([], self.data, entries)
         return entries
 
+    @staticmethod
+    def _find_search_value_summary(value, max_tokens=24, max_chars=360):
+        # Keep JSON Find Next focused on local node content so one hot subtree
+        # does not flood matches and starve other categories (e.g. Phone).
+        tokens = []
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            text = str(value).strip()
+            if text:
+                tokens.append(text)
+        elif isinstance(value, dict):
+            for child in value.values():
+                if len(tokens) >= int(max_tokens):
+                    break
+                if isinstance(child, (str, int, float, bool)) or child is None:
+                    text = str(child).strip()
+                    if text:
+                        tokens.append(text)
+        elif isinstance(value, list):
+            for child in value:
+                if len(tokens) >= int(max_tokens):
+                    break
+                if isinstance(child, (str, int, float, bool)) or child is None:
+                    text = str(child).strip()
+                    if text:
+                        tokens.append(text)
+        joined = " ".join(tokens)
+        if len(joined) > int(max_chars):
+            return joined[: int(max_chars)]
+        return joined
+
     def _append_find_search_entries(self, path, value, entries):
         mode_is_input = str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT"
         if isinstance(value, dict):
@@ -10460,8 +10558,11 @@ if not install_started:
                         type_value = entry_value.get("type")
                         if type_value:
                             child_text = str(type_value)
-                entries.append((child_path, str(child_text).casefold()))
                 child_value = value.get(key)
+                summary_fn = getattr(self, "_find_search_value_summary", None)
+                summary_text = summary_fn(child_value) if callable(summary_fn) else ""
+                searchable_text = f"{child_text} {summary_text}".strip().casefold()
+                entries.append((child_path, searchable_text))
                 should_recurse = isinstance(child_value, (dict, list)) and len(child_value) > 0
                 if (
                     should_recurse
@@ -10548,7 +10649,10 @@ if not install_started:
                     if not label:
                         label = f"Item {idx + 1}"
                     child_path = path + [idx]
-                    entries.append((child_path, str(label).casefold()))
+                    summary_fn = getattr(self, "_find_search_value_summary", None)
+                    summary_text = summary_fn(item) if callable(summary_fn) else ""
+                    searchable_text = f"{label} {summary_text}".strip().casefold()
+                    entries.append((child_path, searchable_text))
                     if not group_is_locked and isinstance(item, (dict, list)) and len(item) > 0:
                         self._append_find_search_entries(child_path, item, entries)
             return
@@ -10563,7 +10667,10 @@ if not install_started:
                 else:
                     label = f"[{idx}]"
                 child_path = path + [idx]
-                entries.append((child_path, str(label).casefold()))
+                summary_fn = getattr(self, "_find_search_value_summary", None)
+                summary_text = summary_fn(item) if callable(summary_fn) else ""
+                searchable_text = f"{label} {summary_text}".strip().casefold()
+                entries.append((child_path, searchable_text))
                 if isinstance(item, (dict, list)) and len(item) > 0:
                     self._append_find_search_entries(child_path, item, entries)
 
@@ -10639,9 +10746,14 @@ if not install_started:
 
         query_lower = query.lower()
         if query_lower != self.last_find_query:
-            if not self._find_search_entries:
-                self._find_search_entries = self._build_find_search_index()
-            self.find_matches = [entry[0] for entry in self._find_search_entries if query_lower in entry[1]]
+            build_matches_fn = getattr(self, "_build_json_find_matches", None)
+            if callable(build_matches_fn):
+                self.find_matches = build_matches_fn(query_lower)
+            else:
+                # Backward-compatible fallback for lightweight test doubles.
+                if not self._find_search_entries:
+                    self._find_search_entries = self._build_find_search_index()
+                self.find_matches = [entry[0] for entry in self._find_search_entries if query_lower in entry[1]]
             self.find_index = 0
             self.last_find_query = query_lower
 
@@ -10649,16 +10761,27 @@ if not install_started:
             self.set_status(f'Find: no matches for "{query}"')
             return
 
-        match_ref = self.find_matches[self.find_index]
-        self.find_index = (self.find_index + 1) % len(self.find_matches)
-        if isinstance(match_ref, tuple) and len(match_ref) == 3 and match_ref[0] == "__group__":
-            item_id = self._ensure_tree_group_item_loaded(match_ref[1], match_ref[2])
-        else:
-            item_id = self._ensure_tree_item_for_path(match_ref)
+        item_id = None
+        total_matches = len(self.find_matches)
+        attempts = total_matches
+        while attempts > 0:
+            match_ref = self.find_matches[self.find_index]
+            self.find_index = (self.find_index + 1) % total_matches
+            if isinstance(match_ref, tuple) and len(match_ref) == 3 and match_ref[0] == "__group__":
+                item_id = self._ensure_tree_group_item_loaded(match_ref[1], match_ref[2])
+            else:
+                item_id = self._ensure_tree_item_for_path(match_ref)
+            if item_id is not None:
+                break
+            attempts -= 1
         if item_id is None:
-            self.set_status(f'Find: item is no longer available for "{query}"')
+            self.set_status(f'Find: no accessible matches for "{query}"')
             self._reset_find_state()
             return
+        if str(getattr(self, "_editor_mode", "JSON")).upper() == "JSON":
+            collapse_fn = getattr(self, "_collapse_previous_find_root_if_category_changed", None)
+            if callable(collapse_fn):
+                collapse_fn(item_id)
         self._open_to_item(item_id)
         tree_widget = getattr(self, "tree", None)
         if tree_widget is not None:
@@ -10686,32 +10809,157 @@ if not install_started:
             focus_match_fn(query)
         self.set_status(f'Find: {self.find_index}/{len(self.find_matches)}')
 
-    def _focus_json_find_match(self, query):
-        # After tree-level Find Next picks a node, also jump to the text match in JSON editor.
-        text_widget = getattr(self, "text", None)
-        if text_widget is None:
+    def _collapse_previous_find_root_if_category_changed(self, next_item_id):
+        # UX rule: when JSON Find Next jumps to a different top-level category,
+        # collapse the previously visited category to avoid branch sprawl.
+        tree_widget = getattr(self, "tree", None)
+        if tree_widget is None:
             return
-        needle = str(query or "").strip()
-        if not needle:
+        if not next_item_id:
             return
         try:
+            if not tree_widget.winfo_exists():
+                return
+        except _EXPECTED_APP_ERRORS:
+            return
+
+        def _root_item(item_id):
+            current = item_id
+            if not current:
+                return ""
+            while True:
+                try:
+                    parent = tree_widget.parent(current)
+                except _EXPECTED_APP_ERRORS:
+                    return current
+                if not parent:
+                    return current
+                current = parent
+
+        try:
+            next_root = _root_item(next_item_id)
+            previous_root = str(getattr(self, "_find_last_root_item", "") or "")
+            if previous_root and next_root and previous_root != next_root:
+                tree_widget.item(previous_root, open=False)
+            self._find_last_root_item = next_root
+        except _EXPECTED_APP_ERRORS:
+            return
+
+    def _build_json_find_matches(self, query_lower):
+        # Deterministic JSON-mode search across real data paths.
+        # Each match is a concrete path so Find Next can cycle categories reliably.
+        needle = str(query_lower or "").strip().casefold()
+        if not needle:
+            return []
+
+        matches = []
+        seen = set()
+        hidden_keys = self._hidden_root_tree_keys_for_mode("JSON")
+
+        def _add(path):
+            if not isinstance(path, list) or not path:
+                return
+            key = tuple(path)
+            if key in seen:
+                return
+            seen.add(key)
+            matches.append(path)
+
+        def _walk(value, path):
+            if isinstance(value, dict):
+                keys = list(value.keys())
+                if not path:
+                    keys = sorted(keys, key=lambda raw: str(self._tree_display_label_for_key(raw)).casefold())
+                for key in keys:
+                    if not path and self._normalize_root_tree_key(key) in hidden_keys:
+                        continue
+                    child_path = path + [key]
+                    key_text = f"{key} {self._tree_display_label_for_key(key)}".casefold()
+                    if needle in key_text:
+                        _add(child_path)
+                    _walk(value.get(key), child_path)
+                return
+
+            if isinstance(value, list):
+                labeler = self._list_labelers.get(tuple(path))
+                for idx, item in enumerate(value):
+                    child_path = path + [idx]
+                    if labeler:
+                        label = str(labeler(idx, item))
+                    elif self._is_database_table_rows_path(path):
+                        label = str(self._database_table_row_label(idx, item))
+                    else:
+                        label = f"[{idx}]"
+                    if needle in label.casefold():
+                        _add(child_path)
+                    _walk(item, child_path)
+                return
+
+            value_text = str(value).casefold() if value is not None else "none"
+            if needle in value_text:
+                if len(path) > 1:
+                    _add(path[:-1])
+                _add(path)
+
+        _walk(self.data, [])
+        return matches
+
+    def _find_next_json_text_match(self, query):
+        # Cycle through visible JSON text matches with wrap-around behavior.
+        text_widget = getattr(self, "text", None)
+        if text_widget is None:
+            return False
+        needle = str(query or "").strip()
+        if not needle:
+            return False
+        try:
             if not text_widget.winfo_exists():
-                return
-            text_widget.tag_remove("find_next_match", "1.0", "end")
-            start = text_widget.search(needle, "1.0", stopindex="end", nocase=1)
+                return False
+            query_key = needle.casefold()
+            last_query = str(getattr(self, "_json_find_last_query", "") or "")
+            start_index = "1.0"
+            wrapped = False
+            current_start = ""
+            if last_query == query_key:
+                ranges = list(text_widget.tag_ranges("find_next_match"))
+                if len(ranges) >= 2:
+                    current_start = str(ranges[0])
+                    start_index = str(ranges[1])
+                else:
+                    start_index = str(text_widget.index("insert +1c"))
+
+            start = text_widget.search(needle, start_index, stopindex="end", nocase=1)
+            if not start and start_index != "1.0":
+                wrapped = True
+                start = text_widget.search(needle, "1.0", stopindex=start_index, nocase=1)
             if not start:
-                return
+                self._json_find_last_query = query_key
+                return False
+            if wrapped and current_start:
+                # Any wrap means this JSON view is exhausted for forward traversal.
+                # Hand off to tree-level fallback so Find Next advances sections.
+                self._json_find_last_query = query_key
+                return False
+
             end = f"{start}+{len(needle)}c"
+            text_widget.tag_remove("find_next_match", "1.0", "end")
             text_widget.tag_add("find_next_match", start, end)
             text_widget.tag_config(
                 "find_next_match",
                 background="#214a6a",
                 foreground="#e8f6ff",
             )
-            text_widget.mark_set("insert", start)
+            text_widget.mark_set("insert", end)
             text_widget.see(start)
+            self._json_find_last_query = query_key
+            return True
         except _EXPECTED_APP_ERRORS:
-            return
+            return False
+
+    def _focus_json_find_match(self, query):
+        # After tree-level Find Next picks a node, also jump to the text match in JSON editor.
+        self._json_find_last_query = ""
+        self._find_next_json_text_match(query)
 
     def _find_next_input_mode(self):
         query = self.find_entry.get().strip()

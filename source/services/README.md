@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-22 (exception-hardening sweep across service fallback, diagnostics, UI safety paths, and zip-payload update install flow).
+Last sync: 2026-02-22 (exception-hardening sweep plus mode-switch rebuild gating for INPUT hidden Network subgroup policy changes).
 
 | Module | Purpose |
 | --- | --- |
@@ -8,7 +8,7 @@ Last sync: 2026-02-22 (exception-hardening sweep across service fallback, diagno
 | `bug_report_service.py` | Contains bug-report helper logic for markdown composition, screenshot validation/prep, issue URL construction (including optional body-query omission), and submit cooldown math. |
 | `bug_report_ui_service.py` | Provides the bug-report dialog UI builder/orchestration, including screenshot picker, submit worker state updates (with Discord mirror sent/skipped/failed status feedback), and themed dialog lifecycle wiring. |
 | `edit_guard_service.py` | Compatibility shim that forwards legacy imports to `highlight_label_service.py` during the service rename transition. |
-| `editor_mode_switch_service.py` | Provides editor mode-switch decision helpers for rebuild gating and INPUT refresh-skip checks to reduce flicker while preserving correctness. |
+| `editor_mode_switch_service.py` | Provides editor mode-switch decision helpers for rebuild gating, including root-hide and INPUT Network hidden-group policy changes, plus INPUT refresh-skip checks to reduce flicker while preserving correctness. |
 | `error_overlay_service.py` | Provides error-overlay UI helpers for pin placement, tint lifecycle, overlay teardown, and theme refresh behavior. |
 | `error_service.py` | Provides error-system helper logic for before/after suggestion parsing, overlay payload shaping, marker color rules, and theme-aware error palettes. |
 | `footer_service.py` | Provides bottom-footer style and visual spec helpers used by badge/chip layout rendering. |

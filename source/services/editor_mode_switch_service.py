@@ -5,10 +5,18 @@ Keeps JSON/INPUT mode refresh and tree-rebuild decisions isolated from UI wiring
 
 
 def mode_switch_requires_tree_rebuild(owner, previous_mode, next_mode):
-    # Rebuild only when mode root-hide policy changes to avoid unnecessary flicker.
+    # Rebuild when mode-dependent visibility policy changes.
+    # This includes root-hide lists and INPUT-only hidden Network subgroup buckets.
     prev_hidden = owner._hidden_root_tree_keys_for_mode(previous_mode)
     next_hidden = owner._hidden_root_tree_keys_for_mode(next_mode)
-    return prev_hidden != next_hidden
+    if prev_hidden != next_hidden:
+        return True
+
+    prev_mode = str(previous_mode or "JSON").strip().upper()
+    next_mode = str(next_mode or "JSON").strip().upper()
+    prev_network_hidden = set(getattr(owner, "INPUT_MODE_NETWORK_HIDDEN_GROUP_KEYS", set())) if prev_mode == "INPUT" else set()
+    next_network_hidden = set(getattr(owner, "INPUT_MODE_NETWORK_HIDDEN_GROUP_KEYS", set())) if next_mode == "INPUT" else set()
+    return prev_network_hidden != next_network_hidden
 
 
 def can_skip_input_mode_refresh(owner, item_id, target_path):
