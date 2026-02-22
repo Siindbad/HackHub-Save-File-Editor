@@ -645,6 +645,7 @@ jobs:
         run: |
           @'
           from pathlib import Path
+          from urllib.parse import quote
 
           report = Path("dist/security-report.txt")
           out_md = Path("SECURITY.md")
@@ -661,10 +662,49 @@ jobs:
               if key and key not in values:
                   values[key] = val
 
-          def badge(label, status):
-              st = (status or "UNKNOWN").upper()
-              color = "brightgreen" if st == "PASS" else ("red" if st == "FAIL" else "lightgrey")
-              return f"![{label}](https://img.shields.io/badge/{label}-{st}-{color})"
+          def resolve_gate_result(status_text: str) -> str:
+              raw = (status_text or "").strip().lower()
+              if not raw:
+                  return "UNKNOWN"
+              if any(token in raw for token in ("fail", "error", "blocked")):
+                  return "FAIL"
+              if raw.startswith("skip") or "not_run" in raw:
+                  return "SKIP"
+              if any(
+                  token in raw
+                  for token in (
+                      "pass",
+                      "ok",
+                      "clean",
+                      "success",
+                      "found_existing",
+                      "uploaded",
+                      "no_threat",
+                      "no_issues",
+                      "safe",
+                  )
+              ):
+                  return "PASS"
+              return "UNKNOWN"
+
+          def badge_color(result: str) -> str:
+              if result == "PASS":
+                  return "brightgreen"
+              if result == "FAIL":
+                  return "red"
+              if result == "SKIP":
+                  return "lightgrey"
+              return "blue"
+
+          def gate_badge_line(gate_label: str, status_value: str) -> str:
+              result = resolve_gate_result(status_value)
+              color = badge_color(result)
+              token = quote(gate_label, safe="")
+              return (
+                  f"- ![{gate_label} {result}]"
+                  f"(https://img.shields.io/badge/{token}-{result}-{color}?style=flat-square) "
+                  f"`{gate_label}`"
+              )
 
           semgrep = values.get("semgrep_status", "UNKNOWN")
           trufflehog = values.get("trufflehog_status", "UNKNOWN")
@@ -681,30 +721,32 @@ jobs:
           lines = [
               "# Verification Report",
               "",
-              f"Latest release snapshot generated from `dist/security-report.txt` for `{app_version}`.",
+              "Generated from `dist/security-report.txt`.",
+              f"Release version: **v{app_version}**",
               "",
-              "## Gate Status",
+              "## Security Gate Status",
               "",
-              f"- {badge('SEMGREP', semgrep)}",
-              f"- {badge('TRUFFLEHOG', trufflehog)}",
-              f"- {badge('BANDIT', bandit)}",
-              f"- {badge('SAFETY', safety)}",
-              f"- {badge('DEFENDER', defender)}",
-              f"- {badge('VIRUSTOTAL', vt)}",
-              f"- {badge('SHA256', sha_status)}",
+              gate_badge_line("SEMGREP", semgrep),
+              gate_badge_line("TRUFFLEHOG", trufflehog),
+              gate_badge_line("BANDIT", bandit),
+              gate_badge_line("SAFETY STATUS", safety),
+              gate_badge_line("MICROSOFT DEFENDER", defender),
+              gate_badge_line("VIRUS TOTAL", vt),
+              f"- ![SHA256 {sha_status}](https://img.shields.io/badge/SHA256-{sha_status}-{badge_color(sha_status)}?style=flat-square) `SHA256`",
               "",
-              "## Links",
-              "",
-              f"- VirusTotal: {vt_link if vt_link else 'N/A'}",
-              "",
-              "## Metadata",
-              "",
-              f"- generated_utc: `{generated_utc}`",
-              f"- app_version: `{app_version}`",
+              "## VirusTotal Report",
               "",
           ]
+          if vt_link:
+              lines.append(f"- VirusTotal permalink: [{vt_link}]({vt_link})")
+          else:
+              lines.append("- VirusTotal permalink: not available in this report.")
+          lines += [
+              "",
+              "See GitHub Releases for the matching release artifacts.",
+          ]
 
-          out_md.write_text("\n".join(lines), encoding="utf-8")
+          out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
           print("Synced SECURITY.md from dist/security-report.txt")
           '@ | python -
 

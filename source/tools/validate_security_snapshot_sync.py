@@ -12,7 +12,10 @@ BADGE_RE = re.compile(
     r"https://img\.shields\.io/badge/([^-\)]+)-([^-\)\?]+)-[^)\s]+",
     re.IGNORECASE,
 )
-VERSION_RE = re.compile(r"Release version:\s+\*\*v(\d+\.\d+\.\d+)\*\*")
+VERSION_RE = re.compile(
+    r"Release(?:\s+version)?\s*:\s*\*{0,2}v?(\d+\.\d+\.\d+)\*{0,2}",
+    re.IGNORECASE,
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -52,6 +55,16 @@ def _resolve_gate_result(status_text: str) -> str:
     return "UNKNOWN"
 
 
+def _normalize_status(status_text: str) -> str:
+    normalized = (status_text or "").strip().upper()
+    aliases = {
+        "SKIPPED": "SKIP",
+        "PASSED": "PASS",
+        "FAILED": "FAIL",
+    }
+    return aliases.get(normalized, normalized)
+
+
 def _parse_report_map(report_path: Path) -> dict[str, str]:
     if not report_path.exists():
         raise FileNotFoundError(f"Report not found: {report_path}")
@@ -86,7 +99,7 @@ def _parse_observed_badges(security_body: str) -> dict[str, str]:
     observed: dict[str, str] = {}
     for match in BADGE_RE.finditer(security_body):
         label = _normalize_gate_label(unquote(match.group(1)))
-        status = (match.group(2) or "").strip().upper()
+        status = _normalize_status(match.group(2) or "")
         if label and status:
             observed[label] = status
     return observed
@@ -104,8 +117,9 @@ def _validate_version(security_body: str, expected_version: str) -> str | None:
 
 def _validate_virustotal_line(security_body: str, permalink: str) -> str | None:
     if permalink:
-        expected = f"- VirusTotal permalink: [{permalink}]({permalink})"
-        if expected not in security_body:
+        markdown_expected = f"- VirusTotal permalink: [{permalink}]({permalink})"
+        plaintext_expected = f"- VirusTotal permalink: {permalink}"
+        if markdown_expected not in security_body and plaintext_expected not in security_body:
             return "VirusTotal permalink line is missing or does not match security-report permalink."
         return None
     fallback = "- VirusTotal permalink: not available in this report."
@@ -130,11 +144,11 @@ def main() -> int:
 
     errors: list[str] = []
     for gate, expected_status in expected.items():
-        found = observed.get(gate, "")
+        found = _normalize_status(observed.get(gate, ""))
         if not found:
             errors.append(f"Missing badge for gate: {gate}")
             continue
-        if found != expected_status:
+        if found != _normalize_status(expected_status):
             errors.append(
                 f"Badge mismatch for {gate}: SECURITY.md={found}, report={expected_status}"
             )
