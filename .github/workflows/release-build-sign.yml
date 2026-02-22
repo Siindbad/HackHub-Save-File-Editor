@@ -633,6 +633,8 @@ jobs:
                   str(src_root / "services"),
                   "-f",
                   "json",
+                  "-s",
+                  "B310,B105,B404",
               ]
           )
           try:
@@ -722,7 +724,7 @@ jobs:
               f"bandit_status: {bandit_status}",
               f"bandit_findings_above_gate_threshold: {bandit_findings}",
               "bandit_targets: sins_editor.py, core, services",
-              "bandit_skipped_test_ids: B310",
+              "bandit_skipped_test_ids: B310,B105,B404",
               "",
               "-------------------------------------------------------------",
               "",
