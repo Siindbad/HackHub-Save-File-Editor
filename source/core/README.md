@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-22 (diagnostics routing updates for key-quote vs value-quote highlight/caret alignment plus parse-entry logging hardening).
+Last sync: 2026-02-22 (version prep to 1.3.6 plus startup loader teardown hardening for quick-close stability smoke).
 
 | Module | Purpose |
 | --- | --- |

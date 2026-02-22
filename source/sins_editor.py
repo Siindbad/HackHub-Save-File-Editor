@@ -8602,7 +8602,14 @@ if not install_started:
                 setattr(self, attr, None)
 
         overlay = getattr(self, "_startup_loader_overlay", None)
-        if overlay is not None and overlay.winfo_exists():
+        overlay_exists = False
+        if overlay is not None:
+            try:
+                # Quick-close smoke can destroy Tk before loader teardown runs.
+                overlay_exists = bool(overlay.winfo_exists())
+            except (tk.TclError, RuntimeError, AttributeError, ValueError):
+                overlay_exists = False
+        if overlay is not None and overlay_exists:
             try:
                 overlay.destroy()
             except (tk.TclError, RuntimeError, AttributeError):
