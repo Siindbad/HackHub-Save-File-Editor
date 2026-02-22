@@ -262,20 +262,40 @@ jobs:
           defender_threat = "false"
           defender_threat_count = 0
           defender_exit = "n/a"
+          defender_reason = "not_run"
+          defender_engine = "unknown"
+          defender_signature = "unknown"
+          defender_output_excerpt = ""
           mpcmd = shutil.which("MpCmdRun.exe")
           if mpcmd:
+              rc_ver, out_ver, err_ver = run_cmd([mpcmd, "-GetEngineVersion"])
+              ver_text = (out_ver or "") + "\n" + (err_ver or "")
+              for raw_line in ver_text.splitlines():
+                  line = raw_line.strip()
+                  lower = line.lower()
+                  if "engine version" in lower and ":" in line:
+                      defender_engine = line.split(":", 1)[1].strip()
+                  if "antispyware signature version" in lower and ":" in line:
+                      defender_signature = line.split(":", 1)[1].strip()
               rc, out, err = run_cmd([mpcmd, "-Scan", "-ScanType", "3", "-File", str(exe_path)])
               defender_exit = str(rc)
+              scan_text = ((out or "") + "\n" + (err or "")).strip()
+              if scan_text:
+                  defender_output_excerpt = " | ".join(scan_text.splitlines()[:3]).strip()
               if rc == 0:
                   defender_status = "PASS"
+                  defender_reason = "no_threats_detected"
               elif rc == 2:
                   defender_status = "FAIL"
                   defender_threat = "true"
                   defender_threat_count = 1
+                  defender_reason = "threat_detected"
               else:
                   defender_status = "SKIPPED"
+                  defender_reason = f"unexpected_exit_{rc}"
           else:
               mpcmd = "MpCmdRun.exe"
+              defender_reason = "mpcmd_not_found_on_runner"
 
           # VirusTotal
           vt_status = "SKIPPED"
@@ -410,6 +430,10 @@ jobs:
               f"defender_threat_count: {defender_threat_count}",
               f"defender_exit_code: {defender_exit}",
               f"defender_mpcmd: {mpcmd}",
+              f"defender_reason: {defender_reason}",
+              f"defender_engine_version: {defender_engine}",
+              f"defender_signature_version: {defender_signature}",
+              f"defender_output_excerpt: {defender_output_excerpt or 'n/a'}",
               f"virustotal_status: {vt_status}",
               f"virustotal_source: {vt_source}",
               f"virustotal_sha256: {exe_sha}",
