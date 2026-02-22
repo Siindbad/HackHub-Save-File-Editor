@@ -135,7 +135,7 @@ jobs:
                   cleaned = cleaned.replace("\n\n\n", "\n\n")
               return cleaned
 
-          def _compact_changelog(raw_text, max_items=12, max_line_len=72):
+          def _compact_changelog(raw_text, max_items=12):
               text = (raw_text or "").strip()
               if not text:
                   return ""
@@ -148,16 +148,9 @@ jobs:
                           bullets.append(item.rstrip("."))
               if not bullets:
                   compact = " ".join(text.split())
-                  if len(compact) > max_line_len:
-                      compact = compact[: max_line_len - 3].rstrip() + "..."
                   return f"- {compact}" if compact else ""
               compact_items = []
               for item in bullets[:max_items]:
-                  if len(item) > max_line_len:
-                      cut = item[:max_line_len]
-                      if " " in cut:
-                          cut = cut.rsplit(" ", 1)[0]
-                      item = cut.rstrip() + "..."
                   compact_items.append(f"- {item}.")
               return "\n".join(compact_items)
 
