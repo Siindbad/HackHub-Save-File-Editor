@@ -24,10 +24,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Setup Python (hosted runners)
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Validate local Python (self-hosted runners)
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        shell: pwsh
+        run: |
+          python -c "import sys; print(sys.version)"
+          python - <<'PY'
+          import sys
+          if sys.version_info[:2] != (3, 12):
+              raise SystemExit(f"Self-hosted runner requires Python 3.12.x; found {sys.version}")
+          print("Self-hosted Python version check passed.")
+          PY
 
       - name: Resolve tag
         id: vars
