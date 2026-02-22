@@ -4,7 +4,7 @@ Last sync: 2026-02-22 (exception-hardening sweep across service fallback, diagno
 
 | Module | Purpose |
 | --- | --- |
-| `bug_report_api_service.py` | Handles bug-report API/browser submission operations, including screenshot upload, issue creation fallback behavior, and optional Discord forum webhook mirror posting helpers (with screenshot-thumbnail payload wiring when available). |
+| `bug_report_api_service.py` | Handles bug-report API/browser submission operations, including screenshot upload, issue creation fallback behavior, strict HTTPS/host allowlist request guards, and optional Discord forum webhook mirror posting helpers (with screenshot-thumbnail payload wiring when available). |
 | `bug_report_service.py` | Contains bug-report helper logic for markdown composition, screenshot validation/prep, issue URL construction (including optional body-query omission), and submit cooldown math. |
 | `bug_report_ui_service.py` | Provides the bug-report dialog UI builder/orchestration, including screenshot picker, submit worker state updates (with Discord mirror sent/skipped/failed status feedback), and themed dialog lifecycle wiring. |
 | `edit_guard_service.py` | Compatibility shim that forwards legacy imports to `highlight_label_service.py` during the service rename transition. |

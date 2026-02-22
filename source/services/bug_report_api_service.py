@@ -3,7 +3,32 @@ import json
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
+
+
+def _assert_https_host_allowed(url_text, allowed_hosts):
+    parsed = urllib.parse.urlparse(str(url_text or "").strip())
+    host = (parsed.hostname or "").strip().lower()
+    scheme = (parsed.scheme or "").strip().lower()
+    if scheme != "https":
+        raise RuntimeError("Refusing non-HTTPS request URL.")
+    if not host:
+        raise RuntimeError("Request URL is missing a host.")
+    normalized_allowed = tuple(str(item or "").strip().lower() for item in allowed_hosts or ())
+    for allowed in normalized_allowed:
+        if not allowed:
+            continue
+        if host == allowed or host.endswith("." + allowed):
+            return
+    raise RuntimeError(f"Request host '{host}' is not allowlisted.")
+
+
+def _open_https_request(req, *, timeout, allowed_hosts):
+    target_url = getattr(req, "full_url", "")
+    _assert_https_host_allowed(target_url, allowed_hosts)
+    opener = urllib.request.build_opener()
+    return opener.open(req, timeout=timeout)
 
 
 def open_bug_report_in_browser(issue_url, open_new_tab_fn):
@@ -59,7 +84,7 @@ def upload_bug_screenshot(
     }
     req = urllib.request.Request(url, data=data, headers=headers, method="PUT")
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with _open_https_request(req, timeout=45, allowed_hosts=("api.github.com",)) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         detail = ""
@@ -124,7 +149,7 @@ def submit_bug_report_issue(
     }
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=35) as resp:
+        with _open_https_request(req, timeout=35, allowed_hosts=("api.github.com",)) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         detail = ""
@@ -264,7 +289,16 @@ def submit_bug_report_discord_forum(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _open_https_request(
+            req,
+            timeout=30,
+            allowed_hosts=(
+                "discord.com",
+                "discordapp.com",
+                "ptb.discord.com",
+                "canary.discord.com",
+            ),
+        ) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
             parsed = {}
             try:
