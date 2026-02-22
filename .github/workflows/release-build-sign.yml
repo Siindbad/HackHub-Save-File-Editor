@@ -744,6 +744,54 @@ jobs:
               safety_status = "PASS" if safety_vuln == 0 else "FAIL"
               break
 
+          # pip-audit
+          pip_audit_status = "SKIPPED"
+          pip_audit_dependencies = 0
+          pip_audit_vuln = 0
+          rc, _, _ = run_cmd(
+              [
+                  os.sys.executable,
+                  "-c",
+                  "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('pip_audit') else 1)",
+              ]
+          )
+          if rc != 0:
+              run_cmd([os.sys.executable, "-m", "pip", "install", "pip-audit>=2.7,<3"])
+
+          rc, out, err = run_cmd(
+              [
+                  os.sys.executable,
+                  "-m",
+                  "pip_audit",
+                  "--format",
+                  "json",
+                  "-r",
+                  str(src_root / "requirements-dev.txt"),
+                  "-r",
+                  str(src_root / "requirements-dev-tools.txt"),
+              ]
+          )
+          try:
+              payload = json.loads(out or "[]")
+              dependencies = []
+              if isinstance(payload, dict):
+                  dependencies = payload.get("dependencies", []) or []
+              elif isinstance(payload, list):
+                  dependencies = payload
+              pip_audit_dependencies = len([d for d in dependencies if isinstance(d, dict)])
+              pip_audit_vuln = 0
+              for dep in dependencies:
+                  if not isinstance(dep, dict):
+                      continue
+                  vulns = dep.get("vulns", [])
+                  if isinstance(vulns, list):
+                      pip_audit_vuln += len(vulns)
+              pip_audit_status = "PASS" if pip_audit_vuln == 0 else "FAIL"
+          except Exception:
+              pip_audit_status = "SKIPPED"
+          if pip_audit_status == "FAIL":
+              raise SystemExit("pip-audit strict mode: vulnerabilities detected.")
+
           lines = [
               "HackHub Release Security Report",
               "report_format: v2",
@@ -815,6 +863,14 @@ jobs:
               f"safety_packages_found: {safety_packages}",
               f"safety_vulnerabilities_found: {safety_vuln}",
               f"safety_vulnerabilities_ignored: {safety_ignored}",
+              "",
+              "-------------------------------------------------------------",
+              "",
+              "[ PIP AUDIT ]",
+              "",
+              f"pip_audit_status: {pip_audit_status}",
+              f"pip_audit_dependencies_scanned: {pip_audit_dependencies}",
+              f"pip_audit_vulnerabilities_found: {pip_audit_vuln}",
               "",
               "-------------------------------------------------------------",
               "",
@@ -1083,6 +1139,7 @@ jobs:
           trufflehog = values.get("trufflehog_status", "UNKNOWN")
           bandit = values.get("bandit_status", "UNKNOWN")
           safety = values.get("safety_status", "UNKNOWN")
+          pip_audit = values.get("pip_audit_status", "UNKNOWN")
           defender = values.get("defender_status", "UNKNOWN")
           vt = values.get("virustotal_status", "UNKNOWN")
           sha_match = values.get("asset_sha256_match", "unknown").lower()
@@ -1103,6 +1160,7 @@ jobs:
               gate_badge_line("TRUFFLEHOG", trufflehog),
               gate_badge_line("BANDIT", bandit),
               gate_badge_line("SAFETY STATUS", safety),
+              gate_badge_line("PIP AUDIT", pip_audit),
               gate_badge_line("MICROSOFT DEFENDER", defender),
               gate_badge_line("VIRUS TOTAL", vt),
               f"- ![SHA256 {sha_status}](https://img.shields.io/badge/SHA256-{sha_status}-{badge_color(sha_status)}?style=flat-square)",
