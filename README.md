@@ -1,4 +1,4 @@
-![Verification Suite](https://img.shields.io/badge/Verification%20Suite-Passing-brightgreen) ![License](https://img.shields.io/badge/License-MIT-8B0000) ![Languages](https://img.shields.io/badge/Languages-Python-3776AB) [![Release Build](https://github.com/Siindbad/HackHub-Save-File-Editor/actions/workflows/release-build-sign.yml/badge.svg)](https://github.com/Siindbad/HackHub-Save-File-Editor/actions/workflows/release-build-sign.yml)
+![Verification Suite](https://img.shields.io/badge/Verification%20Suite-Passing-brightgreen) ![License](https://img.shields.io/badge/License-MIT-8B0000) ![Languages](https://img.shields.io/badge/Languages-Python-3776AB) [![Release Build](https://github.com/Siindbad/HackHub-Save-File-Editor/actions/workflows/release-build-sign.yml/badge.svg?branch=main)](https://github.com/Siindbad/HackHub-Save-File-Editor/actions/workflows/release-build-sign.yml)
 
 
 
