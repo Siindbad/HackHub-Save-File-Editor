@@ -181,17 +181,41 @@ jobs:
                   print(f"Failed to load latest release metadata: {exc}", file=sys.stderr)
                   return {}
 
+          def _load_release_by_tag(repo_name, tag_name):
+              token = (os.getenv("GH_TOKEN") or "").strip()
+              tag = (tag_name or "").strip()
+              if not repo_name or not tag:
+                  return {}
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{repo_name}/releases/tags/{tag}",
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "User-Agent": "HackHub-Release-Notifier/1.0 (+https://github.com/Siindbad/HackHub-Save-File-Editor)",
+                      **({"Authorization": f"Bearer {token}"} if token else {}),
+                  },
+                  method="GET",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      return json.loads(resp.read().decode("utf-8", "replace") or "{}")
+              except Exception as exc:
+                  print(f"Failed to load release metadata by tag '{tag}': {exc}", file=sys.stderr)
+                  return {}
+
           repo = (os.getenv("REPO_NAME") or "").strip()
           workflow_name = (os.getenv("WORKFLOW_NAME") or "").strip() or "Release Build and Sigstore Sign"
           workflow_url = (os.getenv("WORKFLOW_URL") or "").strip()
           workflow_branch = (os.getenv("WORKFLOW_BRANCH") or "").strip() or "main"
           workflow_id = (os.getenv("WORKFLOW_ID") or "").strip()
           latest_release = {}
+          manual_tag = (os.getenv("MANUAL_TAG") or "").strip()
           if event_name == "workflow_run":
               if workflow_conclusion == "success":
                   latest_release = _load_latest_release(repo)
+          elif event_name == "workflow_dispatch":
+              latest_release = _load_release_by_tag(repo, manual_tag) if manual_tag else _load_latest_release(repo)
 
-          tag = _pick(os.getenv("MANUAL_TAG"), os.getenv("RELEASE_TAG"), latest_release.get("tag_name"))
+          tag = _pick(manual_tag, os.getenv("RELEASE_TAG"), latest_release.get("tag_name"))
           title = _pick(
               os.getenv("MANUAL_TITLE"),
               os.getenv("RELEASE_NAME"),
