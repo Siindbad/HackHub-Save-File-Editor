@@ -1,0 +1,151 @@
+name: Discord Bug Report Forum Notify
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to post (optional for manual tests)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send bug issue to Discord forum
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_BUGREPORT_WEBHOOK }}
+          FORUM_TAG_IDS: ${{ vars.DISCORD_BUGREPORT_FORUM_TAG_IDS }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_USER: ${{ github.event.issue.user.login }}
+          ISSUE_LABELS_JSON: ${{ toJson(github.event.issue.labels) }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANUAL_ISSUE_NUMBER: ${{ inputs.issue_number }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          import urllib.error
+          import urllib.request
+
+          webhook = (os.getenv("DISCORD_WEBHOOK_URL") or "").strip()
+          if not webhook:
+              print("DISCORD_BUGREPORT_WEBHOOK is not set. Skipping.")
+              sys.exit(0)
+
+          event_name = (os.getenv("EVENT_NAME") or "").strip()
+          issue_title = (os.getenv("ISSUE_TITLE") or "").strip()
+          issue_body = (os.getenv("ISSUE_BODY") or "").strip()
+          issue_url = (os.getenv("ISSUE_URL") or "").strip()
+          issue_number = (os.getenv("ISSUE_NUMBER") or "").strip()
+          issue_user = (os.getenv("ISSUE_USER") or "").strip()
+          labels_json = (os.getenv("ISSUE_LABELS_JSON") or "").strip()
+          repo = (os.getenv("REPO") or "").strip()
+          manual_issue_number = (os.getenv("MANUAL_ISSUE_NUMBER") or "").strip()
+          gh_token = (os.getenv("GH_TOKEN") or "").strip()
+
+          def parse_tag_ids(raw):
+              parts = re.split(r"[,\s]+", str(raw or "").strip())
+              out, seen = [], set()
+              for item in parts:
+                  token = str(item or "").strip()
+                  if token.isdigit() and token not in seen:
+                      seen.add(token)
+                      out.append(token)
+              return out
+
+          def to_short(text, limit):
+              data = str(text or "").strip()
+              if len(data) <= limit:
+                  return data
+              return data[: limit - 3] + "..."
+
+          # Manual run can target a specific existing issue for testing.
+          if event_name == "workflow_dispatch" and manual_issue_number and repo and gh_token:
+              api_url = f"https://api.github.com/repos/{repo}/issues/{manual_issue_number}"
+              req = urllib.request.Request(
+                  api_url,
+                  headers={
+                      "Authorization": f"Bearer {gh_token}",
+                      "Accept": "application/vnd.github+json",
+                      "User-Agent": "hackhub-bugreport-discord-notify",
+                  },
+                  method="GET",
+              )
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  payload = json.loads((resp.read() or b"{}").decode("utf-8", "replace"))
+              issue_title = str(payload.get("title", "")).strip()
+              issue_body = str(payload.get("body", "")).strip()
+              issue_url = str(payload.get("html_url", "")).strip()
+              issue_number = str(payload.get("number", "")).strip()
+              user_obj = payload.get("user") if isinstance(payload, dict) else {}
+              issue_user = str((user_obj or {}).get("login", "")).strip()
+              labels_json = json.dumps(payload.get("labels", []))
+
+          labels = []
+          try:
+              raw = json.loads(labels_json) if labels_json else []
+              if isinstance(raw, list):
+                  labels = [str((item or {}).get("name", "")).strip().lower() for item in raw if isinstance(item, dict)]
+          except Exception:
+              labels = []
+
+          # Keep noise low: only post bug-labeled issues.
+          is_bug = ("bug" in labels) or ("in-app-report" in labels)
+          if not is_bug:
+              print("Issue is not labeled bug/in-app-report. Skipping Discord forum notify.")
+              sys.exit(0)
+
+          thread_name = f"Bug Report #{issue_number}: {issue_title}".strip()
+          if len(thread_name) > 100:
+              thread_name = thread_name[:97] + "..."
+
+          body_text = to_short(issue_body or "(no details provided)", 1400)
+          embed = {
+              "title": to_short(issue_title or f"Bug Report #{issue_number}", 250),
+              "description": body_text,
+              "url": issue_url,
+              "color": 757408,
+              "fields": [
+                  {"name": "Issue", "value": issue_url or "N/A", "inline": False},
+                  {"name": "Reporter", "value": issue_user or "unknown", "inline": True},
+                  {"name": "Labels", "value": ", ".join(labels) if labels else "none", "inline": True},
+              ],
+          }
+
+          payload = {
+              "thread_name": thread_name or "Bug Report",
+              "embeds": [embed],
+              "allowed_mentions": {"parse": []},
+          }
+          tag_ids = parse_tag_ids(os.getenv("FORUM_TAG_IDS"))
+          if tag_ids:
+              payload["applied_tags"] = tag_ids
+
+          req = urllib.request.Request(
+              webhook,
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "Accept": "application/json",
+                  "User-Agent": "hackhub-bugreport-discord-notify",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              print(f"Discord forum notify sent (status={resp.status}).")
+          PY
