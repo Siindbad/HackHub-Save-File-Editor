@@ -952,12 +952,7 @@ jobs:
         shell: powershell
         run: |
           python source/tools/validate_security_snapshot_sync.py --report dist/security-report.txt --security-md SECURITY.md --version "${{ steps.vars.outputs.version }}"
-      - name: Install Cosign (hosted runners)
-        if: ${{ runner.environment == 'github-hosted' }}
-        uses: sigstore/cosign-installer@v3
-
-      - name: Install Cosign (self-hosted runners)
-        if: ${{ runner.environment == 'self-hosted' }}
+      - name: Install Cosign (Windows native)
         shell: powershell
         run: |
           $version = "v2.5.2"
@@ -971,6 +966,11 @@ jobs:
           }
           Add-Content -Path $env:GITHUB_PATH -Value $binDir
           Write-Host "Installed cosign to $exePath"
+
+      - name: Verify Cosign
+        shell: powershell
+        run: |
+          cosign version
 
       - name: Sigstore keyless sign artifacts
         shell: powershell
