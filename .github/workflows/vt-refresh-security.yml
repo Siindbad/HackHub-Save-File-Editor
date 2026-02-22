@@ -50,6 +50,7 @@ jobs:
           "release_version=$($resolvedTag.TrimStart('v'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Run strict VT check
+        id: vtcheck
         shell: powershell
         env:
           VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
@@ -62,50 +63,63 @@ jobs:
           $raw = & python source/tools/validate_virustotal.py --file $artifact --allow-upload --strict --fail-on-suspicious --wait-seconds $wait 2>&1
           $raw | Tee-Object -FilePath dist/vt-refresh.log
           if ($LASTEXITCODE -ne 0) { throw "VirusTotal strict gate failed." }
+          $summaryLine = ($raw | Where-Object { "$_".Contains("VirusTotal summary:") } | Select-Object -Last 1).ToString()
+          $permalinkLine = ($raw | Where-Object { "$_".Contains("VirusTotal permalink:") } | Select-Object -Last 1).ToString()
+          if ([string]::IsNullOrWhiteSpace($summaryLine)) { throw "Unable to parse VirusTotal summary." }
+          $payload = $summaryLine.Substring($summaryLine.IndexOf(":") + 1)
+          $map = @{}
+          foreach ($part in $payload.Split(",")) {
+            if ($part -notmatch "=") { continue }
+            $kv = $part.Split("=", 2)
+            $k = $kv[0].Trim()
+            $v = $kv[1].Trim()
+            if (-not [string]::IsNullOrWhiteSpace($k)) { $map[$k] = $v }
+          }
+          $vtPermalink = ""
+          if (-not [string]::IsNullOrWhiteSpace($permalinkLine) -and $permalinkLine.Contains(":")) {
+            $vtPermalink = $permalinkLine.Substring($permalinkLine.IndexOf(":") + 1).Trim()
+          }
+          "status=$($map['status'])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "source=$($map['source'])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sha256=$($map['sha256'])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "malicious=$($map['malicious'])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "suspicious=$($map['suspicious'])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "harmless=$($map['harmless'])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "undetected=$($map['undetected'])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "timeout=$($map['timeout'])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "permalink=$vtPermalink" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Inject VT results into security report
         shell: powershell
+        env:
+          VT_STATUS: ${{ steps.vtcheck.outputs.status }}
+          VT_SOURCE: ${{ steps.vtcheck.outputs.source }}
+          VT_SHA256: ${{ steps.vtcheck.outputs.sha256 }}
+          VT_MALICIOUS: ${{ steps.vtcheck.outputs.malicious }}
+          VT_SUSPICIOUS: ${{ steps.vtcheck.outputs.suspicious }}
+          VT_HARMLESS: ${{ steps.vtcheck.outputs.harmless }}
+          VT_UNDETECTED: ${{ steps.vtcheck.outputs.undetected }}
+          VT_TIMEOUT: ${{ steps.vtcheck.outputs.timeout }}
+          VT_PERMALINK: ${{ steps.vtcheck.outputs.permalink }}
         run: |
           @'
-          import re
+          import os
           from pathlib import Path
 
           report_path = Path("dist/security-report.txt")
-          log_path = Path("dist/vt-refresh.log")
           if not report_path.exists():
               raise SystemExit("dist/security-report.txt not found.")
-          if not log_path.exists():
-              raise SystemExit("dist/vt-refresh.log not found.")
-
-          summary = ""
-          permalink = ""
-          for raw in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
-              line = raw.strip()
-              if line.startswith("VirusTotal summary:"):
-                  summary = line
-              elif line.startswith("VirusTotal permalink:"):
-                  permalink = line.split(":", 1)[1].strip()
-          if not summary:
-              raise SystemExit("Unable to parse VirusTotal summary from vt-refresh.log.")
-
-          data = {}
-          payload = summary.split(":", 1)[1]
-          for part in payload.split(","):
-              if "=" not in part:
-                  continue
-              k, v = part.split("=", 1)
-              data[k.strip()] = v.strip()
 
           vt_map = {
-              "virustotal_status": data.get("status", "UNKNOWN"),
-              "virustotal_source": data.get("source", "unknown"),
-              "virustotal_sha256": data.get("sha256", ""),
-              "virustotal_malicious": data.get("malicious", "0"),
-              "virustotal_suspicious": data.get("suspicious", "0"),
-              "virustotal_harmless": data.get("harmless", "0"),
-              "virustotal_undetected": data.get("undetected", "0"),
-              "virustotal_timeout": data.get("timeout", "false"),
-              "virustotal_permalink": permalink,
+              "virustotal_status": os.getenv("VT_STATUS", "UNKNOWN"),
+              "virustotal_source": os.getenv("VT_SOURCE", "unknown"),
+              "virustotal_sha256": os.getenv("VT_SHA256", ""),
+              "virustotal_malicious": os.getenv("VT_MALICIOUS", "0"),
+              "virustotal_suspicious": os.getenv("VT_SUSPICIOUS", "0"),
+              "virustotal_harmless": os.getenv("VT_HARMLESS", "0"),
+              "virustotal_undetected": os.getenv("VT_UNDETECTED", "0"),
+              "virustotal_timeout": os.getenv("VT_TIMEOUT", "false"),
+              "virustotal_permalink": os.getenv("VT_PERMALINK", ""),
           }
 
           lines = report_path.read_text(encoding="utf-8", errors="replace").splitlines()
