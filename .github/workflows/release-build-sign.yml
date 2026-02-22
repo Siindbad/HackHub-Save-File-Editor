@@ -95,10 +95,33 @@ jobs:
             Write-Host "Continuing release workflow with SKIPPED trufflehog status if binary unavailable."
           }
 
-      - name: Install Inno Setup
+      - name: Install Inno Setup (hosted runners)
+        if: ${{ runner.environment == 'github-hosted' }}
         shell: powershell
         run: |
           choco install innosetup --no-progress -y
+
+      - name: Validate Inno Setup (self-hosted runners)
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: |
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+            )
+            foreach ($candidate in $candidates) {
+              if (Test-Path $candidate) {
+                $iscc = @{ Source = $candidate }
+                break
+              }
+            }
+          }
+          if (-not $iscc) {
+            throw "ISCC.exe not found on self-hosted runner. Install Inno Setup 6."
+          }
+          Write-Host "Using ISCC: $($iscc.Source)"
 
       - name: Build with PyInstaller
         working-directory: source
