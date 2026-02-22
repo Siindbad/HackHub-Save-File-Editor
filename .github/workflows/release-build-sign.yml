@@ -195,8 +195,8 @@ jobs:
           tag_name: ${{ steps.vars.outputs.tag }}
           name: Sins Editor ${{ steps.vars.outputs.version }} x64
           body_path: dist/release-body.md
-          append_body: true
-          generate_release_notes: true
+          append_body: false
+          generate_release_notes: false
           files: |
             dist/sins_editor.exe
             dist/sins_editor-onedir.zip
