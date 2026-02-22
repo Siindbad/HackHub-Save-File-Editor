@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SIINDBAD Logo FX // GPU Concepts</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Exo+2:wght@500;700&display=swap');
+
+    :root {
+      --bg0: #040a13;
+      --bg1: #09172a;
+      --ink: #d7edff;
+      --muted: #88aac7;
+      --edge: #2b5a7c;
+      --edge-soft: #15354e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 700px at 84% -30%, #2b86ce32, transparent 60%),
+        radial-gradient(900px 620px at 8% -25%, #52e2ff1f, transparent 58%),
+        linear-gradient(180deg, var(--bg1), var(--bg0));
+      font-family: 'Exo 2', 'Segoe UI', sans-serif;
+    }
+
+    .wrap {
+      width: min(1380px, 96vw);
+      margin: 18px auto 34px;
+    }
+
+    .hero {
+      border: 1px solid var(--edge);
+      box-shadow: 0 0 0 1px var(--edge-soft) inset;
+      background: linear-gradient(180deg, #0b1e31, #081526);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-family: 'Orbitron', 'Exo 2', sans-serif;
+      font-size: clamp(18px, 2.2vw, 24px);
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .card {
+      border: 1px solid var(--edge);
+      box-shadow: 0 0 0 1px var(--edge-soft) inset;
+      background: linear-gradient(180deg, #061320, #050e18);
+      padding: 9px;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .meta h2 {
+      margin: 0;
+      font-family: 'Orbitron', 'Exo 2', sans-serif;
+      font-size: 14px;
+      letter-spacing: 0.32px;
+      font-weight: 600;
+    }
+
+    .tag {
+      border: 1px solid #3f6b8e;
+      color: #b6d2e8;
+      font-size: 11px;
+      letter-spacing: 0.22px;
+      padding: 2px 8px;
+      white-space: nowrap;
+    }
+
+    .scene {
+      position: relative;
+      border: 1px solid #2f5878;
+      background: #06101a;
+      overflow: hidden;
+      min-height: 108px;
+      aspect-ratio: 999 / 112;
+    }
+
+    .scene img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      display: block;
+      filter: contrast(1.03) saturate(1.05);
+    }
+
+    canvas.fx {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+
+    .note {
+      margin-top: 6px;
+      color: #87a9c2;
+      font-size: 12px;
+    }
+
+    .status {
+      margin-top: 2px;
+      color: #72a8cc;
+      font-size: 11px;
+      letter-spacing: 0.24px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>SIINDBAD Logo // GPU Loop Concepts</h1>
+      <p>WebGL overlays (GPU rendered), continuous loops, no cooldown. Built for cleaner motion evaluation.</p>
+    </section>
+    <section class="grid" id="grid"></section>
+  </div>
+
+  <template id="card-template">
+    <article class="card">
+      <div class="meta">
+        <h2></h2>
+        <span class="tag"></span>
+      </div>
+      <div class="scene">
+        <img src="../logo2.png" alt="SIINDBAD logo banner" loading="eager" />
+        <canvas class="fx"></canvas>
+      </div>
+      <div class="note"></div>
+      <div class="status"></div>
+    </article>
+  </template>
+
+  <script>
+    const concepts = [
+      {
+        title: "G1: Signal Core",
+        tag: "Balanced",
+        note: "Clean baseline with moderate ring cadence and controlled eye scanners.",
+        p: {
+          colorA: [0.39, 0.82, 1.0],
+          colorB: [0.90, 0.98, 1.0],
+          scanSpeed: 0.22,
+          scanWidth: 0.052,
+          ringSpeed: 0.24,
+          ringGain: 0.72,
+          blockSpeed: 0.8,
+          blockGain: 0.62,
+          eyeSpeed: 0.44,
+          eyeGain: 0.68,
+          hoodGain: 0.46,
+          earSpeed: 0.36,
+          earGain: 0.44,
+          noiseGain: 0.12
+        }
+      },
+      {
+        title: "G2: Neon Sweep",
+        tag: "Sharper",
+        note: "Crisper scan line and higher subtitle telemetry for a brighter cyber pulse.",
+        p: {
+          colorA: [0.44, 0.89, 1.0],
+          colorB: [0.94, 1.0, 1.0],
+          scanSpeed: 0.26,
+          scanWidth: 0.047,
+          ringSpeed: 0.29,
+          ringGain: 0.80,
+          blockSpeed: 0.95,
+          blockGain: 0.70,
+          eyeSpeed: 0.52,
+          eyeGain: 0.76,
+          hoodGain: 0.50,
+          earSpeed: 0.42,
+          earGain: 0.52,
+          noiseGain: 0.14
+        }
+      },
+      {
+        title: "G3: Ring Runner",
+        tag: "Mechanical",
+        note: "Emphasis on circular segment travel and headphone arc sweeps.",
+        p: {
+          colorA: [0.33, 0.77, 0.98],
+          colorB: [0.86, 0.97, 1.0],
+          scanSpeed: 0.20,
+          scanWidth: 0.056,
+          ringSpeed: 0.36,
+          ringGain: 0.95,
+          blockSpeed: 0.82,
+          blockGain: 0.58,
+          eyeSpeed: 0.40,
+          eyeGain: 0.60,
+          hoodGain: 0.44,
+          earSpeed: 0.56,
+          earGain: 0.62,
+          noiseGain: 0.10
+        }
+      },
+      {
+        title: "G4: Eye Grid",
+        tag: "Portrait",
+        note: "More portrait-side activity with stronger eye vectors and hood trace.",
+        p: {
+          colorA: [0.41, 0.84, 1.0],
+          colorB: [0.92, 0.99, 1.0],
+          scanSpeed: 0.23,
+          scanWidth: 0.048,
+          ringSpeed: 0.25,
+          ringGain: 0.68,
+          blockSpeed: 0.84,
+          blockGain: 0.56,
+          eyeSpeed: 0.62,
+          eyeGain: 0.88,
+          hoodGain: 0.66,
+          earSpeed: 0.39,
+          earGain: 0.48,
+          noiseGain: 0.16
+        }
+      },
+      {
+        title: "G5: Stealth Vector",
+        tag: "Low-noise",
+        note: "Subtle but precise motion for premium, less-aggressive presentation.",
+        p: {
+          colorA: [0.34, 0.72, 0.92],
+          colorB: [0.80, 0.93, 0.99],
+          scanSpeed: 0.18,
+          scanWidth: 0.060,
+          ringSpeed: 0.19,
+          ringGain: 0.54,
+          blockSpeed: 0.72,
+          blockGain: 0.44,
+          eyeSpeed: 0.33,
+          eyeGain: 0.52,
+          hoodGain: 0.34,
+          earSpeed: 0.29,
+          earGain: 0.34,
+          noiseGain: 0.08
+        }
+      }
+    ];
+
+    const GEOM = {
+      sinMask: [0.052, 0.07, 0.244, 0.575],
+      ringC: [0.192, 0.45],
+      ringR: 0.171,
+      blocks: [0.102, 0.585, 0.255, 0.070], // x, y, totalW, h
+      eyeL: [0.740, 0.515],
+      eyeR: [0.914, 0.477],
+      earL: [0.726, 0.447],
+      earR: [0.930, 0.408]
+    };
+
+    const VS = `
+      attribute vec2 a_pos;
+      varying vec2 v_uv;
+      void main() {
+        v_uv = (a_pos + 1.0) * 0.5;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+      }
+    `;
+
+    const FS = `
+      precision mediump float;
+      varying vec2 v_uv;
+      uniform vec2 u_res;
+      uniform float u_time;
+      uniform vec3 u_colorA;
+      uniform vec3 u_colorB;
+      uniform vec4 u_scanMask;
+      uniform vec2 u_ringC;
+      uniform float u_ringR;
+      uniform vec4 u_blocks;
+      uniform vec2 u_eyeL;
+      uniform vec2 u_eyeR;
+      uniform vec2 u_earL;
+      uniform vec2 u_earR;
+      uniform float u_scanSpeed;
+      uniform float u_scanWidth;
+      uniform float u_ringSpeed;
+      uniform float u_ringGain;
+      uniform float u_blockSpeed;
+      uniform float u_blockGain;
+      uniform float u_eyeSpeed;
+      uniform float u_eyeGain;
+      uniform float u_hoodGain;
+      uniform float u_earSpeed;
+      uniform float u_earGain;
+      uniform float u_noiseGain;
+
+      float rectSoft(vec2 p, vec2 c, vec2 b, float blur) {
+        vec2 d = abs(p - c) - b;
+        float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+        return 1.0 - smoothstep(0.0, blur, dist);
+      }
+
+      float segSoft(vec2 p, vec2 a, vec2 b, float w) {
+        vec2 pa = p - a;
+        vec2 ba = b - a;
+        float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+        float d = length(pa - ba * h);
+        return 1.0 - smoothstep(w, w + 0.004, d);
+      }
+
+      float ringSoft(vec2 p, vec2 c, float r, float w) {
+        float d = abs(length(p - c) - r);
+        return 1.0 - smoothstep(w, w + 0.004, d);
+      }
+
+      float ellipseMask(vec2 p, vec2 c, vec2 r) {
+        vec2 q = (p - c) / r;
+        float d = length(q);
+        return 1.0 - smoothstep(1.0, 1.12, d);
+      }
+
+      float ellipseRing(vec2 p, vec2 c, vec2 r, float w) {
+        vec2 q = (p - c) / r;
+        float d = abs(length(q) - 1.0);
+        return 1.0 - smoothstep(w, w + 0.06, d);
+      }
+
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+      }
+
+      float eyeFx(vec2 uv, vec2 c, float t, float speed) {
+        vec2 rr = vec2(0.016, 0.011);
+        float m = ellipseMask(uv, c, rr);
+        float vy = c.y + sin(t * 6.283 * speed + c.x * 9.0) * rr.y * 0.62;
+        float vx = c.x + sin(t * 6.283 * (speed * 0.68) + c.y * 17.0) * rr.x * 0.62;
+        float hLine = (1.0 - smoothstep(0.0008, 0.0029, abs(uv.y - vy))) * m;
+        float vLine = (1.0 - smoothstep(0.0008, 0.0029, abs(uv.x - vx))) * m * 0.76;
+        float rim = ellipseRing(uv, c, rr * vec2(1.08, 1.06), 0.035) * 0.44;
+        float blink = 0.65 + 0.35 * sin(t * 9.0 + c.x * 14.0);
+        return (hLine * blink + vLine + rim);
+      }
+
+      void main() {
+        vec2 uv = v_uv;
+        float t = u_time;
+        float fx = 0.0;
+
+        // SIN-region vertical scanner
+        vec2 smPos = vec2(u_scanMask.x, u_scanMask.y);
+        vec2 smSize = vec2(u_scanMask.z, u_scanMask.w);
+        vec2 smC = smPos + smSize * 0.5;
+        float inSm = rectSoft(uv, smC, smSize * 0.5, 0.0015);
+        float scanY = smPos.y + fract(t * u_scanSpeed) * smSize.y;
+        float band = exp(-pow((uv.y - scanY) / max(0.0001, u_scanWidth), 2.0));
+        float scanLines = 0.55 + 0.45 * sin((uv.y * 420.0) - t * 18.0);
+        fx += inSm * band * scanLines * 0.95;
+
+        // Segmented ring behind SIN
+        float ring = ringSoft(uv, u_ringC, u_ringR, 0.004);
+        float a = atan(uv.y - u_ringC.y, uv.x - u_ringC.x);
+        float seg = 0.5 + 0.5 * sin(a * 8.0 - t * 6.283 * u_ringSpeed);
+        fx += ring * mix(0.18, 1.0, seg) * u_ringGain;
+
+        // Under-SIN 5 blocks, sequential pulse
+        float bx = u_blocks.x;
+        float by = u_blocks.y;
+        float btot = u_blocks.z;
+        float bh = u_blocks.w;
+        float gap = 0.010;
+        float bw = (btot - gap * 4.0) / 5.0;
+        float seq = fract(t * u_blockSpeed) * 5.0;
+        for (int i = 0; i < 5; i++) {
+          float fi = float(i);
+          float cx = bx + fi * (bw + gap) + bw * 0.5;
+          float cy = by + bh * 0.5;
+          float b = rectSoft(uv, vec2(cx, cy), vec2(bw * 0.5, bh * 0.5), 0.0015);
+          float pulse = exp(-abs(seq - fi) * 1.6);
+          fx += b * (0.14 + pulse * 0.72 * u_blockGain);
+        }
+
+        // Eyes
+        fx += eyeFx(uv, u_eyeL, t, u_eyeSpeed) * u_eyeGain;
+        fx += eyeFx(uv, u_eyeR, t, u_eyeSpeed) * u_eyeGain;
+
+        // Hood seam traces
+        float hood = 0.0;
+        hood += segSoft(uv, vec2(0.664, 0.90), vec2(0.718, 0.29), 0.0022);
+        hood += segSoft(uv, vec2(0.718, 0.29), vec2(0.898, 0.27), 0.0022);
+        hood += segSoft(uv, vec2(0.898, 0.27), vec2(0.975, 0.91), 0.0022);
+        hood += segSoft(uv, vec2(0.690, 0.88), vec2(0.891, 0.32), 0.0019) * 0.85;
+        float hoodTravel = 0.55 + 0.45 * sin(t * 5.2 + uv.y * 24.0);
+        fx += hood * hoodTravel * u_hoodGain;
+
+        // Headphone arc sweeps
+        vec2 ears[2];
+        ears[0] = u_earL;
+        ears[1] = u_earR;
+        for (int i = 0; i < 2; i++) {
+          vec2 c = ears[i];
+          float rr = 0.055;
+          float rr2 = 0.038;
+          float earRing = ringSoft(uv, c, rr, 0.0035) * 0.52;
+          earRing += ringSoft(uv, c, rr2, 0.0030) * 0.34;
+          float ang = atan(uv.y - c.y, uv.x - c.x);
+          float sweep = pow(max(0.0, cos(ang - t * 6.283 * u_earSpeed)), 8.0);
+          fx += (earRing + ringSoft(uv, c, rr * 0.78, 0.0030) * sweep) * u_earGain;
+        }
+
+        // Subtle digital grain
+        float n = hash(uv * u_res * 0.17 + t * 0.9) - 0.5;
+        fx += n * 0.08 * u_noiseGain;
+
+        float aOut = clamp(fx, 0.0, 0.88);
+        vec3 tint = mix(u_colorA, u_colorB, clamp(fx * 0.72, 0.0, 1.0));
+        gl_FragColor = vec4(tint * aOut, aOut); // premultiplied alpha
+      }
+    `;
+
+    function createShader(gl, type, source) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, source);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        const msg = gl.getShaderInfoLog(sh);
+        gl.deleteShader(sh);
+        throw new Error(msg || "shader compile failed");
+      }
+      return sh;
+    }
+
+    function createProgram(gl, vs, fs) {
+      const p = gl.createProgram();
+      gl.attachShader(p, createShader(gl, gl.VERTEX_SHADER, vs));
+      gl.attachShader(p, createShader(gl, gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        const msg = gl.getProgramInfoLog(p);
+        gl.deleteProgram(p);
+        throw new Error(msg || "program link failed");
+      }
+      return p;
+    }
+
+    class GpuOverlay {
+      constructor(canvas, statusEl, params) {
+        this.canvas = canvas;
+        this.statusEl = statusEl;
+        this.params = params;
+        this.raf = 0;
+        this.start = performance.now();
+        this.gl = null;
+        this.program = null;
+        this.loc = {};
+        this.ro = null;
+        this._init();
+      }
+
+      _init() {
+        const gl = this.canvas.getContext("webgl", {
+          alpha: true,
+          antialias: true,
+          premultipliedAlpha: true,
+          powerPreference: "high-performance",
+          preserveDrawingBuffer: false
+        });
+        if (!gl) {
+          this.statusEl.textContent = "WEBGL NOT AVAILABLE";
+          return;
+        }
+
+        this.gl = gl;
+        this.program = createProgram(gl, VS, FS);
+        gl.useProgram(this.program);
+
+        const quad = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+          gl.STATIC_DRAW
+        );
+
+        const aPos = gl.getAttribLocation(this.program, "a_pos");
+        gl.enableVertexAttribArray(aPos);
+        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+        const uniformNames = [
+          "u_res", "u_time", "u_colorA", "u_colorB", "u_scanMask", "u_ringC", "u_ringR",
+          "u_blocks", "u_eyeL", "u_eyeR", "u_earL", "u_earR", "u_scanSpeed", "u_scanWidth",
+          "u_ringSpeed", "u_ringGain", "u_blockSpeed", "u_blockGain", "u_eyeSpeed", "u_eyeGain",
+          "u_hoodGain", "u_earSpeed", "u_earGain", "u_noiseGain"
+        ];
+        for (const n of uniformNames) this.loc[n] = gl.getUniformLocation(this.program, n);
+
+        gl.uniform4fv(this.loc.u_scanMask, GEOM.sinMask);
+        gl.uniform2fv(this.loc.u_ringC, GEOM.ringC);
+        gl.uniform1f(this.loc.u_ringR, GEOM.ringR);
+        gl.uniform4fv(this.loc.u_blocks, GEOM.blocks);
+        gl.uniform2fv(this.loc.u_eyeL, GEOM.eyeL);
+        gl.uniform2fv(this.loc.u_eyeR, GEOM.eyeR);
+        gl.uniform2fv(this.loc.u_earL, GEOM.earL);
+        gl.uniform2fv(this.loc.u_earR, GEOM.earR);
+        gl.uniform3fv(this.loc.u_colorA, this.params.colorA);
+        gl.uniform3fv(this.loc.u_colorB, this.params.colorB);
+        gl.uniform1f(this.loc.u_scanSpeed, this.params.scanSpeed);
+        gl.uniform1f(this.loc.u_scanWidth, this.params.scanWidth);
+        gl.uniform1f(this.loc.u_ringSpeed, this.params.ringSpeed);
+        gl.uniform1f(this.loc.u_ringGain, this.params.ringGain);
+        gl.uniform1f(this.loc.u_blockSpeed, this.params.blockSpeed);
+        gl.uniform1f(this.loc.u_blockGain, this.params.blockGain);
+        gl.uniform1f(this.loc.u_eyeSpeed, this.params.eyeSpeed);
+        gl.uniform1f(this.loc.u_eyeGain, this.params.eyeGain);
+        gl.uniform1f(this.loc.u_hoodGain, this.params.hoodGain);
+        gl.uniform1f(this.loc.u_earSpeed, this.params.earSpeed);
+        gl.uniform1f(this.loc.u_earGain, this.params.earGain);
+        gl.uniform1f(this.loc.u_noiseGain, this.params.noiseGain);
+
+        this._resize();
+        if (typeof ResizeObserver === "function") {
+          this.ro = new ResizeObserver(() => this._resize());
+          this.ro.observe(this.canvas.parentElement);
+        } else {
+          window.addEventListener("resize", this._boundResize = () => this._resize());
+        }
+        this.statusEl.textContent = "GPU LOOP ACTIVE";
+        this._tick();
+      }
+
+      _resize() {
+        if (!this.gl) return;
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const r = this.canvas.getBoundingClientRect();
+        const w = Math.max(2, Math.floor(r.width * dpr));
+        const h = Math.max(2, Math.floor(r.height * dpr));
+        if (this.canvas.width !== w || this.canvas.height !== h) {
+          this.canvas.width = w;
+          this.canvas.height = h;
+        }
+      }
+
+      _tick = () => {
+        if (!this.gl) return;
+        const gl = this.gl;
+        const t = (performance.now() - this.start) * 0.001;
+
+        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.uniform2f(this.loc.u_res, this.canvas.width, this.canvas.height);
+        gl.uniform1f(this.loc.u_time, t);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+        this.raf = requestAnimationFrame(this._tick);
+      };
+
+      dispose() {
+        cancelAnimationFrame(this.raf);
+        if (this.ro) this.ro.disconnect();
+        if (this._boundResize) window.removeEventListener("resize", this._boundResize);
+      }
+    }
+
+    const template = document.getElementById("card-template");
+    const grid = document.getElementById("grid");
+    const disposers = [];
+
+    for (const c of concepts) {
+      const card = template.content.firstElementChild.cloneNode(true);
+      card.querySelector("h2").textContent = c.title;
+      card.querySelector(".tag").textContent = c.tag;
+      card.querySelector(".note").textContent = c.note;
+      grid.appendChild(card);
+
+      const canvas = card.querySelector("canvas.fx");
+      const status = card.querySelector(".status");
+      try {
+        const overlay = new GpuOverlay(canvas, status, c.p);
+        disposers.push(() => overlay.dispose());
+      } catch (err) {
+        status.textContent = "GPU INIT ERROR";
+        console.error(err);
+      }
+    }
+
+    window.addEventListener("beforeunload", () => {
+      for (const d of disposers) {
+        try { d(); } catch (_) {}
+      }
+    });
+  </script>
+</body>
+</html>

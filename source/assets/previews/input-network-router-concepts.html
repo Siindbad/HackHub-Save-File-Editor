@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>INPUT Network Router Concepts - SIN + KAMUE</title>
+  <style>
+    :root {
+      --text: #d8ecff;
+      --muted: #90acc7;
+      --key: #f2ad5e;
+      --value: #62d67a;
+      --sin-line: #295478;
+      --kam-line: #5f3d86;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 10% -15%, #14304d 0%, #050b14 56%),
+        radial-gradient(900px 500px at 95% 0%, #2b1741 0%, rgba(5, 11, 20, 0) 45%);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font: 700 20px/1.2 "Tektur", "Segoe UI", sans-serif;
+      letter-spacing: .4px;
+    }
+    .sub {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .concepts { display: grid; gap: 16px; }
+    .concept {
+      border: 1px solid #23415d;
+      border-radius: 11px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(9, 21, 35, .82), rgba(8, 12, 21, .9));
+    }
+    .concept-head {
+      padding: 9px 12px;
+      border-bottom: 1px solid rgba(120, 170, 218, .2);
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      font: 700 11px/1 "Tektur", "Segoe UI", sans-serif;
+      letter-spacing: .42px;
+      color: #bddcff;
+      text-transform: uppercase;
+    }
+    .pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(360px, 1fr));
+      gap: 12px;
+      padding: 10px;
+    }
+    .theme {
+      border: 1px solid #2a4966;
+      border-radius: 10px;
+      overflow: hidden;
+      min-width: 0;
+      background: rgba(6, 13, 21, .85);
+    }
+    .theme.sin { border-color: var(--sin-line); }
+    .theme.kamue { border-color: var(--kam-line); }
+    .theme-head {
+      padding: 8px 11px;
+      border-bottom: 1px solid rgba(120, 170, 218, .22);
+      font: 700 11px/1 "Tektur", "Segoe UI", sans-serif;
+      letter-spacing: .45px;
+    }
+    .theme.sin .theme-head {
+      color: #bfe0ff;
+      background: rgba(14, 39, 61, .45);
+    }
+    .theme.kamue .theme-head {
+      color: #e2cbff;
+      background: rgba(34, 18, 53, .48);
+      border-bottom-color: rgba(188, 151, 248, .26);
+    }
+
+    .name { color: var(--key); font-weight: 700; }
+    .meta { color: #9ab0c2; font-size: 11px; }
+    .theme.kamue .meta { color: #bbaed0; }
+    .readonly {
+      color: #c8d9e8;
+      font: 700 12px/1 "Segoe UI", Tahoma, sans-serif;
+    }
+    .theme.kamue .readonly { color: #dccff0; }
+    .label {
+      color: #59c9f7;
+      font: 700 11px/1 "Tektur", "Segoe UI", sans-serif;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+    }
+    .field {
+      width: 100%;
+      height: 26px;
+      border-radius: 5px;
+      border: 1px solid #2e8fd4;
+      background: rgba(2, 13, 23, .74);
+      color: var(--value);
+      font: 700 13px/1 "Segoe UI", Tahoma, sans-serif;
+      padding: 0 7px;
+      outline: none;
+    }
+    .theme.kamue .field {
+      border-color: #8a5bc4;
+      background: rgba(16, 9, 29, .78);
+      color: #70e58a;
+    }
+    .chip {
+      display: inline-block;
+      border: 1px solid #3d607d;
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin-right: 6px;
+      font: 700 10px/1 "Tektur", "Segoe UI", sans-serif;
+      color: #cae5fb;
+      background: rgba(14, 34, 52, .6);
+    }
+    .theme.kamue .chip {
+      border-color: #6f4c95;
+      color: #e5d5fb;
+      background: rgba(37, 20, 56, .58);
+    }
+
+    /* Concept 1: matrix (database-inspired) */
+    .c1-wrap { padding: 10px; }
+    .c1-table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    .c1-table th, .c1-table td {
+      border-bottom: 1px solid rgba(90, 132, 170, .22);
+      padding: 6px 5px;
+      white-space: nowrap;
+      text-align: center;
+      font-size: 12px;
+    }
+    .c1-table th:first-child, .c1-table td:first-child { text-align: left; }
+    .theme.kamue .c1-table th, .theme.kamue .c1-table td { border-bottom-color: rgba(134, 100, 184, .24); }
+    .c1-table th {
+      font: 700 10px/1 "Tektur", "Segoe UI", sans-serif;
+      text-transform: uppercase;
+      color: #b7d5ef;
+    }
+    .theme.kamue .c1-table th { color: #d8c0f3; }
+
+    /* Concept 2: rail cards (bank-inspired) */
+    .c2-rail { padding: 10px; display: grid; gap: 7px; }
+    .c2-row {
+      border: 1px solid rgba(86, 133, 175, .35);
+      border-radius: 7px;
+      padding: 7px;
+      display: grid;
+      grid-template-columns: 230px 1fr;
+      gap: 8px;
+      align-items: center;
+      background: rgba(6, 16, 28, .6);
+    }
+    .theme.kamue .c2-row {
+      border-color: rgba(141, 106, 192, .35);
+      background: rgba(17, 10, 28, .62);
+    }
+    .c2-edit {
+      display: grid;
+      gap: 5px;
+    }
+    .c2-head, .c2-values {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(72px, 1fr));
+      gap: 6px;
+      align-items: center;
+    }
+    .c2-head span {
+      color: #b7d5ef;
+      font: 700 10px/1 "Tektur", "Segoe UI", sans-serif;
+      text-transform: uppercase;
+      text-align: center;
+      letter-spacing: .25px;
+    }
+    .theme.kamue .c2-head span { color: #d8c0f3; }
+
+    /* Concept 3: split editor */
+    .c3-split {
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 8px;
+    }
+    .c3-list, .c3-panel {
+      border: 1px solid rgba(88, 134, 176, .35);
+      border-radius: 7px;
+      background: rgba(8, 20, 33, .6);
+      padding: 7px;
+    }
+    .theme.kamue .c3-list, .theme.kamue .c3-panel {
+      border-color: rgba(141, 106, 192, .35);
+      background: rgba(19, 11, 31, .62);
+    }
+    .c3-item {
+      border: 1px solid #315170;
+      border-radius: 6px;
+      padding: 6px;
+      margin-bottom: 6px;
+    }
+    .theme.kamue .c3-item { border-color: #6b4697; }
+    .c3-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(120px, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    /* Concept 4: tab blocks */
+    .c4-tabs { padding: 10px; display: grid; gap: 7px; }
+    .c4-router {
+      border: 1px solid rgba(89, 137, 177, .34);
+      border-radius: 7px;
+      overflow: hidden;
+    }
+    .theme.kamue .c4-router { border-color: rgba(143, 108, 194, .34); }
+    .c4-top {
+      padding: 6px 8px;
+      background: rgba(11, 28, 45, .62);
+      border-bottom: 1px solid rgba(89, 137, 177, .34);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .theme.kamue .c4-top {
+      background: rgba(30, 17, 47, .62);
+      border-bottom-color: rgba(143, 108, 194, .34);
+    }
+    .c4-body {
+      padding: 8px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(90px, 1fr));
+      gap: 6px;
+    }
+
+    /* Concept 5: port-centric rows */
+    .c5-wrap { padding: 10px; display: grid; gap: 6px; }
+    .c5-row {
+      border: 1px solid rgba(86, 133, 175, .34);
+      border-radius: 6px;
+      padding: 6px;
+      display: grid;
+      grid-template-columns: 180px 180px 1fr 140px;
+      gap: 6px;
+      align-items: center;
+      background: rgba(5, 16, 27, .6);
+    }
+    .theme.kamue .c5-row {
+      border-color: rgba(141, 106, 192, .34);
+      background: rgba(17, 10, 28, .62);
+    }
+    .c5-inline { display: grid; grid-template-columns: repeat(4, minmax(70px, 1fr)); gap: 6px; }
+
+    @media (max-width: 1080px) {
+      .pair { grid-template-columns: 1fr; }
+      .c2-row { grid-template-columns: 1fr; }
+      .c3-split { grid-template-columns: 1fr; }
+      .c4-body { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+      .c5-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>INPUT Network / ROUTER Concepts</h1>
+  <p class="sub">Focused on ROUTER only. Editable fields use input boxes: <code>external</code>, <code>internal</code>, <code>service</code>, <code>version</code>, <code>active</code>, <code>locked</code>, <code>accessable</code>. Read-only fields: <code>ip</code>, <code>lanIp</code>, <code>wifi name</code>, <code>wifi password</code>, <code>Signal</code>.</p>
+
+  <main class="concepts">
+    <section class="concept">
+      <header class="concept-head"><span>Concept 1 - Router Matrix</span><span>Database-inspired wide editor</span></header>
+      <div class="pair">
+        <article class="theme sin">
+          <header class="theme-head">SIINDBAD</header>
+          <div class="c1-wrap"><table class="c1-table"><thead><tr><th>Router</th><th>IP</th><th>LAN</th><th>External</th><th>Internal</th><th>Service</th><th>Version</th><th>Active</th><th>Locked</th><th>Accessable</th><th>WiFi</th><th>Password</th><th>Signal</th></tr></thead><tbody>
+            <tr><td class="name">Lou40</td><td class="readonly">48.127.75.59</td><td class="readonly">192.168.1.1</td><td><input class="field" value="80"></td><td><input class="field" value="80"></td><td><input class="field" value="http"></td><td><input class="field" value="1.0"></td><td><input class="field" value="true"></td><td><input class="field" value="true"></td><td><input class="field" value="true"></td><td class="readonly">Lou40</td><td class="readonly">brendan</td><td class="readonly">1</td></tr>
+            <tr><td class="name">Connie80</td><td class="readonly">107.82.89.255</td><td class="readonly">192.168.1.1</td><td><input class="field" value="80"></td><td><input class="field" value="80"></td><td><input class="field" value="http"></td><td><input class="field" value="1.0"></td><td><input class="field" value="true"></td><td><input class="field" value="true"></td><td><input class="field" value="false"></td><td class="readonly">Connie80</td><td class="readonly">farm</td><td class="readonly">3</td></tr>
+          </tbody></table></div>
+        </article>
+        <article class="theme kamue">
+          <header class="theme-head">KAMUE</header>
+          <div class="c1-wrap"><table class="c1-table"><thead><tr><th>Router</th><th>IP</th><th>LAN</th><th>External</th><th>Internal</th><th>Service</th><th>Version</th><th>Active</th><th>Locked</th><th>Accessable</th><th>WiFi</th><th>Password</th><th>Signal</th></tr></thead><tbody>
+            <tr><td class="name">Lou40</td><td class="readonly">48.127.75.59</td><td class="readonly">192.168.1.1</td><td><input class="field" value="80"></td><td><input class="field" value="80"></td><td><input class="field" value="http"></td><td><input class="field" value="1.0"></td><td><input class="field" value="true"></td><td><input class="field" value="true"></td><td><input class="field" value="true"></td><td class="readonly">Lou40</td><td class="readonly">brendan</td><td class="readonly">1</td></tr>
+            <tr><td class="name">Connie80</td><td class="readonly">107.82.89.255</td><td class="readonly">192.168.1.1</td><td><input class="field" value="80"></td><td><input class="field" value="80"></td><td><input class="field" value="http"></td><td><input class="field" value="1.0"></td><td><input class="field" value="true"></td><td><input class="field" value="true"></td><td><input class="field" value="false"></td><td class="readonly">Connie80</td><td class="readonly">farm</td><td class="readonly">3</td></tr>
+          </tbody></table></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="concept">
+      <header class="concept-head"><span>Concept 2 - Router Rail Cards</span><span>Bank-inspired compact rows</span></header>
+      <div class="pair">
+        <article class="theme sin"><header class="theme-head">SIINDBAD</header><div class="c2-rail">
+          <div class="c2-row"><div><div class="name">48.127.75.59</div><div class="meta">LAN: 192.168.1.1</div><div class="meta">WiFi: Lou40</div><div class="meta">Signal : 1</div><div class="meta">Pass : brendan</div></div><div class="c2-edit"><div class="c2-head"><span>External</span><span>Internal</span><span>Service</span><span>Version</span><span>Active</span><span>Locked</span><span>Accessable</span></div><div class="c2-values"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"><input class="field" value="true"><input class="field" value="true"><input class="field" value="true"></div></div></div>
+          <div class="c2-row"><div><div class="name">107.82.89.255</div><div class="meta">LAN: 192.168.1.1</div><div class="meta">WiFi: Connie80</div><div class="meta">Signal : 3</div><div class="meta">Pass : farm</div></div><div class="c2-edit"><div class="c2-head"><span>External</span><span>Internal</span><span>Service</span><span>Version</span><span>Active</span><span>Locked</span><span>Accessable</span></div><div class="c2-values"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"><input class="field" value="true"><input class="field" value="true"><input class="field" value="false"></div></div></div>
+        </div></article>
+        <article class="theme kamue"><header class="theme-head">KAMUE</header><div class="c2-rail">
+          <div class="c2-row"><div><div class="name">48.127.75.59</div><div class="meta">LAN: 192.168.1.1</div><div class="meta">WiFi: Lou40</div><div class="meta">Signal : 1</div><div class="meta">Pass : brendan</div></div><div class="c2-edit"><div class="c2-head"><span>External</span><span>Internal</span><span>Service</span><span>Version</span><span>Active</span><span>Locked</span><span>Accessable</span></div><div class="c2-values"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"><input class="field" value="true"><input class="field" value="true"><input class="field" value="true"></div></div></div>
+          <div class="c2-row"><div><div class="name">107.82.89.255</div><div class="meta">LAN: 192.168.1.1</div><div class="meta">WiFi: Connie80</div><div class="meta">Signal : 3</div><div class="meta">Pass : farm</div></div><div class="c2-edit"><div class="c2-head"><span>External</span><span>Internal</span><span>Service</span><span>Version</span><span>Active</span><span>Locked</span><span>Accessable</span></div><div class="c2-values"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"><input class="field" value="true"><input class="field" value="true"><input class="field" value="false"></div></div></div>
+        </div></article>
+      </div>
+    </section>
+
+    <section class="concept">
+      <header class="concept-head"><span>Concept 3 - Inspector Split</span><span>Fast pick + focused edit</span></header>
+      <div class="pair">
+        <article class="theme sin"><header class="theme-head">SIINDBAD</header><div class="c3-split"><div class="c3-list"><div class="c3-item"><div class="name">Lou40</div><div class="meta">48.127.75.59</div></div><div class="c3-item"><div class="name">Connie80</div><div class="meta">107.82.89.255</div></div></div><div class="c3-panel"><span class="chip">ip 48.127.75.59</span><span class="chip">lanIp 192.168.1.1</span><span class="chip">wifi Lou40</span><span class="chip">password brendan</span><span class="chip">Signal 1</span><div class="c3-form"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"><input class="field" value="true"><input class="field" value="true"><input class="field" value="true"></div></div></div></article>
+        <article class="theme kamue"><header class="theme-head">KAMUE</header><div class="c3-split"><div class="c3-list"><div class="c3-item"><div class="name">Lou40</div><div class="meta">48.127.75.59</div></div><div class="c3-item"><div class="name">Connie80</div><div class="meta">107.82.89.255</div></div></div><div class="c3-panel"><span class="chip">ip 48.127.75.59</span><span class="chip">lanIp 192.168.1.1</span><span class="chip">wifi Lou40</span><span class="chip">password brendan</span><span class="chip">Signal 1</span><div class="c3-form"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"><input class="field" value="true"><input class="field" value="true"><input class="field" value="true"></div></div></div></article>
+      </div>
+    </section>
+
+    <section class="concept">
+      <header class="concept-head"><span>Concept 4 - Tabbed Router Blocks</span><span>Slick framed router cards</span></header>
+      <div class="pair">
+        <article class="theme sin"><header class="theme-head">SIINDBAD</header><div class="c4-tabs"><div class="c4-router"><div class="c4-top"><div class="name">Lou40</div><div class="meta">48.127.75.59 | 192.168.1.1</div></div><div class="c4-body"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"><input class="field" value="true"><input class="field" value="true"><input class="field" value="true"><div class="readonly">Signal: 1</div></div></div></div></article>
+        <article class="theme kamue"><header class="theme-head">KAMUE</header><div class="c4-tabs"><div class="c4-router"><div class="c4-top"><div class="name">Lou40</div><div class="meta">48.127.75.59 | 192.168.1.1</div></div><div class="c4-body"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"><input class="field" value="true"><input class="field" value="true"><input class="field" value="true"><div class="readonly">Signal: 1</div></div></div></div></article>
+      </div>
+    </section>
+
+    <section class="concept">
+      <header class="concept-head"><span>Concept 5 - Port-Centric List</span><span>Organized for many port entries</span></header>
+      <div class="pair">
+        <article class="theme sin"><header class="theme-head">SIINDBAD</header><div class="c5-wrap"><div class="c5-row"><div><div class="name">48.127.75.59</div><div class="meta">WiFi Lou40</div></div><div><div class="readonly">LAN 192.168.1.1</div><div class="readonly">Signal 1</div></div><div class="c5-inline"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"></div><div><input class="field" value="true"><input class="field" value="true"><input class="field" value="true"></div></div></div></article>
+        <article class="theme kamue"><header class="theme-head">KAMUE</header><div class="c5-wrap"><div class="c5-row"><div><div class="name">48.127.75.59</div><div class="meta">WiFi Lou40</div></div><div><div class="readonly">LAN 192.168.1.1</div><div class="readonly">Signal 1</div></div><div class="c5-inline"><input class="field" value="80"><input class="field" value="80"><input class="field" value="http"><input class="field" value="1.0"></div><div><input class="field" value="true"><input class="field" value="true"><input class="field" value="true"></div></div></div></article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

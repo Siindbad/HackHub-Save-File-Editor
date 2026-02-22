@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HackHub Loader Concepts</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;700&family=Share+Tech+Mono&display=swap");
+
+    :root {
+      --bg-0: #050912;
+      --bg-1: #0c1424;
+      --ink: #d7e9ff;
+      --muted: #88a4c5;
+      --edge: #35557a;
+      --cyan: #6fe7ff;
+      --cyan-strong: #1ec9ff;
+      --violet: #ce8aff;
+      --violet-strong: #8a4bff;
+      --danger: #ff467a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 700px at 84% -24%, #4d6dff22, transparent 58%),
+        radial-gradient(900px 560px at 9% -28%, #1ee4ff17, transparent 56%),
+        linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      font-family: "Rajdhani", "Segoe UI", sans-serif;
+    }
+
+    .wrap {
+      width: min(1400px, 96vw);
+      margin: 20px auto 30px;
+    }
+
+    .hero {
+      border: 1px solid var(--edge);
+      background: linear-gradient(180deg, #0e1c32, #0b1628);
+      box-shadow: 0 0 0 1px #1b304a inset;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-family: "Orbitron", "Rajdhani", sans-serif;
+      font-size: clamp(18px, 2.2vw, 25px);
+      letter-spacing: 0.45px;
+      font-weight: 700;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      border: 1px solid #395a81;
+      box-shadow: 0 0 0 1px #1a2f49 inset;
+      background: linear-gradient(180deg, #06111f, #050c17);
+      padding: 10px;
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .meta h2 {
+      margin: 0;
+      font-family: "Orbitron", "Rajdhani", sans-serif;
+      font-size: 14px;
+      letter-spacing: 0.3px;
+      font-weight: 600;
+    }
+
+    .tag {
+      border: 1px solid #4f6f93;
+      color: #bad0e6;
+      padding: 2px 8px;
+      font-size: 11px;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+    }
+
+    .viewport {
+      position: relative;
+      border: 1px solid #2f4f70;
+      background:
+        radial-gradient(850px 200px at 80% -40%, #5f90ff18, transparent 70%),
+        linear-gradient(180deg, #071324, #050e1b);
+      min-height: 126px;
+      padding: 12px;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .viewport::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 2px,
+        #9ec8ff08 3px,
+        transparent 4px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .unit {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 8px;
+    }
+
+    .title-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #a4c2df;
+      font-size: 12px;
+      letter-spacing: 0.2px;
+      text-transform: uppercase;
+    }
+
+    .title-line .pct {
+      font-family: "Share Tech Mono", monospace;
+      color: #def4ff;
+    }
+
+    .statement {
+      border: 1px solid #315474;
+      background: #07172a;
+      min-height: 26px;
+      padding: 4px 8px;
+      color: #bce8ff;
+      font-family: "Share Tech Mono", monospace;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .statement .cursor {
+      margin-left: 2px;
+      animation: blink 0.9s steps(1, end) infinite;
+    }
+
+    .bar-track {
+      position: relative;
+      border: 1px solid #3e668a;
+      background: #081b2d;
+      height: 22px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: calc(var(--pct, 0) * 1%);
+      background: linear-gradient(90deg, #115178, #33c8ff);
+      box-shadow: 0 0 20px #2ed2ff33;
+      transition: width 100ms linear;
+    }
+
+    .bar-sweep {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 28%;
+      left: calc(var(--pct, 0) * 1% - 10%);
+      background: linear-gradient(90deg, transparent, #e9fbff66, transparent);
+      pointer-events: none;
+    }
+
+    .seg-overlay {
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          transparent 0 12px,
+          #03122399 12px 14px
+        );
+      mix-blend-mode: multiply;
+      pointer-events: none;
+    }
+
+    .violet .bar-track { border-color: #61448c; background: #160f26; }
+    .violet .bar-fill {
+      background: linear-gradient(90deg, #4f2a8e, #cf8dff);
+      box-shadow: 0 0 20px #b56bff42;
+    }
+
+    .dual-wrap {
+      display: grid;
+      gap: 6px;
+    }
+
+    .dual-row {
+      position: relative;
+      border: 1px solid #3d5f81;
+      background: #091a2b;
+      height: 14px;
+      overflow: hidden;
+    }
+
+    .dual-row .fill {
+      height: 100%;
+      width: calc(var(--pct, 0) * 1%);
+      transition: width 100ms linear;
+    }
+
+    .dual-row.siindbad .fill {
+      background: linear-gradient(90deg, #0d4465, #4edfff);
+    }
+
+    .dual-row.kamue .fill {
+      background: linear-gradient(90deg, #3b1f6f, #d08fff);
+    }
+
+    .dual-labels {
+      display: flex;
+      justify-content: space-between;
+      color: #9fb8d7;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.2px;
+    }
+
+    .ring-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .ring {
+      --deg: calc(var(--pct, 0) * 3.6deg);
+      width: 78px;
+      height: 78px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at center, #081423 51%, transparent 52%),
+        conic-gradient(#45d8ff var(--deg), #1b2f46 var(--deg));
+      border: 1px solid #3c5d7e;
+      box-shadow: 0 0 18px #2ad1ff29;
+      position: relative;
+      display: grid;
+      place-items: center;
+    }
+
+    .ring::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      border: 1px dashed #5f90b8;
+      opacity: 0.7;
+      animation: spin 6s linear infinite;
+    }
+
+    .ring-val {
+      font-family: "Share Tech Mono", monospace;
+      font-size: 14px;
+      color: #dcf5ff;
+      z-index: 1;
+    }
+
+    .terminal-box {
+      border: 1px solid #47364f;
+      background:
+        radial-gradient(120% 70% at 80% -30%, #8c4fff22, transparent 60%),
+        #0a0910;
+      padding: 8px 8px 10px;
+      min-height: 86px;
+      position: relative;
+    }
+
+    .terminal-feed {
+      font-family: "Share Tech Mono", monospace;
+      font-size: 11px;
+      color: #c9b7ff;
+      line-height: 1.4;
+      min-height: 44px;
+    }
+
+    .terminal-bar {
+      margin-top: 8px;
+      height: 4px;
+      background: #291f35;
+      border: 1px solid #5f4a75;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .terminal-bar > span {
+      display: block;
+      height: 100%;
+      width: calc(var(--pct, 0) * 1%);
+      background: linear-gradient(90deg, #8b4dff, #ff67d6);
+      box-shadow: 0 0 10px #bd62ff66;
+      transition: width 100ms linear;
+    }
+
+    .note {
+      color: #85a4c2;
+      font-size: 12px;
+      line-height: 1.25;
+      min-height: 30px;
+    }
+
+    @keyframes blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; }
+      .wrap { width: 95vw; }
+      .card { min-height: 200px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>HackHub Loader Concepts // Theme Preview Pack</h1>
+      <p>Five animated startup loader ideas. Each card loops progress + rotating cyber feed lines so you can compare feel and readability quickly.</p>
+    </section>
+
+    <section class="grid">
+      <article class="card" data-loader="aegis">
+        <div class="meta">
+          <h2>1. Aegis Boot</h2>
+          <span class="tag">SIINDBAD-leaning</span>
+        </div>
+        <div class="viewport">
+          <div class="unit">
+            <div class="title-line"><span>Core bootstrap</span><span class="pct">0%</span></div>
+            <div class="bar-track">
+              <div class="bar-fill"></div>
+              <div class="bar-sweep"></div>
+              <div class="seg-overlay"></div>
+            </div>
+            <div class="statement"><span class="txt"></span><span class="cursor">_</span></div>
+          </div>
+        </div>
+        <div class="note">Segmented cyan sweep with clean high-tech readability.</div>
+      </article>
+
+      <article class="card violet" data-loader="rift">
+        <div class="meta">
+          <h2>2. Violet Rift</h2>
+          <span class="tag">KAMUE-leaning</span>
+        </div>
+        <div class="viewport">
+          <div class="unit">
+            <div class="title-line"><span>Spectrum handshake</span><span class="pct">0%</span></div>
+            <div class="bar-track">
+              <div class="bar-fill"></div>
+              <div class="bar-sweep"></div>
+            </div>
+            <div class="statement"><span class="txt"></span><span class="cursor">_</span></div>
+          </div>
+        </div>
+        <div class="note">Purple dual-glow rail with soft glitch pulse energy.</div>
+      </article>
+
+      <article class="card" data-loader="dual">
+        <div class="meta">
+          <h2>3. Dual Protocol Split</h2>
+          <span class="tag">Theme fusion</span>
+        </div>
+        <div class="viewport">
+          <div class="unit">
+            <div class="dual-wrap">
+              <div class="dual-row siindbad"><div class="fill"></div></div>
+              <div class="dual-row kamue"><div class="fill"></div></div>
+              <div class="dual-labels"><span>siindbad</span><span class="pct">0%</span><span>kamue</span></div>
+            </div>
+            <div class="statement"><span class="txt"></span><span class="cursor">_</span></div>
+          </div>
+        </div>
+        <div class="note">Two rails converge toward final unified load state.</div>
+      </article>
+
+      <article class="card" data-loader="orbital">
+        <div class="meta">
+          <h2>4. Orbital HUD Ring</h2>
+          <span class="tag">FUI ring</span>
+        </div>
+        <div class="viewport">
+          <div class="unit">
+            <div class="ring-wrap">
+              <div class="ring"><span class="ring-val">0%</span></div>
+              <div class="statement"><span class="txt"></span><span class="cursor">_</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="note">Circular telemetry style; compact and futuristic.</div>
+      </article>
+
+      <article class="card violet" data-loader="terminal">
+        <div class="meta">
+          <h2>5. Terminal Breach</h2>
+          <span class="tag">Cyberpunk console</span>
+        </div>
+        <div class="viewport">
+          <div class="unit">
+            <div class="terminal-box">
+              <div class="terminal-feed"></div>
+              <div class="terminal-bar"><span></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="note">Console-heavy startup theater with live command feed.</div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const concepts = {
+      aegis: {
+        speed: 20,
+        lines: [
+          "/mounting save index...",
+          "/syncing node signatures...",
+          "/arming editor kernel...",
+          "/binding toolbar sprites..."
+        ]
+      },
+      rift: {
+        speed: 17,
+        lines: [
+          "/injecting kamue shader map...",
+          "/resolving frame harmonics...",
+          "/stabilizing spectrum grid...",
+          "/warming hover lattice..."
+        ]
+      },
+      dual: {
+        speed: 15,
+        lines: [
+          "/protocol siindbad online...",
+          "/protocol kamue online...",
+          "/cross-theme cache linking...",
+          "/fusion handshake complete..."
+        ]
+      },
+      orbital: {
+        speed: 21,
+        lines: [
+          "/calibrating circular bus...",
+          "/locking ui vectors...",
+          "/aligning icon telemetry...",
+          "/render core ready..."
+        ]
+      },
+      terminal: {
+        speed: 23,
+        lines: [
+          "decrypt asset bundle",
+          "compile hover frames",
+          "wire palette channels",
+          "launch interface shell"
+        ]
+      }
+    };
+
+    const states = [];
+    document.querySelectorAll("[data-loader]").forEach((card) => {
+      const key = card.dataset.loader;
+      states.push({
+        key,
+        card,
+        pct: 0,
+        dir: 1,
+        lineIndex: 0,
+        lineTimer: 0
+      });
+    });
+
+    function setLine(state) {
+      const cfg = concepts[state.key];
+      const line = cfg.lines[state.lineIndex % cfg.lines.length];
+      if (state.key === "terminal") {
+        const feed = state.card.querySelector(".terminal-feed");
+        const stamp = String(Math.floor(100 + Math.random() * 899));
+        const row = `[${stamp}] ${line}`;
+        const rows = (feed.textContent || "").split("\n").filter(Boolean).slice(-3);
+        rows.push(row);
+        feed.textContent = rows.join("\n");
+      } else {
+        const slot = state.card.querySelector(".statement .txt");
+        slot.textContent = line;
+      }
+      state.lineIndex += 1;
+    }
+
+    function updateCard(state) {
+      const pct = Math.max(0, Math.min(100, state.pct));
+      const pctInt = Math.round(pct);
+      state.card.style.setProperty("--pct", pct.toFixed(2));
+
+      const pctLabels = state.card.querySelectorAll(".pct");
+      pctLabels.forEach((el) => { el.textContent = `${pctInt}%`; });
+
+      if (state.key === "orbital") {
+        const ring = state.card.querySelector(".ring");
+        const ringVal = state.card.querySelector(".ring-val");
+        ring.style.setProperty("--pct", pct.toFixed(2));
+        ringVal.textContent = `${pctInt}%`;
+      }
+
+      if (state.key === "terminal") {
+        const bar = state.card.querySelector(".terminal-bar > span");
+        bar.style.width = `${pct.toFixed(2)}%`;
+      }
+
+      if (state.key === "dual") {
+        const top = state.card.querySelector(".dual-row.siindbad .fill");
+        const bot = state.card.querySelector(".dual-row.kamue .fill");
+        const topPct = Math.min(100, pct * 1.02);
+        const botPct = Math.max(0, Math.min(100, pct * 0.95 + 4));
+        top.style.width = `${topPct.toFixed(2)}%`;
+        bot.style.width = `${botPct.toFixed(2)}%`;
+      }
+    }
+
+    function tick(ts) {
+      if (!window._lastTs) window._lastTs = ts;
+      const dt = Math.min(0.05, (ts - window._lastTs) / 1000);
+      window._lastTs = ts;
+
+      states.forEach((state) => {
+        const cfg = concepts[state.key];
+        state.pct += state.dir * cfg.speed * dt;
+        if (state.pct >= 100) {
+          state.pct = 100;
+          state.dir = -1;
+        } else if (state.pct <= 0) {
+          state.pct = 0;
+          state.dir = 1;
+        }
+
+        state.lineTimer += dt;
+        if (state.lineTimer > 1.4) {
+          setLine(state);
+          state.lineTimer = 0;
+        }
+        updateCard(state);
+      });
+
+      requestAnimationFrame(tick);
+    }
+
+    states.forEach((state) => setLine(state));
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>

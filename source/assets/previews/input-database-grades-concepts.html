@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>INPUT Database Grades Concepts (Style 1 Family)</title>
+  <style>
+    :root {
+      --bg-a: #08121f;
+      --bg-b: #050a12;
+      --panel: #0d1c2c;
+      --line: #254562;
+      --line-soft: #1a344b;
+      --text: #d7eafd;
+      --muted: #8facca;
+      --key: #f2ad5e;
+      --accent: #4fd5ff;
+      --input-bg: #071322;
+      --input-line: #2e8fd4;
+      --value: #67db82;
+      --chip: #12273a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 18px;
+      color: var(--text);
+      background:
+        radial-gradient(1100px 620px at 10% -18%, #153657 0%, var(--bg-b) 58%),
+        radial-gradient(900px 480px at 100% 0%, #182842 0%, rgba(5, 10, 18, 0) 45%);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 21px;
+      letter-spacing: .3px;
+    }
+    .sub {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .concepts {
+      display: grid;
+      gap: 14px;
+    }
+    .concept {
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(11, 25, 40, .9), rgba(7, 13, 24, .94));
+    }
+    .concept-head {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      letter-spacing: .35px;
+      text-transform: uppercase;
+      color: #bfdbf4;
+      font-weight: 700;
+    }
+    .concept-body {
+      padding: 10px;
+    }
+
+    .value {
+      width: 74px;
+      height: 28px;
+      border-radius: 5px;
+      border: 1px solid var(--input-line);
+      background: var(--input-bg);
+      color: var(--value);
+      font: 700 14px/1 "Segoe UI", Tahoma, sans-serif;
+      padding: 0 8px;
+      outline: none;
+      text-align: right;
+    }
+    .student {
+      color: var(--key);
+      font-weight: 700;
+    }
+    .subject {
+      color: #d3e4f7;
+      font-weight: 600;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .chip {
+      display: inline-block;
+      border: 1px solid #2f4f6d;
+      background: var(--chip);
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: #cfe2f5;
+      font-size: 11px;
+      margin-right: 6px;
+    }
+
+    /* Concept 1: wide matrix */
+    .matrix {
+      overflow-x: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+    }
+    .matrix table {
+      border-collapse: collapse;
+      min-width: 980px;
+      width: 100%;
+    }
+    .matrix th, .matrix td {
+      border-bottom: 1px solid var(--line-soft);
+      padding: 8px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .matrix th {
+      color: #a8c9e6;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+    }
+    .matrix tr:last-child td { border-bottom: 0; }
+
+    /* Concept 2: student split */
+    .split {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 10px;
+    }
+    .list, .editor {
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: rgba(7, 18, 31, .72);
+    }
+    .list {
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+    }
+    .student-row {
+      border: 1px solid #294866;
+      border-radius: 6px;
+      padding: 7px 8px;
+      background: rgba(12, 34, 54, .5);
+    }
+    .student-row.active {
+      border-color: #3fa9ef;
+      box-shadow: inset 0 0 0 1px rgba(63, 169, 239, .3);
+    }
+    .editor {
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .edit-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+      gap: 8px;
+    }
+    .edit-item {
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      padding: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Concept 3: stacked student cards */
+    .cards {
+      display: grid;
+      gap: 9px;
+    }
+    .card {
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(6, 14, 24, .74);
+    }
+    .card-head {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .grades {
+      padding: 9px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .grade {
+      border: 1px solid #294866;
+      border-radius: 7px;
+      padding: 7px;
+      display: grid;
+      gap: 6px;
+      justify-items: start;
+    }
+
+    /* Concept 4: row editor with summary */
+    .rows {
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .row {
+      padding: 9px;
+      border-bottom: 1px solid var(--line-soft);
+      display: grid;
+      grid-template-columns: 210px 1fr 130px;
+      gap: 10px;
+      align-items: center;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row-subjects {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .subject-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid #2c4966;
+      border-radius: 6px;
+      padding: 4px 6px;
+      background: rgba(12, 29, 46, .5);
+    }
+    .avg {
+      border: 1px solid #2b5577;
+      border-radius: 7px;
+      padding: 8px;
+      background: rgba(8, 21, 35, .7);
+      text-align: right;
+    }
+
+    @media (max-width: 980px) {
+      .split { grid-template-columns: 1fr; }
+      .grades { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+      .row { grid-template-columns: 1fr; }
+      .value { width: 66px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>INPUT Mode Concepts - Database / Grades</h1>
+  <p class="sub">Source-aligned mock data from your .hhsav: student + subject score values (Maths, Physics, Chemistry, OOP, History, Geography, Calculus). Style 1 family only.</p>
+
+  <main class="concepts">
+    <section class="concept">
+      <header class="concept-head"><span>Concept 1 - Full Matrix Editor</span><span>Best when editing many students quickly</span></header>
+      <div class="concept-body matrix">
+        <table>
+          <thead>
+            <tr>
+              <th>student (value)</th>
+              <th>Maths</th>
+              <th>Physics</th>
+              <th>Chemistry</th>
+              <th>OOP</th>
+              <th>History</th>
+              <th>Geography</th>
+              <th>Calculus</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="student">Mohamed Michalak</td>
+              <td><input class="value" value="35"></td>
+              <td><input class="value" value="30"></td>
+              <td><input class="value" value="93"></td>
+              <td><input class="value" value="30"></td>
+              <td><input class="value" value="5"></td>
+              <td><input class="value" value="46"></td>
+              <td><input class="value" value="46"></td>
+            </tr>
+            <tr>
+              <td class="student">Joyce Pavlov</td>
+              <td><input class="value" value="27"></td>
+              <td><input class="value" value="32"></td>
+              <td><input class="value" value="38"></td>
+              <td><input class="value" value="45"></td>
+              <td><input class="value" value="20"></td>
+              <td><input class="value" value="76"></td>
+              <td><input class="value" value="44"></td>
+            </tr>
+            <tr>
+              <td class="student">Dariusz Nowak</td>
+              <td><input class="value" value="89"></td>
+              <td><input class="value" value="32"></td>
+              <td><input class="value" value="69"></td>
+              <td><input class="value" value="75"></td>
+              <td><input class="value" value="61"></td>
+              <td><input class="value" value="90"></td>
+              <td><input class="value" value="24"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="concept">
+      <header class="concept-head"><span>Concept 2 - Student List + Focus Editor</span><span>Best for one-student-at-a-time edits</span></header>
+      <div class="concept-body split">
+        <aside class="list">
+          <div class="student-row active">
+            <div class="student">Mohamed Michalak</div>
+            <div class="meta">record: Grades[0]</div>
+          </div>
+          <div class="student-row">
+            <div class="student">Joyce Pavlov</div>
+            <div class="meta">record: Grades[1]</div>
+          </div>
+          <div class="student-row">
+            <div class="student">Dariusz Nowak</div>
+            <div class="meta">record: Grades[2]</div>
+          </div>
+        </aside>
+        <section class="editor">
+          <div><span class="chip">student value</span><span class="student">Mohamed Michalak</span></div>
+          <div class="edit-grid">
+            <div class="edit-item"><span class="subject">Maths</span><input class="value" value="35"></div>
+            <div class="edit-item"><span class="subject">Physics</span><input class="value" value="30"></div>
+            <div class="edit-item"><span class="subject">Chemistry</span><input class="value" value="93"></div>
+            <div class="edit-item"><span class="subject">OOP</span><input class="value" value="30"></div>
+            <div class="edit-item"><span class="subject">History</span><input class="value" value="5"></div>
+            <div class="edit-item"><span class="subject">Geography</span><input class="value" value="46"></div>
+            <div class="edit-item"><span class="subject">Calculus</span><input class="value" value="46"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="concept">
+      <header class="concept-head"><span>Concept 3 - Student Cards</span><span>Best readability per record</span></header>
+      <div class="concept-body cards">
+        <article class="card">
+          <header class="card-head">
+            <div><span class="chip">student value</span><span class="student">Mohamed Michalak</span></div>
+            <div class="meta">Grades[0]</div>
+          </header>
+          <div class="grades">
+            <div class="grade"><span class="subject">Maths</span><input class="value" value="35"></div>
+            <div class="grade"><span class="subject">Physics</span><input class="value" value="30"></div>
+            <div class="grade"><span class="subject">Chemistry</span><input class="value" value="93"></div>
+            <div class="grade"><span class="subject">OOP</span><input class="value" value="30"></div>
+            <div class="grade"><span class="subject">History</span><input class="value" value="5"></div>
+            <div class="grade"><span class="subject">Geography</span><input class="value" value="46"></div>
+            <div class="grade"><span class="subject">Calculus</span><input class="value" value="46"></div>
+          </div>
+        </article>
+        <article class="card">
+          <header class="card-head">
+            <div><span class="chip">student value</span><span class="student">Joyce Pavlov</span></div>
+            <div class="meta">Grades[1]</div>
+          </header>
+          <div class="grades">
+            <div class="grade"><span class="subject">Maths</span><input class="value" value="27"></div>
+            <div class="grade"><span class="subject">Physics</span><input class="value" value="32"></div>
+            <div class="grade"><span class="subject">Chemistry</span><input class="value" value="38"></div>
+            <div class="grade"><span class="subject">OOP</span><input class="value" value="45"></div>
+            <div class="grade"><span class="subject">History</span><input class="value" value="20"></div>
+            <div class="grade"><span class="subject">Geography</span><input class="value" value="76"></div>
+            <div class="grade"><span class="subject">Calculus</span><input class="value" value="44"></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="concept">
+      <header class="concept-head"><span>Concept 4 - Row Editor + Summary</span><span>Best balance of speed and context</span></header>
+      <div class="concept-body rows">
+        <div class="row">
+          <div>
+            <div class="student">Mohamed Michalak</div>
+            <div class="meta">student value placeholder</div>
+          </div>
+          <div class="row-subjects">
+            <span class="subject-inline"><span class="subject">Maths</span><input class="value" value="35"></span>
+            <span class="subject-inline"><span class="subject">Physics</span><input class="value" value="30"></span>
+            <span class="subject-inline"><span class="subject">Chem</span><input class="value" value="93"></span>
+            <span class="subject-inline"><span class="subject">OOP</span><input class="value" value="30"></span>
+            <span class="subject-inline"><span class="subject">Hist</span><input class="value" value="5"></span>
+            <span class="subject-inline"><span class="subject">Geo</span><input class="value" value="46"></span>
+            <span class="subject-inline"><span class="subject">Calc</span><input class="value" value="46"></span>
+          </div>
+          <div class="avg">
+            <div class="meta">average</div>
+            <div style="color: var(--accent); font-weight: 700;">40.7</div>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="student">Dariusz Nowak</div>
+            <div class="meta">student value placeholder</div>
+          </div>
+          <div class="row-subjects">
+            <span class="subject-inline"><span class="subject">Maths</span><input class="value" value="89"></span>
+            <span class="subject-inline"><span class="subject">Physics</span><input class="value" value="32"></span>
+            <span class="subject-inline"><span class="subject">Chem</span><input class="value" value="69"></span>
+            <span class="subject-inline"><span class="subject">OOP</span><input class="value" value="75"></span>
+            <span class="subject-inline"><span class="subject">Hist</span><input class="value" value="61"></span>
+            <span class="subject-inline"><span class="subject">Geo</span><input class="value" value="90"></span>
+            <span class="subject-inline"><span class="subject">Calc</span><input class="value" value="24"></span>
+          </div>
+          <div class="avg">
+            <div class="meta">average</div>
+            <div style="color: var(--accent); font-weight: 700;">62.9</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inno Theme Preview - SIN Style Options</title>
+  <style>
+    :root {
+      --bg: #0a101b;
+      --panel: #10192a;
+      --line: #1f5f8f;
+      --text: #d6e9ff;
+      --muted: #9bb2c9;
+      --ok: #5be6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: radial-gradient(circle at 15% 10%, #112840 0%, var(--bg) 48%);
+      color: var(--text);
+      padding: 20px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      letter-spacing: .3px;
+    }
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #0f1a2d 0%, #0b1220 100%);
+      box-shadow: 0 0 0 1px rgba(52, 134, 182, 0.15) inset;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .title {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(95, 155, 204, 0.35);
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .window {
+      margin: 10px;
+      border: 1px solid rgba(109, 178, 226, 0.45);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #0f1929;
+    }
+    .window-head {
+      padding: 7px 10px;
+      font-size: 12px;
+      color: #e7f4ff;
+      border-bottom: 1px solid rgba(109, 178, 226, 0.35);
+    }
+    .window-body {
+      padding: 11px 10px 8px;
+      font-size: 12px;
+      color: #c5d8ea;
+      min-height: 82px;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 8px 10px 10px;
+    }
+    .btn {
+      border: 1px solid #2a6fa3;
+      color: #cfe9ff;
+      background: linear-gradient(180deg, #133152 0%, #0d243e 100%);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .style-cyan .title { color: #7aefff; }
+    .style-cyan .window-head { background: #0f2f4c; }
+    .style-metro .title { color: #e6edf5; }
+    .style-metro .window { border-color: #3a4a5c; }
+    .style-metro .window-head { background: #232b35; border-bottom-color: #364456; }
+    .style-metro .btn { border-color: #495a70; background: #2d3745; }
+    .style-win10 .title { color: #8ce0ff; }
+    .style-win10 .window { border-color: #1e6988; }
+    .style-win10 .window-head { background: #0f3952; }
+    .note {
+      margin-top: 14px;
+      font-size: 12px;
+      color: #8bb1cc;
+    }
+    code {
+      color: var(--ok);
+      font-family: Consolas, monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Inno Setup Style Preview (SIN Direction)</h1>
+  <p>Based on styles found in <code>RRUZ/vcl-styles-plugins</code>. These are visual mockups to choose direction.</p>
+
+  <div class="grid">
+    <section class="card style-cyan">
+      <div class="title">CyanNight.vsf (closest SIN fit)</div>
+      <div class="window">
+        <div class="window-head">SINS Save Editor Setup</div>
+        <div class="window-body">
+          Welcome to Setup.<br><br>
+          Install path: C:\Program Files\SINS Save Editor
+        </div>
+        <div class="actions">
+          <button class="btn">Back</button>
+          <button class="btn">Next</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card style-metro">
+      <div class="title">MetroBlack.vsf (clean dark fallback)</div>
+      <div class="window">
+        <div class="window-head">SINS Save Editor Setup</div>
+        <div class="window-body">
+          License accepted.<br><br>
+          Components: Core App, Desktop Shortcut
+        </div>
+        <div class="actions">
+          <button class="btn">Back</button>
+          <button class="btn">Install</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card style-win10">
+      <div class="title">Windows10Dark.vsf (modern dark)</div>
+      <div class="window">
+        <div class="window-head">SINS Save Editor Setup</div>
+        <div class="window-body">
+          Ready to install version 1.3.5.<br><br>
+          Estimated size: 75 MB
+        </div>
+        <div class="actions">
+          <button class="btn">Back</button>
+          <button class="btn">Install</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <p class="note">
+    Note: <code>Black Rock</code> was not found in this repo's bundled Inno style files.
+  </p>
+</body>
+</html>

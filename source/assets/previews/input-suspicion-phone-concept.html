@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>INPUT Suspicion Concept (Phone Overlay)</title>
+  <style>
+    :root {
+      --bg-a: #070c14;
+      --bg-b: #0f1a2b;
+      --frame: #284b6a;
+      --text: #cfe6ff;
+      --muted: #93aeca;
+      --input-edge-sin: #2e8fd4;
+      --input-edge-kam: #8a5bc4;
+      --input-bg-sin: #071322;
+      --input-bg-kam: #1b1230;
+      --value-sin: #62d67a;
+      --value-kam: #8bf2aa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 640px at 12% -10%, #16324f 0%, transparent 55%),
+        radial-gradient(900px 520px at 90% -20%, #2a1842 0%, transparent 45%),
+        linear-gradient(180deg, var(--bg-a), var(--bg-b));
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+    .stage {
+      width: min(1220px, 100%);
+      border: 1px solid #2a4762;
+      border-radius: 12px;
+      background: rgba(9, 18, 30, 0.78);
+      padding: 14px;
+    }
+    .title {
+      font: 700 18px/1.2 "Tektur", "Segoe UI", sans-serif;
+      letter-spacing: 0.35px;
+      margin: 0 0 6px;
+    }
+    .sub {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(320px, 1fr));
+      gap: 14px;
+      align-items: start;
+    }
+    .theme {
+      border: 1px solid var(--frame);
+      border-radius: 10px;
+      background: rgba(7, 13, 22, 0.9);
+      padding: 10px;
+    }
+    .theme h2 {
+      margin: 0 0 8px;
+      font: 700 11px/1 "Tektur", "Segoe UI", sans-serif;
+      letter-spacing: 0.45px;
+      color: #bfe0ff;
+    }
+    .theme.kam h2 { color: #e2cbff; }
+
+    .phone-wrap {
+      position: relative;
+      width: min(100%, 460px);
+      margin: 0 auto;
+    }
+    .phone {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid #21415c;
+    }
+
+    /* Input anchored under the SUSPICION label area on the phone image. */
+    .sus-input {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 61%;
+      width: 25%;
+      height: 30px;
+      border-radius: 5px;
+      outline: none;
+      text-align: center;
+      font: 700 14px/1 "Segoe UI", Tahoma, sans-serif;
+      padding: 0 10px;
+      border: 1px solid var(--input-edge-sin);
+      background: var(--input-bg-sin);
+      color: var(--value-sin);
+      box-shadow: 0 0 0 1px rgba(46, 143, 212, 0.18);
+    }
+    .theme.kam .sus-input {
+      border-color: var(--input-edge-kam);
+      background: var(--input-bg-kam);
+      color: var(--value-kam);
+      box-shadow: 0 0 0 1px rgba(138, 91, 196, 0.18);
+    }
+
+    .note {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sus-input { top: 62%; width: 31%; }
+    }
+  </style>
+</head>
+<body>
+  <section class="stage">
+    <h1 class="title">INPUT Mode Concept: Suspicion Category</h1>
+    <p class="sub">Phone PNG centered in the editor area. One input is attached directly under the <strong>SUSPICION</strong> label, showing only the Suspicion value.</p>
+
+    <div class="layout">
+      <article class="theme sin">
+        <h2>SIN THEME CONCEPT</h2>
+        <div class="phone-wrap">
+          <img class="phone" src="../phone/sin_phone_sus.png" alt="SIN Suspicion phone concept">
+          <input class="sus-input" type="text" value="12">
+        </div>
+        <div class="note">Value-only INPUT from <code>Suspicion</code> category</div>
+      </article>
+
+      <article class="theme kam">
+        <h2>KAMUE THEME CONCEPT</h2>
+        <div class="phone-wrap">
+          <img class="phone" src="../phone/kam_phone_sus.png" alt="KAM Suspicion phone concept">
+          <input class="sus-input" type="text" value="12">
+        </div>
+        <div class="note">Same placement and behavior with theme-specific input colors</div>
+      </article>
+    </div>
+  </section>
+</body>
+</html>

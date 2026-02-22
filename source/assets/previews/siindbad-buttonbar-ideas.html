@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tree Background Effect Concepts</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Tektur:wght@500;600;700&display=swap');
+
+    :root {
+      --bg0: #07101b;
+      --bg1: #0b1728;
+      --ink: #dff2ff;
+      --muted: #93afc6;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      color: var(--ink);
+      font-family: "Tektur", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 700px at 82% -20%, #3f8ec833, transparent 60%),
+        radial-gradient(900px 560px at 14% -20%, #9c6dff22, transparent 60%),
+        linear-gradient(180deg, var(--bg1), var(--bg0));
+    }
+
+    .wrap { width: min(1360px, 96vw); margin: 0 auto; }
+
+    .hero {
+      border: 1px solid #355b78;
+      box-shadow: 0 0 0 1px #15344c inset;
+      background: linear-gradient(180deg, #0b192a, #081423);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+
+    .hero h1 { margin: 0; font-size: 20px; letter-spacing: .3px; }
+    .hero p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+
+    .concept {
+      border: 1px solid #2d536f;
+      box-shadow: 0 0 0 1px #13354e inset;
+      background: linear-gradient(180deg, #081424, #06101d);
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .meta h2 { margin: 0; font-size: 14px; letter-spacing: .2px; }
+    .tag {
+      border: 1px solid #466e89;
+      color: #a9c6dc;
+      font-size: 11px;
+      letter-spacing: .2px;
+      padding: 2px 8px;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .theme {
+      border: 1px solid var(--t-edge);
+      box-shadow: 0 0 0 1px var(--t-inset) inset;
+      background: linear-gradient(180deg, var(--t-a), var(--t-b));
+      padding: 8px;
+    }
+
+    .theme-title {
+      display: inline-block;
+      margin-bottom: 7px;
+      border: 1px solid var(--chip-edge);
+      background: var(--chip-bg);
+      color: var(--chip-fg);
+      font-size: 11px;
+      letter-spacing: .2px;
+      padding: 2px 7px;
+    }
+
+    .mock {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 240px;
+      border: 1px solid var(--mock-border);
+      background: var(--mock-bg);
+      overflow: hidden;
+    }
+
+    .tree {
+      position: relative;
+      border-right: 1px solid var(--split);
+      background: var(--tree-bg);
+      padding: 8px 9px 8px 10px;
+      font-size: 12px;
+      letter-spacing: .2px;
+      overflow: hidden;
+    }
+
+    .tree::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .tree::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .tree > * { position: relative; z-index: 1; }
+
+    .editor {
+      background: var(--editor-bg);
+      color: var(--editor-fg);
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.4;
+      opacity: .78;
+    }
+
+    .tree ul { list-style: none; margin: 0; padding: 0; }
+
+    .row {
+      min-height: 22px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 6px;
+      border: 1px solid transparent;
+      color: var(--tree-fg);
+    }
+
+    .row.group { color: var(--group-fg); }
+
+    .row.active {
+      background: var(--active-bg);
+      border-color: var(--active-edge);
+      color: var(--active-fg);
+      box-shadow: 0 0 11px var(--active-glow);
+    }
+
+    .row.sub.selected-sub {
+      color: var(--active-fg);
+      background: color-mix(in srgb, var(--active-bg) 75%, transparent 25%);
+      border-color: color-mix(in srgb, var(--active-edge) 60%, transparent 40%);
+    }
+
+    /* Fixed runtime-safe branch style for this background preview. */
+    .expander {
+      width: 14px;
+      border: none;
+      text-align: center;
+      color: var(--twisty);
+      flex: 0 0 auto;
+      font-size: 12px;
+      line-height: 1;
+      min-height: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+    }
+
+    .expander.collapsed::before { content: ">"; }
+    .expander.expanded::before { content: "v"; }
+
+    .main-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      border: 1px solid var(--main-edge);
+      background: var(--main-fill);
+      box-shadow: 0 0 6px var(--main-glow);
+      flex: 0 0 auto;
+    }
+
+    .sub-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      border: 1px solid var(--sub-edge);
+      background: transparent;
+      box-shadow: 0 0 5px color-mix(in srgb, var(--sub-edge) 45%, transparent 55%);
+      flex: 0 0 auto;
+    }
+
+    .row.sub.selected-sub .sub-dot {
+      background: var(--sub-fill-selected);
+      border-color: var(--sub-fill-selected);
+      box-shadow: 0 0 8px var(--sub-selected-glow);
+    }
+
+    .children {
+      margin-left: 22px;
+      border-left: 1px dashed var(--branch);
+      padding-left: 8px;
+    }
+
+    .scroll-track {
+      position: absolute;
+      right: 2px;
+      top: 8px;
+      bottom: 8px;
+      width: 5px;
+      background: var(--scroll-track);
+    }
+
+    .scroll-thumb {
+      position: absolute;
+      right: 2px;
+      top: 42px;
+      width: 5px;
+      height: 68px;
+      background: var(--scroll-thumb);
+      box-shadow: 0 0 8px var(--active-glow);
+    }
+
+    .siindbad {
+      --t-edge: #2f6183;
+      --t-inset: #173850;
+      --t-a: #0a1727;
+      --t-b: #081321;
+      --chip-edge: #4d84ac;
+      --chip-bg: #12273b;
+      --chip-fg: #d0ebff;
+
+      --mock-border: #2d5f83;
+      --mock-bg: #08121d;
+      --tree-bg: #0d1724;
+      --split: #21455f;
+      --editor-bg: #09121d;
+      --editor-fg: #99b9cf;
+      --tree-fg: #bed8eb;
+      --group-fg: #d8ecfa;
+      --twisty: #9ae6ff;
+      --main-fill: #6ecdf6;
+      --main-edge: #b8ecff;
+      --main-glow: #72dbff88;
+      --sub-edge: #9fdcf7;
+      --sub-fill-selected: #8fe7ff;
+      --sub-selected-glow: #89e8ff;
+      --active-bg: #1a4d6e;
+      --active-edge: #7ad8ff;
+      --active-fg: #ffffff;
+      --active-glow: #66ddff50;
+      --branch: #447ca0;
+      --scroll-track: #102535;
+      --scroll-thumb: #5eb6dc;
+    }
+
+    .kamue {
+      --t-edge: #624090;
+      --t-inset: #301a4d;
+      --t-a: #160d25;
+      --t-b: #0f081b;
+      --chip-edge: #8859cc;
+      --chip-bg: #24123a;
+      --chip-fg: #eedfff;
+
+      --mock-border: #7248aa;
+      --mock-bg: #0b0612;
+      --tree-bg: #140a22;
+      --split: #3a2060;
+      --editor-bg: #10081b;
+      --editor-fg: #b59bcf;
+      --tree-fg: #d8c7ed;
+      --group-fg: #f1e5ff;
+      --twisty: #dbb8ff;
+      --main-fill: #b57bff;
+      --main-edge: #ecd8ff;
+      --main-glow: #c58cff90;
+      --sub-edge: #d5b8ff;
+      --sub-fill-selected: #dcbfff;
+      --sub-selected-glow: #dab8ff;
+      --active-bg: #4b237b;
+      --active-edge: #c59cff;
+      --active-fg: #ffffff;
+      --active-glow: #bf8bff58;
+      --branch: #7b52b2;
+      --scroll-track: #1f1231;
+      --scroll-thumb: #8a57d6;
+    }
+
+    @keyframes techSweepY {
+      from { transform: translateY(-100%); }
+      to { transform: translateY(100%); }
+    }
+
+    @keyframes techSweepX {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(100%); }
+    }
+
+    @keyframes techPulse {
+      0%, 100% { opacity: .32; }
+      50% { opacity: .72; }
+    }
+
+    @keyframes techDrift {
+      from { background-position: 0 0, 0 0, 0 0; }
+      to { background-position: 0 28px, 22px 0, 0 0; }
+    }
+
+    @keyframes edgeBreath {
+      0%, 100% { opacity: .26; }
+      50% { opacity: .56; }
+    }
+
+    /* Premium high-tech effect options */
+    /* E2: Glass Rail Matrix */
+    .tree.g1::before {
+      background:
+        linear-gradient(90deg, #ffffff14 0 1px, transparent 1px calc(100% - 1px), #ffffff14 calc(100% - 1px) 100%),
+        linear-gradient(180deg, #ffffff0d 0 1px, transparent 1px calc(100% - 1px), #ffffff0d calc(100% - 1px) 100%),
+        repeating-linear-gradient(90deg, #ffffff08 0 1px, transparent 1px 28px),
+        repeating-linear-gradient(180deg, #ffffff05 0 1px, transparent 1px 26px),
+        radial-gradient(240px 150px at 72% 24%, #ffffff12 0%, transparent 78%);
+      opacity: .64;
+      animation: edgeBreath 5.2s ease-in-out infinite;
+    }
+    .tree.g1::after {
+      background:
+        linear-gradient(90deg, transparent, #ffffff14, transparent),
+        linear-gradient(180deg, transparent, #ffffff10, transparent);
+      mix-blend-mode: screen;
+      opacity: .3;
+      animation: techSweepX 8.8s linear infinite;
+    }
+
+    /* P2: Edge Rails */
+    .tree.g2::before {
+      background:
+        linear-gradient(90deg, #ffffff13 0 2px, transparent 2px calc(100% - 2px), #ffffff13 calc(100% - 2px) 100%),
+        linear-gradient(180deg, #ffffff10 0 1px, transparent 1px calc(100% - 1px), #ffffff10 calc(100% - 1px) 100%),
+        linear-gradient(180deg, color-mix(in srgb, var(--main-fill) 16%, transparent), transparent 20%, transparent 80%, color-mix(in srgb, var(--main-fill) 16%, transparent));
+      opacity: .66;
+      animation: edgeBreath 4.8s ease-in-out infinite;
+    }
+    .tree.g2::after {
+      background:
+        linear-gradient(90deg, transparent, #ffffff17, transparent),
+        radial-gradient(220px 120px at 76% 72%, #ffffff12 0%, transparent 78%);
+      mix-blend-mode: screen;
+      opacity: .3;
+      animation: techSweepX 8.2s linear infinite;
+    }
+
+    /* E3: Framed Glass Panels */
+    .tree.g3::before {
+      background:
+        linear-gradient(90deg, #ffffff14 0 2px, transparent 2px 33%, #ffffff0b 33% calc(33% + 1px), transparent calc(33% + 1px) 66%, #ffffff0b 66% calc(66% + 1px), transparent calc(66% + 1px) calc(100% - 2px), #ffffff14 calc(100% - 2px) 100%),
+        linear-gradient(180deg, #ffffff10 0 1px, transparent 1px 50%, #ffffff0a 50% calc(50% + 1px), transparent calc(50% + 1px) calc(100% - 1px), #ffffff10 calc(100% - 1px) 100%),
+        radial-gradient(260px 160px at 30% 22%, #ffffff10 0%, transparent 76%),
+        radial-gradient(240px 150px at 78% 78%, #ffffff0e 0%, transparent 78%);
+      opacity: .66;
+    }
+    .tree.g3::after {
+      background:
+        linear-gradient(180deg, transparent 0%, #ffffff14 50%, transparent 100%);
+      mix-blend-mode: screen;
+      opacity: .28;
+      animation: techSweepY 9.4s linear infinite;
+    }
+
+    /* E4: Rail Corners + Core */
+    .tree.g4::before {
+      background:
+        linear-gradient(90deg, #ffffff16 0 2px, transparent 2px calc(100% - 2px), #ffffff16 calc(100% - 2px) 100%),
+        linear-gradient(180deg, #ffffff12 0 2px, transparent 2px calc(100% - 2px), #ffffff12 calc(100% - 2px) 100%),
+        radial-gradient(180px 100px at 50% 50%, color-mix(in srgb, var(--main-fill) 22%, transparent), transparent 74%),
+        repeating-linear-gradient(90deg, #ffffff05 0 1px, transparent 1px 32px);
+      opacity: .62;
+    }
+    .tree.g4::after {
+      background:
+        radial-gradient(120px 70px at 10% 10%, #ffffff20 0%, transparent 76%),
+        radial-gradient(120px 70px at 90% 90%, #ffffff20 0%, transparent 76%);
+      opacity: .32;
+      animation: edgeBreath 4.9s ease-in-out infinite;
+    }
+
+    /* E5: Vertical Glass Scan */
+    .tree.g5::before {
+      background:
+        linear-gradient(90deg, #ffffff13 0 1px, transparent 1px calc(100% - 1px), #ffffff13 calc(100% - 1px) 100%),
+        repeating-linear-gradient(90deg, #ffffff08 0 1px, transparent 1px 20px),
+        linear-gradient(180deg, #ffffff0d 0%, transparent 18%, transparent 82%, #ffffff0d 100%),
+        radial-gradient(240px 150px at 76% 20%, #ffffff12 0%, transparent 78%);
+      opacity: .64;
+    }
+    .tree.g5::after {
+      background:
+        linear-gradient(180deg, transparent, #ffffff1d, transparent),
+        linear-gradient(180deg, transparent, color-mix(in srgb, var(--main-fill) 20%, transparent), transparent);
+      mix-blend-mode: screen;
+      opacity: .34;
+      animation: techSweepY 7.2s linear infinite;
+    }
+
+    @media (max-width: 1100px) {
+      .compare { grid-template-columns: 1fr; }
+      .mock { grid-template-columns: 1fr; }
+      .tree { border-right: none; border-bottom: 1px solid var(--split); }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>Tree Background Effect Concepts</h1>
+      <p>Premium high-tech set: cleaner depth and controlled glow, with no noisy wallpaper texture. Designed to feel pro and intentional.</p>
+    </section>
+
+    <div id="concepts"></div>
+  </main>
+
+  <template id="theme-tpl">
+    <div class="theme %themeClass%">
+      <span class="theme-title">%themeName%</span>
+      <div class="mock">
+        <div class="tree %bgClass%">
+          <ul>
+            <li class="row group"><span class="expander expanded"></span><span class="main-dot"></span><span>root</span></li>
+            <li class="row"><span class="expander collapsed"></span><span class="main-dot"></span><span>GlobalStore</span></li>
+            <li class="row"><span class="expander collapsed"></span><span class="main-dot"></span><span>MailAccounts</span></li>
+            <li class="row active"><span class="expander expanded"></span><span class="main-dot"></span><span>Taskbar</span></li>
+          </ul>
+          <div class="children">
+            <div class="row sub"><span class="expander collapsed"></span><span class="sub-dot"></span><span>arrangement</span></div>
+            <div class="row sub selected-sub"><span class="expander collapsed"></span><span class="sub-dot"></span><span>pinnedApps</span></div>
+          </div>
+          <ul>
+            <li class="row"><span class="expander collapsed"></span><span class="main-dot"></span><span>Phone</span></li>
+            <li class="row"><span class="expander collapsed"></span><span class="main-dot"></span><span>Database</span></li>
+          </ul>
+          <div class="scroll-track"></div>
+          <div class="scroll-thumb"></div>
+        </div>
+        <div class="editor">{
+  "pinnedApps": [
+    "FileExplorer",
+    "Terminal"
+  ],
+  "arrangement": [
+    "Terminal"
+  ]
+}</div>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    const concepts = [
+      { id: 'E1', title: 'Edge Rails', tag: 'baseline pick: framed rails + slow sweep', bg: 'g2' },
+      { id: 'E2', title: 'Glass Rail Matrix', tag: 'edge rails with glass lattice depth', bg: 'g1' },
+      { id: 'E3', title: 'Framed Glass Panels', tag: 'segmented panel architecture', bg: 'g3' },
+      { id: 'E4', title: 'Rail Corners + Core', tag: 'hard frame + soft center energy', bg: 'g4' },
+      { id: 'E5', title: 'Vertical Glass Scan', tag: 'rail frame with controlled scan beam', bg: 'g5' }
+    ];
+
+    const tpl = document.getElementById('theme-tpl').innerHTML;
+    const themeBlock = (themeClass, themeName, bgClass) =>
+      tpl
+        .replaceAll('%themeClass%', themeClass)
+        .replaceAll('%themeName%', themeName)
+        .replaceAll('%bgClass%', bgClass);
+
+    const section = (c) => `
+      <section class="concept">
+        <div class="meta"><h2>${c.id}: ${c.title}</h2><span class="tag">${c.tag}</span></div>
+        <div class="compare">
+          ${themeBlock('siindbad', 'SIINDBAD', c.bg)}
+          ${themeBlock('kamue', 'KAMUE', c.bg)}
+        </div>
+      </section>
+    `;
+
+    document.getElementById('concepts').innerHTML = concepts.map(section).join('');
+  </script>
+</body>
+</html>

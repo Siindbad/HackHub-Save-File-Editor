@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Editor Mode Toggle Ideas</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Tektur:wght@500;600;700&display=swap');
+
+    :root {
+      --bg: #07101b;
+      --panel: #0b1625;
+      --panel-2: #0e1d30;
+      --edge: #1d3c57;
+      --ink: #d8ecfb;
+      --muted: #8ba4b7;
+      --active: #1b4d73;
+      --active-edge: #67b4e4;
+      --inactive: #122437;
+      --inactive-edge: #355777;
+      --kamue: #2a1450;
+      --kamue-edge: #7d4bc8;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(900px 420px at 80% -10%, #3b7fba33, transparent 60%),
+                  radial-gradient(740px 300px at 8% -20%, #8a66de22, transparent 60%),
+                  linear-gradient(180deg, #0a1726, var(--bg));
+      color: var(--ink);
+      font-family: "Tektur", "Segoe UI", sans-serif;
+      padding: 16px;
+    }
+
+    .wrap { width: min(1320px, 96vw); margin: 0 auto; }
+    .hero {
+      margin-bottom: 12px;
+      border: 1px solid #2f5b7e;
+      background: linear-gradient(180deg, #0f2235, #0a1a2a);
+      box-shadow: 0 0 0 1px #16344d inset;
+      padding: 12px 14px;
+    }
+    .hero h1 { margin: 0; font-size: 19px; letter-spacing: .2px; }
+    .hero p { margin: 7px 0 0; font-size: 12px; color: var(--muted); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 12px;
+    }
+
+    .idea {
+      border: 1px solid #2d5473;
+      box-shadow: 0 0 0 1px #16344d inset;
+      background: linear-gradient(180deg, #0a1726, #081320);
+      padding: 10px;
+    }
+    .idea h2 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: .25px;
+      color: #c7def0;
+    }
+
+    .editor {
+      position: relative;
+      min-height: 170px;
+      border: 1px solid var(--edge);
+      box-shadow: 0 0 0 1px #122f46 inset;
+      background: linear-gradient(180deg, var(--panel), #0a1421);
+      padding: 12px;
+      overflow: visible;
+    }
+    .editor .mock {
+      margin-top: 8px;
+      border: 1px solid #1c3550;
+      background: linear-gradient(180deg, #0d1b2c, #0b1623);
+      color: #9eb4c5;
+      font-family: "Consolas", monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      padding: 10px;
+      white-space: pre;
+    }
+
+    .toggle {
+      position: absolute;
+      top: -1px;
+      right: 10px;
+      display: flex;
+      gap: 4px;
+      pointer-events: none;
+    }
+    .toggle .btn {
+      pointer-events: auto;
+      user-select: none;
+      font-family: "Tektur", "Segoe UI", sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .35px;
+      color: #d5e9f9;
+      border: 1px solid var(--inactive-edge);
+      background: var(--inactive);
+      padding: 3px 9px;
+      line-height: 1;
+      cursor: default;
+    }
+    .toggle .btn.active {
+      border-color: var(--active-edge);
+      background: var(--active);
+      color: #ffffff;
+    }
+
+    /* E1: straight hang tabs */
+    .e1 .toggle .btn {
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      box-shadow: 0 2px 0 #0a121a;
+    }
+
+    /* E2: angled side cuts */
+    .e2 .toggle .btn {
+      border-top: none;
+      padding: 4px 10px;
+      clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%);
+      background: linear-gradient(180deg, #153149, #10263a);
+    }
+    .e2 .toggle .btn.active {
+      background: linear-gradient(180deg, #29628f, #1d4d72);
+    }
+
+    /* E3: badge rail with unified housing */
+    .e3 .toggle {
+      top: -14px;
+      gap: 0;
+      border: 1px solid #2f5c7f;
+      background: #0b1c2c;
+      box-shadow: 0 0 0 1px #16374f inset;
+      padding: 3px;
+      border-radius: 7px 7px 0 0;
+    }
+    .e3 .toggle .btn {
+      border-radius: 4px 4px 0 0;
+      padding: 4px 9px;
+    }
+    .e3 .toggle .btn + .btn { margin-left: 3px; }
+
+    /* E4: kamue split accent */
+    .e4 .toggle .btn {
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      background: linear-gradient(180deg, #1a0f31, #120a22);
+      border-color: #51308b;
+      color: #d8c8ef;
+    }
+    .e4 .toggle .btn.active {
+      background: linear-gradient(180deg, var(--kamue), #1f113a);
+      border-color: var(--kamue-edge);
+      color: #ffffff;
+      text-shadow: 0 0 8px #b58dff99;
+    }
+
+    /* E5: micro-pill hanging hooks */
+    .e5 .toggle {
+      top: -11px;
+      gap: 5px;
+    }
+    .e5 .toggle .btn {
+      border-radius: 999px;
+      padding: 4px 11px;
+      border: 1px solid #476f92;
+      background: linear-gradient(180deg, #12314c, #10273b);
+      box-shadow: 0 0 0 1px #0a1522 inset, 0 2px 0 #09121a;
+    }
+    .e5 .toggle .btn.active {
+      border-color: #71c1ee;
+      background: linear-gradient(180deg, #1f5f8b, #184f76);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Upper-Right Hanging Toggle Ideas</h1>
+      <p>Preview-only concepts for `INPUT` and `JSON` mode buttons anchored to the editor top-right edge.</p>
+    </section>
+
+    <section class="grid">
+      <article class="idea e1">
+        <h2>E1: Straight Hang Tabs</h2>
+        <div class="editor">
+          <div class="toggle"><div class="btn active">INPUT</div><div class="btn">JSON</div></div>
+          <div class="mock">[Input form placeholder]
+Username: _________
+Level:    _________
+Money:    _________</div>
+        </div>
+      </article>
+
+      <article class="idea e2">
+        <h2>E2: Angled Cut Tabs</h2>
+        <div class="editor">
+          <div class="toggle"><div class="btn">INPUT</div><div class="btn active">JSON</div></div>
+          <div class="mock">{
+  "username": "SIINDBAD",
+  "level": 89,
+  "money": 220000
+}</div>
+        </div>
+      </article>
+
+      <article class="idea e3">
+        <h2>E3: Unified Rail Badge</h2>
+        <div class="editor">
+          <div class="toggle"><div class="btn active">INPUT</div><div class="btn">JSON</div></div>
+          <div class="mock">[Input + JSON switch inside one framed rail]
+Keeps buttons visually locked together.</div>
+        </div>
+      </article>
+
+      <article class="idea e4">
+        <h2>E4: KAMUE Accent Tabs</h2>
+        <div class="editor">
+          <div class="toggle"><div class="btn active">INPUT</div><div class="btn">JSON</div></div>
+          <div class="mock">Purple-leaning tab treatment for KAMUE skin
+while staying in the same geometry.</div>
+        </div>
+      </article>
+
+      <article class="idea e5">
+        <h2>E5: Micro Pill Hooks</h2>
+        <div class="editor">
+          <div class="toggle"><div class="btn">INPUT</div><div class="btn active">JSON</div></div>
+          <div class="mock">Rounded hanging controls with softer corners.
+Good if you want less aggressive hard-edge framing.</div>
+        </div>
+      </article>
+    </section>
+  </div>
+</body>
+</html>
