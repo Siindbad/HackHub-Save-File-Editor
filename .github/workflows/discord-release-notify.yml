@@ -74,7 +74,11 @@ jobs:
           import urllib.request
 
           webhook = (os.getenv("DISCORD_WEBHOOK_URL") or "").strip()
+          is_release_event = (os.getenv("EVENT_NAME") or "").strip() == "release"
           if not webhook:
+              if is_release_event:
+                  print("DISCORD_RELEASE_WEBHOOK is not set. Failing release notify.", file=sys.stderr)
+                  sys.exit(1)
               print("DISCORD_RELEASE_WEBHOOK is not set. Skipping Discord notify.")
               sys.exit(0)
 
