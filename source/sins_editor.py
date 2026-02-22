@@ -11705,6 +11705,18 @@ if not install_started:
         try:
             new_value = json.loads(raw)
         except _EXPECTED_APP_ERRORS as exc:
+            # Hard guarantee: append at least one diagnostics entry for every
+            # Apply Edit parse failure, even if normal logger flow is bypassed.
+            try:
+                emergency_logger = getattr(self, "_log_json_error_emergency", None)
+                if callable(emergency_logger):
+                    emergency_logger(
+                        exc,
+                        getattr(exc, "lineno", None) or 1,
+                        note="overlay_parse_apply_emergency",
+                    )
+            except Exception:
+                pass
             message = self._format_json_error(exc)
             self._error_visual_mode = "guide"
             self._show_error_overlay("Invalid Entry", message)
@@ -15263,6 +15275,34 @@ if not install_started:
     def _log_json_error(self, exc, target_line, note=""):
         return json_error_diag_service.log_json_error(self, exc, target_line, note=note)
 
+    def _log_json_error_emergency(self, exc, target_line, note=""):
+        # Emergency diagnostics fallback: write a minimal parse entry directly
+        # when normal service logging is bypassed or fails unexpectedly.
+        try:
+            log_path = self._diag_log_path()
+            log_dir = os.path.dirname(str(log_path or ""))
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                line = int(target_line)
+            except Exception:
+                line = int(getattr(exc, "lineno", 1) or 1)
+            line = max(1, line)
+            msg = str(getattr(exc, "msg", str(exc)) or "").strip()
+            entry = (
+                "\n---\n"
+                f"time={stamp} action={str(getattr(self, '_diag_action', 'apply_edit:0'))}\n"
+                f"msg={msg} lineno={getattr(exc, 'lineno', None)} col={getattr(exc, 'colno', None)} "
+                f"target={line} note={str(note or '').strip()}\n"
+                "system=overlay_parse mode=guide\n"
+                f"path={self._selected_tree_path_text()}\n"
+            )
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(entry)
+        except Exception:
+            return
+
     def _log_input_mode_edit_issue(self, path, exc):
         # INPUT apply diagnostics: capture invalid field/path writes for support triage.
         try:
@@ -15476,6 +15516,23 @@ if not install_started:
         try:
             new_value = json.loads(raw)
         except _EXPECTED_APP_ERRORS as exc:
+            # Live JSON feedback diagnostics: force one parse-entry marker so
+            # overlay-only validation errors always reach the diagnostics log.
+            self._begin_diag_action("live_json_feedback")
+            try:
+                emergency_logger = getattr(self, "_log_json_error_emergency", None)
+                if callable(emergency_logger):
+                    emergency_logger(
+                        exc,
+                        getattr(exc, "lineno", None) or 1,
+                        note="overlay_parse_live_emergency",
+                    )
+            except Exception:
+                pass
+            try:
+                self._log_json_error(exc, getattr(exc, "lineno", None) or 1, note="overlay_parse_live_enter")
+            except Exception:
+                pass
             self._error_visual_mode = "guide"
             self._show_error_overlay("Invalid Entry", self._format_json_error(exc))
             # Keep highlight-label colors active while JSON is temporarily invalid.
@@ -15868,4 +15925,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

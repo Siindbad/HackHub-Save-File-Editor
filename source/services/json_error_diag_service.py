@@ -38,6 +38,12 @@ def log_json_error(owner, exc, target_line, note=""):
     """Append a normalized diagnostics entry to the runtime diagnostics log."""
     try:
         log_path = owner._diag_log_path()
+        try:
+            log_dir = os.path.dirname(str(log_path or ""))
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+        except Exception:
+            pass
         log_path_abs = os.path.abspath(log_path)
         for legacy_name in owner.LEGACY_DIAG_LOG_FILENAMES:
             legacy_path = os.path.join(tempfile.gettempdir(), str(legacy_name))
@@ -52,6 +58,11 @@ def log_json_error(owner, exc, target_line, note=""):
         msg = getattr(exc, "msg", str(exc))
         lineno = getattr(exc, "lineno", None)
         colno = getattr(exc, "colno", None)
+        try:
+            target_line = int(target_line)
+        except Exception:
+            target_line = int(lineno or 1)
+        target_line = max(1, target_line)
         diag_system = diag_system_from_note(
             note,
             is_symbol_error_note=getattr(owner, "_is_symbol_error_note", None),
@@ -60,7 +71,7 @@ def log_json_error(owner, exc, target_line, note=""):
         try:
             item_id = owner.tree.focus()
             selected_path = owner.item_to_path.get(item_id, None)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except Exception:
             selected_path = None
         path_text = repr(selected_path)
         context = []
@@ -69,24 +80,46 @@ def log_json_error(owner, exc, target_line, note=""):
         for ln in range(start, end + 1):
             try:
                 text = owner.text.get(f"{ln}.0", f"{ln}.0 lineend")
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except Exception:
                 text = ""
             context.append(f"{ln}: {text}")
         entry = (
             "\n---\n"
-            f"time={now} action={owner._diag_action}\n"
+            f"time={now} action={str(getattr(owner, '_diag_action', 'apply_edit:0'))}\n"
             f"msg={msg} lineno={lineno} col={colno} target={target_line} note={note}\n"
             f"system={diag_system} mode={diag_mode or '-'}\n"
             f"path={path_text}\n"
             + "\n".join(context).rstrip()
             + "\n"
         )
-        owner._trim_text_file_for_append(
-            log_path,
-            owner.DIAG_LOG_MAX_BYTES,
-            owner.DIAG_LOG_KEEP_BYTES,
-        )
+        try:
+            owner._trim_text_file_for_append(
+                log_path,
+                owner.DIAG_LOG_MAX_BYTES,
+                owner.DIAG_LOG_KEEP_BYTES,
+            )
+        except Exception:
+            pass
         with open(log_path, "a", encoding="utf-8") as handle:
             handle.write(entry)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        # Mirror write: keep one stable non-dated diagnostics file for local
+        # visibility while retaining dated day-file logs for retention tooling.
+        try:
+            canonical_name = str(getattr(owner, "DIAG_LOG_FILENAME", "") or "").strip()
+            if canonical_name:
+                canonical_path = os.path.join(os.path.dirname(log_path), canonical_name)
+                if os.path.abspath(canonical_path) != log_path_abs:
+                    try:
+                        owner._trim_text_file_for_append(
+                            canonical_path,
+                            owner.DIAG_LOG_MAX_BYTES,
+                            owner.DIAG_LOG_KEEP_BYTES,
+                        )
+                    except Exception:
+                        pass
+                    with open(canonical_path, "a", encoding="utf-8") as handle:
+                        handle.write(entry)
+        except Exception:
+            pass
+    except Exception:
         return

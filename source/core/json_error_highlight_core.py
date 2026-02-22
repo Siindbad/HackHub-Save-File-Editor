@@ -14,6 +14,12 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
         if not col:
             col = 1
         line = min(max(line, 1), max(last_line, 1))
+        # Diagnostics baseline: always record parse-entry so failures never appear
+        # as "blank/no diagnostics" even if later highlight routing short-circuits.
+        try:
+            log_error_fn(owner, exc, line, note="overlay_parse_enter")
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            pass
         msg = getattr(exc, "msg", None)
         owner._last_json_error_msg = msg
         diag = owner._build_json_diagnostic(exc)
