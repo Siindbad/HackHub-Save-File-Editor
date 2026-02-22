@@ -26,7 +26,7 @@
 
 | <img align="left" alt="CHANGE LOGS" src="https://img.shields.io/badge/CHANGE%20LOGS-5B21B6?style=for-the-badge&labelColor=0F172A"> |
 |---|
-| **[ Version 1.3.5 ]**<br>- Added local Microsoft Defender CLI scan gate and security-report summary fields.<br>- Added shared startup-check checkbox in both update dialogs with saved preference.<br>- Added themed Update-available Yes/No dialog and preserved existing install flow.<br>- Updated Diagnostics triage.<br>- Updated security report with git metadata, gate summaries, and shipped asset hashes.<br>- Added select/render timing diagnostics and optimized large-category key highlight.<br>- Updated Missing account fallback.<br>- Added ROUTER subcategory INPUT renderer with framed two-row edit grid.<br>- Disabled Find Next usage in INPUT mode to prevent subcategory unlock side effects.<br>- Updated INPUT Find Next to search visible panel labels/fields and jump/scroll within.<br>- Updated JSON Find Next to focus selected tree hit and open matching subcategory.<br>- Updated SIINDBAD and KAMUE matrix palettes with theme-switch repaint and tab/row. |
+| **[ Version 1.3.6 ]**<br>- Fixed JSON Find Next to cycle global value matches across categories and include.<br>- Updated JSON Find Next to collapse the previous top-level category. |
 
 | <img align="left" alt="VERIFICATION SUITE" src="https://img.shields.io/badge/VERIFICATION%20SUITE-0F172A?style=for-the-badge&labelColor=0F172A"> |
 |---|
