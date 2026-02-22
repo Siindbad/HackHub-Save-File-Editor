@@ -241,6 +241,8 @@ def submit_bug_report_discord_forum(
         payload["embeds"][0]["fields"].append(
             {"name": "Screenshot", "value": f"{screenshot_name[:100]}: {screenshot_link[:900]}", "inline": False}
         )
+        # If screenshot upload produced a public URL, surface it as forum thumbnail.
+        payload["embeds"][0]["thumbnail"] = {"url": screenshot_link}
     if screenshot_note_text != "none":
         payload["embeds"][0]["fields"].append(
             {"name": "Screenshot Note", "value": screenshot_note_text[:1024], "inline": False}
