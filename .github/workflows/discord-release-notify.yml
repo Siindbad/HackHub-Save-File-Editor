@@ -135,6 +135,32 @@ jobs:
                   cleaned = cleaned.replace("\n\n\n", "\n\n")
               return cleaned
 
+          def _compact_changelog(raw_text, max_items=12, max_line_len=72):
+              text = (raw_text or "").strip()
+              if not text:
+                  return ""
+              bullets = []
+              for line in text.splitlines():
+                  stripped = line.strip()
+                  if stripped.startswith("- "):
+                      item = " ".join(stripped[2:].split())
+                      if item:
+                          bullets.append(item.rstrip("."))
+              if not bullets:
+                  compact = " ".join(text.split())
+                  if len(compact) > max_line_len:
+                      compact = compact[: max_line_len - 3].rstrip() + "..."
+                  return f"- {compact}" if compact else ""
+              compact_items = []
+              for item in bullets[:max_items]:
+                  if len(item) > max_line_len:
+                      cut = item[:max_line_len]
+                      if " " in cut:
+                          cut = cut.rsplit(" ", 1)[0]
+                      item = cut.rstrip() + "..."
+                  compact_items.append(f"- {item}.")
+              return "\n".join(compact_items)
+
           def _load_latest_release(repo_name):
               token = (os.getenv("GH_TOKEN") or "").strip()
               if not repo_name:
@@ -215,6 +241,7 @@ jobs:
               version_label = tag or title or "N/A"
               embed_title = f"SINS SAVE EDITOR {version_label}"
               notes_text = _sanitize_changelog(notes)
+              notes_text = _compact_changelog(notes_text)
               if len(notes_text) > 3850:
                   notes_text = notes_text[:3847] + "..."
               changelog_text = notes_text if notes_text else "- No changelog notes provided."
