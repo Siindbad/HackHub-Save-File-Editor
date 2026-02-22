@@ -17,7 +17,9 @@ permissions:
 
 jobs:
   build-sign-release:
-    runs-on: windows-latest
+    # Use the dedicated self-hosted Defender-capable runner so Defender gate can execute
+    # instead of being skipped on hosted runners lacking MpCmdRun.exe.
+    runs-on: [self-hosted, Windows, X64, defender]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
