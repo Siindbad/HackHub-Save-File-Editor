@@ -511,8 +511,8 @@ jobs:
               or os.getenv("VIRUSTOTAL_API_KEY")
               or ""
           ).strip()
-          # Strict by default so release gates stay PASS/FAIL only unless explicitly disabled.
-          vt_strict = (os.getenv("HACKHUB_VT_STRICT") or "1").strip().lower() in {"1", "true", "yes", "on"}
+          # Always strict for public releases so VirusTotal never returns soft-skip verdicts.
+          vt_strict = True
           vt_fail_on_susp = (os.getenv("HACKHUB_VT_FAIL_ON_SUSPICIOUS") or "").strip().lower() in {"1", "true", "yes", "on"}
           vt_upload_fallback = (os.getenv("HACKHUB_VT_UPLOAD_FALLBACK") or "1").strip().lower() in {"1", "true", "yes", "on"}
           # Allow extended polling on slower analysis queues before final timeout.
