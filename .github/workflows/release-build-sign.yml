@@ -1274,7 +1274,30 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add README.md SECURITY.md
           git commit -m "Sync public README/SECURITY docs for v${{ steps.vars.outputs.version }}"
-          git push origin HEAD:main
+
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            git pull --rebase origin main
+            if ($LASTEXITCODE -ne 0) {
+              if ($attempt -eq $maxAttempts) {
+                throw "Rebase failed after $maxAttempts attempts."
+              }
+              git rebase --abort 2>$null
+              Start-Sleep -Seconds 2
+              continue
+            }
+
+            git push origin HEAD:main
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "README/SECURITY sync pushed on attempt $attempt."
+              break
+            }
+
+            if ($attempt -eq $maxAttempts) {
+              throw "Push failed after $maxAttempts attempts."
+            }
+            Start-Sleep -Seconds 2
+          }
 
       - name: Cleanup older releases and tags
         uses: actions/github-script@v7
