@@ -170,7 +170,7 @@ jobs:
           HACKHUB_VT_FAIL_ON_SUSPICIOUS: ${{ vars.HACKHUB_VT_FAIL_ON_SUSPICIOUS }}
           HACKHUB_VT_UPLOAD_FALLBACK: ${{ vars.HACKHUB_VT_UPLOAD_FALLBACK }}
         run: |
-          python - <<'PY'
+          @'
           import datetime as dt
           import hashlib
           import json
@@ -601,12 +601,11 @@ jobs:
 
           report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
           print("Generated dist/security-report.txt in v2 full format.")
-          PY
-
+          '@ | python -
       - name: Sync SECURITY.md from security report
         shell: pwsh
         run: |
-          python - <<'PY'
+          @'
           from pathlib import Path
 
           report = Path("dist/security-report.txt")
@@ -669,8 +668,7 @@ jobs:
 
           out_md.write_text("\n".join(lines), encoding="utf-8")
           print("Synced SECURITY.md from dist/security-report.txt")
-          PY
-
+          '@ | python -
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
@@ -766,7 +764,7 @@ jobs:
       - name: Sync public README changelog row
         shell: pwsh
         run: |
-          python - <<'PY'
+          @'
           from pathlib import Path
           import os
           import re
@@ -829,7 +827,7 @@ jobs:
           readme_lines[replace_idx] = row
           public_readme.write_text("\n".join(readme_lines) + "\n", encoding="utf-8")
           print(f"Synced README.md CHANGE LOGS row to Version {version}")
-          PY
+          '@ | python -
         env:
           APP_VERSION: ${{ steps.vars.outputs.version }}
 
