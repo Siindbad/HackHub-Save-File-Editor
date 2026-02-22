@@ -3,6 +3,9 @@ name: Discord Release Notify
 on:
   release:
     types: [published, prereleased]
+  workflow_run:
+    workflows: ["Release Build and Sigstore Sign"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -40,7 +43,7 @@ permissions:
 
 jobs:
   notify:
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
     steps:
       - name: Send Discord release message
