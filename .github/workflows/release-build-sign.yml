@@ -138,7 +138,40 @@ jobs:
       - name: Build release page sections
         shell: pwsh
         run: |
+          $version = "${{ steps.vars.outputs.version }}"
+          $changelogPath = "source/assets/Readme.txt"
+          $changelogLines = @()
+          if (Test-Path $changelogPath) {
+            $lines = Get-Content -Path $changelogPath
+            $escapedVersion = [Regex]::Escape($version)
+            $versionPattern = "^\[\s*Version\s+$escapedVersion\s*\]$"
+            $startIndex = -1
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i].Trim() -match $versionPattern) {
+                $startIndex = $i + 1
+                break
+              }
+            }
+            if ($startIndex -ge 0) {
+              for ($j = $startIndex; $j -lt $lines.Count; $j++) {
+                $current = $lines[$j].Trim()
+                if ($current -match "^\[.*\]$") {
+                  break
+                }
+                if ($current -match "^- ") {
+                  $changelogLines += $current
+                }
+              }
+            }
+          }
+          if (-not $changelogLines -or $changelogLines.Count -eq 0) {
+            $changelogLines = @("- No changelog notes provided.")
+          }
+
           $body = @(
+            '## Changelog'
+          ) + $changelogLines + @(
+            '',
             '## Download',
             '- `sins_editor.exe` (main app)',
             '- `sins_editor-onedir.zip` (portable fallback)',
