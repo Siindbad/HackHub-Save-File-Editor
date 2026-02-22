@@ -555,6 +555,74 @@ jobs:
           print("Generated dist/security-report.txt in v2 full format.")
           PY
 
+      - name: Sync SECURITY.md from security report
+        shell: pwsh
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          report = Path("dist/security-report.txt")
+          out_md = Path("SECURITY.md")
+          if not report.exists():
+              raise SystemExit("dist/security-report.txt not found")
+
+          values = {}
+          for raw in report.read_text(encoding="utf-8", errors="replace").splitlines():
+              if ":" not in raw:
+                  continue
+              k, v = raw.split(":", 1)
+              key = k.strip().lower()
+              val = v.strip()
+              if key and key not in values:
+                  values[key] = val
+
+          def badge(label, status):
+              st = (status or "UNKNOWN").upper()
+              color = "brightgreen" if st == "PASS" else ("red" if st == "FAIL" else "lightgrey")
+              return f"![{label}](https://img.shields.io/badge/{label}-{st}-{color})"
+
+          semgrep = values.get("semgrep_status", "UNKNOWN")
+          trufflehog = values.get("trufflehog_status", "UNKNOWN")
+          bandit = values.get("bandit_status", "UNKNOWN")
+          safety = values.get("safety_status", "UNKNOWN")
+          defender = values.get("defender_status", "UNKNOWN")
+          vt = values.get("virustotal_status", "UNKNOWN")
+          sha_match = values.get("asset_sha256_match", "unknown").lower()
+          sha_status = "PASS" if sha_match == "true" else ("FAIL" if sha_match == "false" else "UNKNOWN")
+          vt_link = values.get("virustotal_permalink", "")
+          app_version = values.get("app_version", "unknown")
+          generated_utc = values.get("generated_utc", "unknown")
+
+          lines = [
+              "# Verification Report",
+              "",
+              f"Latest release snapshot generated from `dist/security-report.txt` for `{app_version}`.",
+              "",
+              "## Gate Status",
+              "",
+              f"- {badge('SEMGREP', semgrep)}",
+              f"- {badge('TRUFFLEHOG', trufflehog)}",
+              f"- {badge('BANDIT', bandit)}",
+              f"- {badge('SAFETY', safety)}",
+              f"- {badge('DEFENDER', defender)}",
+              f"- {badge('VIRUSTOTAL', vt)}",
+              f"- {badge('SHA256', sha_status)}",
+              "",
+              "## Links",
+              "",
+              f"- VirusTotal: {vt_link if vt_link else 'N/A'}",
+              "",
+              "## Metadata",
+              "",
+              f"- generated_utc: `{generated_utc}`",
+              f"- app_version: `{app_version}`",
+              "",
+          ]
+
+          out_md.write_text("\n".join(lines), encoding="utf-8")
+          print("Synced SECURITY.md from dist/security-report.txt")
+          PY
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
@@ -715,17 +783,17 @@ jobs:
         env:
           APP_VERSION: ${{ steps.vars.outputs.version }}
 
-      - name: Commit README changelog sync
+      - name: Commit README/SECURITY sync
         shell: pwsh
         run: |
-          if ((git status --porcelain README.md).Length -eq 0) {
-            Write-Host "README.md changelog already up to date."
+          if ((git status --porcelain README.md SECURITY.md).Length -eq 0) {
+            Write-Host "README.md and SECURITY.md already up to date."
             exit 0
           }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git commit -m "Sync public README changelog for v${{ steps.vars.outputs.version }}"
+          git add README.md SECURITY.md
+          git commit -m "Sync public README/SECURITY docs for v${{ steps.vars.outputs.version }}"
           git push origin HEAD:main
 
       - name: Publish GitHub release assets
