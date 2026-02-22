@@ -405,8 +405,22 @@ jobs:
               defender_reason = "mpcmd_not_found_on_runner"
           if defender_strict:
               if defender_status == "FAIL":
+                  print("Defender strict mode diagnostics:")
+                  print(f"- defender_status: {defender_status}")
+                  print(f"- defender_reason: {defender_reason}")
+                  print(f"- defender_exit_code: {defender_exit}")
+                  print(f"- defender_engine_version: {defender_engine}")
+                  print(f"- defender_signature_version: {defender_signature}")
+                  print(f"- defender_output_excerpt: {defender_output_excerpt or 'n/a'}")
                   raise SystemExit("Defender strict mode: detection found.")
               if defender_status == "SKIPPED" and defender_require_installed:
+                  print("Defender strict mode diagnostics:")
+                  print(f"- defender_status: {defender_status}")
+                  print(f"- defender_reason: {defender_reason}")
+                  print(f"- defender_exit_code: {defender_exit}")
+                  print(f"- defender_engine_version: {defender_engine}")
+                  print(f"- defender_signature_version: {defender_signature}")
+                  print(f"- defender_output_excerpt: {defender_output_excerpt or 'n/a'}")
                   raise SystemExit(f"Defender strict mode: required scan unavailable ({defender_reason}).")
 
           # VirusTotal
