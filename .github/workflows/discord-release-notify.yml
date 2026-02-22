@@ -101,6 +101,40 @@ jobs:
                       return text
               return ""
 
+          def _sanitize_changelog(raw_text):
+              text = (raw_text or "").strip()
+              if not text:
+                  return ""
+              filtered = []
+              skip_block = False
+              skip_heads = {
+                  "## download",
+                  "## verify",
+                  "## release metadata",
+                  "## changelog information",
+              }
+              for line in text.splitlines():
+                  stripped = line.strip()
+                  lowered = stripped.lower()
+                  if lowered in skip_heads:
+                      skip_block = True
+                      continue
+                  if lowered.startswith("## ") and lowered not in skip_heads:
+                      skip_block = False
+                  if skip_block:
+                      continue
+                  if lowered.startswith("auto-generated changelog notes are appended below."):
+                      continue
+                  if lowered.startswith("full changelog:"):
+                      continue
+                  filtered.append(line)
+              cleaned = "\n".join(filtered).strip()
+              if not cleaned:
+                  return ""
+              while "\n\n\n" in cleaned:
+                  cleaned = cleaned.replace("\n\n\n", "\n\n")
+              return cleaned
+
           def _load_latest_release(repo_name):
               token = (os.getenv("GH_TOKEN") or "").strip()
               if not repo_name:
@@ -180,7 +214,7 @@ jobs:
           else:
               version_label = tag or title or "N/A"
               embed_title = f"SINS SAVE EDITOR {version_label}"
-              notes_text = (notes or "").strip()
+              notes_text = _sanitize_changelog(notes)
               if len(notes_text) > 3850:
                   notes_text = notes_text[:3847] + "..."
               changelog_text = notes_text if notes_text else "- No changelog notes provided."
