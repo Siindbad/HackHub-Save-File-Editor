@@ -43,7 +43,6 @@ permissions:
 
 jobs:
   notify:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Send Discord release message
@@ -56,6 +55,10 @@ jobs:
           RELEASE_BODY: ${{ github.event.release.body }}
           RELEASE_IS_PRERELEASE: ${{ github.event.release.prerelease }}
           WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          WORKFLOW_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.id }}
           MANUAL_TAG: ${{ inputs.tag }}
           MANUAL_TITLE: ${{ inputs.title }}
           MANUAL_URL: ${{ inputs.url }}
@@ -80,15 +83,15 @@ jobs:
           import urllib.request
 
           webhook = (os.getenv("DISCORD_WEBHOOK_URL") or "").strip()
-          is_release_event = (os.getenv("EVENT_NAME") or "").strip() == "release"
+          event_name = (os.getenv("EVENT_NAME") or "").strip()
+          is_release_event = event_name == "release"
+          is_workflow_event = event_name == "workflow_run"
           if not webhook:
-              if is_release_event:
+              if is_release_event or is_workflow_event:
                   print("DISCORD_RELEASE_WEBHOOK is not set. Failing release notify.", file=sys.stderr)
                   sys.exit(1)
               print("DISCORD_RELEASE_WEBHOOK is not set. Skipping Discord notify.")
               sys.exit(0)
-
-          event_name = (os.getenv("EVENT_NAME") or "").strip()
           workflow_conclusion = (os.getenv("WORKFLOW_CONCLUSION") or "").strip().lower()
 
           def _pick(*values):
@@ -119,12 +122,14 @@ jobs:
                   return {}
 
           repo = (os.getenv("REPO_NAME") or "").strip()
+          workflow_name = (os.getenv("WORKFLOW_NAME") or "").strip() or "Release Build and Sigstore Sign"
+          workflow_url = (os.getenv("WORKFLOW_URL") or "").strip()
+          workflow_branch = (os.getenv("WORKFLOW_BRANCH") or "").strip() or "main"
+          workflow_id = (os.getenv("WORKFLOW_ID") or "").strip()
           latest_release = {}
           if event_name == "workflow_run":
-              if workflow_conclusion != "success":
-                  print(f"workflow_run conclusion '{workflow_conclusion}' is not success. Skipping Discord notify.")
-                  sys.exit(0)
-              latest_release = _load_latest_release(repo)
+              if workflow_conclusion == "success":
+                  latest_release = _load_latest_release(repo)
 
           tag = _pick(os.getenv("MANUAL_TAG"), os.getenv("RELEASE_TAG"), latest_release.get("tag_name"))
           title = _pick(
@@ -159,26 +164,42 @@ jobs:
               color = 5814783
 
           releases_url = f"https://github.com/{repo}/releases" if repo else ""
-
-          version_label = tag or title or "N/A"
-          embed_title = f"SINS SAVE EDITOR {version_label}"
-          notes_text = (notes or "").strip()
-          if len(notes_text) > 3850:
-              notes_text = notes_text[:3847] + "..."
-          changelog_text = notes_text if notes_text else "- No changelog notes provided."
-          download_line = f"[Download Latest Release]({url or releases_url})" if (url or releases_url) else ""
-          if download_line:
-              description = f"New Release!\n\n{download_line}\n\n**Changelog**\n{changelog_text}"
+          is_release_failure = event_name == "workflow_run" and workflow_conclusion != "success"
+          if is_release_failure:
+              run_link = workflow_url or (f"https://github.com/{repo}/actions/runs/{workflow_id}" if (repo and workflow_id) else "")
+              status = (workflow_conclusion or "failed").upper()
+              embed_title = f"SINS SAVE EDITOR RELEASE {status}"
+              detail_lines = [
+                  f"Workflow: `{workflow_name}`",
+                  f"Branch: `{workflow_branch}`",
+                  f"Conclusion: `{workflow_conclusion or 'unknown'}`",
+              ]
+              if run_link:
+                  detail_lines.append(f"[Open Workflow Run]({run_link})")
+              description = "Release pipeline failed.\n\n" + "\n".join(detail_lines)
           else:
-              description = f"New Release!\n\n**Changelog**\n{changelog_text}"
+              version_label = tag or title or "N/A"
+              embed_title = f"SINS SAVE EDITOR {version_label}"
+              notes_text = (notes or "").strip()
+              if len(notes_text) > 3850:
+                  notes_text = notes_text[:3847] + "..."
+              changelog_text = notes_text if notes_text else "- No changelog notes provided."
+              download_line = f"[Download Latest Release]({url or releases_url})" if (url or releases_url) else ""
+              if download_line:
+                  description = f"New Release!\n\n{download_line}\n\n**Changelog**\n{changelog_text}"
+              else:
+                  description = f"New Release!\n\n**Changelog**\n{changelog_text}"
 
+          embed_color = color
+          if is_release_failure:
+              embed_color = 15158332
           embed = {
               "title": embed_title,
               "description": description,
-              "color": color,
+              "color": embed_color,
               "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
           }
-          if url:
+          if url and not is_release_failure:
               embed["url"] = url
 
           payload = {
