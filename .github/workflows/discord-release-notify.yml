@@ -3,6 +3,9 @@ name: Discord Release Notify
 on:
   release:
     types: [published, prereleased]
+  workflow_run:
+    workflows: ["Release Build and Sigstore Sign"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -40,6 +43,7 @@ permissions:
 
 jobs:
   notify:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Send Discord release message
@@ -51,6 +55,7 @@ jobs:
           RELEASE_URL: ${{ github.event.release.html_url }}
           RELEASE_BODY: ${{ github.event.release.body }}
           RELEASE_IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           MANUAL_TAG: ${{ inputs.tag }}
           MANUAL_TITLE: ${{ inputs.title }}
           MANUAL_URL: ${{ inputs.url }}
@@ -63,6 +68,7 @@ jobs:
           DISCORD_AVATAR_URL: ${{ vars.DISCORD_RELEASE_AVATAR_URL }}
           DISCORD_MENTION: ${{ vars.DISCORD_RELEASE_MENTION }}
           DISCORD_COLOR: ${{ vars.DISCORD_RELEASE_COLOR }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           python - <<'PY'
@@ -83,6 +89,7 @@ jobs:
               sys.exit(0)
 
           event_name = (os.getenv("EVENT_NAME") or "").strip()
+          workflow_conclusion = (os.getenv("WORKFLOW_CONCLUSION") or "").strip().lower()
 
           def _pick(*values):
               for value in values:
@@ -91,13 +98,46 @@ jobs:
                       return text
               return ""
 
-          tag = _pick(os.getenv("MANUAL_TAG"), os.getenv("RELEASE_TAG"))
-          title = _pick(os.getenv("MANUAL_TITLE"), os.getenv("RELEASE_NAME"), f"Release {tag}" if tag else "")
-          url = _pick(os.getenv("MANUAL_URL"), os.getenv("RELEASE_URL"))
-          notes = _pick(os.getenv("MANUAL_NOTES"), os.getenv("RELEASE_BODY"))
+          def _load_latest_release(repo_name):
+              token = (os.getenv("GH_TOKEN") or "").strip()
+              if not repo_name:
+                  return {}
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{repo_name}/releases/latest",
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "User-Agent": "HackHub-Release-Notifier/1.0 (+https://github.com/Siindbad/HackHub-Save-File-Editor)",
+                      **({"Authorization": f"Bearer {token}"} if token else {}),
+                  },
+                  method="GET",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      return json.loads(resp.read().decode("utf-8", "replace") or "{}")
+              except Exception as exc:
+                  print(f"Failed to load latest release metadata: {exc}", file=sys.stderr)
+                  return {}
+
+          repo = (os.getenv("REPO_NAME") or "").strip()
+          latest_release = {}
+          if event_name == "workflow_run":
+              if workflow_conclusion != "success":
+                  print(f"workflow_run conclusion '{workflow_conclusion}' is not success. Skipping Discord notify.")
+                  sys.exit(0)
+              latest_release = _load_latest_release(repo)
+
+          tag = _pick(os.getenv("MANUAL_TAG"), os.getenv("RELEASE_TAG"), latest_release.get("tag_name"))
+          title = _pick(
+              os.getenv("MANUAL_TITLE"),
+              os.getenv("RELEASE_NAME"),
+              latest_release.get("name"),
+              f"Release {tag}" if tag else "",
+          )
+          url = _pick(os.getenv("MANUAL_URL"), os.getenv("RELEASE_URL"), latest_release.get("html_url"))
+          notes = _pick(os.getenv("MANUAL_NOTES"), os.getenv("RELEASE_BODY"), latest_release.get("body"))
 
           manual_pre = (os.getenv("MANUAL_PRERELEASE") or "").strip().lower() in {"1", "true", "yes", "on"}
-          event_pre = (os.getenv("RELEASE_IS_PRERELEASE") or "").strip().lower() in {"1", "true", "yes", "on"}
+          event_pre = _pick(os.getenv("RELEASE_IS_PRERELEASE"), str(latest_release.get("prerelease", ""))).lower() in {"1", "true", "yes", "on"}
           is_prerelease = manual_pre if event_name == "workflow_dispatch" else event_pre
           style = _pick(os.getenv("MANUAL_STYLE"), os.getenv("DEFAULT_STYLE"), "SIINDBAD").upper()
           if style not in {"SIINDBAD", "KAMUE"}:
@@ -118,7 +158,6 @@ jobs:
           except Exception:
               color = 5814783
 
-          repo = (os.getenv("REPO_NAME") or "").strip()
           releases_url = f"https://github.com/{repo}/releases" if repo else ""
 
           version_label = tag or title or "N/A"
