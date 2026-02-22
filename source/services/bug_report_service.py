@@ -1,8 +1,8 @@
 import io
 import math
 import os
+import random
 import re
-import secrets
 from datetime import datetime, timezone
 
 
@@ -125,7 +125,7 @@ def build_bug_screenshot_repo_path(source_filename, summary="", uploads_dir="bug
     slug = sanitize_bug_screenshot_slug(slug_source)
     now_utc = datetime.now(timezone.utc)
     ts = now_utc.strftime("%Y%m%dT%H%M%SZ")
-    short_id = secrets.token_hex(3)
+    short_id = f"{random.getrandbits(24):06x}"
     year = now_utc.strftime("%Y")
     month = now_utc.strftime("%m")
     use_uploads_dir = str(uploads_dir or "bug-uploads").strip("/")

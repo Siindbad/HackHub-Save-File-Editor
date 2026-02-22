@@ -6344,10 +6344,14 @@ if not install_started:
         if cached:
             return cached
 
-        image_module = importlib.import_module("PIL.Image")
-        draw_module = importlib.import_module("PIL.ImageDraw")
-        font_module = importlib.import_module("PIL.ImageFont")
-        image_tk_module = importlib.import_module("PIL.ImageTk")
+        try:
+            image_module = importlib.import_module("PIL.Image")
+            draw_module = importlib.import_module("PIL.ImageDraw")
+            font_module = importlib.import_module("PIL.ImageFont")
+            image_tk_module = importlib.import_module("PIL.ImageTk")
+        except _EXPECTED_APP_ERRORS:
+            # Keep startup functional when Pillow is unavailable (dev env or minimal runtime).
+            return None
 
         sprite_bundle = self._siindbad_b_sprite_bundle(
             key=key,
@@ -6727,6 +6731,8 @@ if not install_started:
                 height=max(24, height),
                 palette=palette,
             )
+            if not isinstance(bundle, dict):
+                bundle = {}
             button._siindbad_base_image = bundle.get("base")
             button._siindbad_hover_frames = bundle.get("hover_frames", [])
             base_interval = int(bundle.get("frame_interval_ms", 40) or 40)
@@ -6734,22 +6740,40 @@ if not install_started:
             self._stop_siindbad_b_button_scan(button)
             try:
                 if isinstance(button, tk.Label):
-                    button.configure(
-                        text="",
-                        image=button._siindbad_base_image,
-                        compound="none",
-                        font=self._toolbar_button_font(),
-                        relief="flat",
-                        borderwidth=0,
-                        highlightthickness=0,
-                        padx=0,
-                        pady=0,
-                        bg=palette["button_bg"],
-                        fg=palette["button_fg"],
-                        cursor="hand2",
-                        anchor="center",
-                        justify="center",
-                    )
+                    if button._siindbad_base_image is None:
+                        button.configure(
+                            text=display_text,
+                            image="",
+                            compound="none",
+                            font=self._toolbar_button_font(),
+                            relief="flat",
+                            borderwidth=0,
+                            highlightthickness=0,
+                            padx=8,
+                            pady=4,
+                            bg=palette["button_bg"],
+                            fg=palette["button_fg"],
+                            cursor="hand2",
+                            anchor="center",
+                            justify="center",
+                        )
+                    else:
+                        button.configure(
+                            text="",
+                            image=button._siindbad_base_image,
+                            compound="none",
+                            font=self._toolbar_button_font(),
+                            relief="flat",
+                            borderwidth=0,
+                            highlightthickness=0,
+                            padx=0,
+                            pady=0,
+                            bg=palette["button_bg"],
+                            fg=palette["button_fg"],
+                            cursor="hand2",
+                            anchor="center",
+                            justify="center",
+                        )
                 else:
                     button.configure(
                         text="",
