@@ -51,6 +51,40 @@ jobs:
           pip install -r source/requirements-build.txt
           pip install semgrep bandit safety
 
+      - name: Install TruffleHog
+        shell: pwsh
+        run: |
+          try {
+            $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest" -Headers @{ "User-Agent" = "hackhub-release-build" }
+            $asset = $rel.assets | Where-Object { $_.name -match "windows_amd64\.(zip|tar\.gz)$" } | Select-Object -First 1
+            if (-not $asset) {
+              Write-Host "TruffleHog asset not found for windows_amd64; continuing without install."
+              exit 0
+            }
+            $tmp = Join-Path $env:RUNNER_TEMP "trufflehog_pkg"
+            if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+            New-Item -Path $tmp -ItemType Directory | Out-Null
+            $pkg = Join-Path $tmp $asset.name
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $pkg
+            $outDir = Join-Path $tmp "out"
+            New-Item -Path $outDir -ItemType Directory | Out-Null
+            if ($asset.name -like "*.zip") {
+              Expand-Archive -Path $pkg -DestinationPath $outDir -Force
+            } else {
+              tar -xzf $pkg -C $outDir
+            }
+            $exe = Get-ChildItem -Path $outDir -Recurse -File | Where-Object { $_.Name -ieq "trufflehog.exe" } | Select-Object -First 1
+            if ($exe) {
+              Add-Content -Path $env:GITHUB_PATH -Value $exe.DirectoryName
+              Write-Host "Installed TruffleHog at $($exe.FullName)"
+            } else {
+              Write-Host "TruffleHog executable not found after extraction; continuing without install."
+            }
+          } catch {
+            Write-Host "TruffleHog install failed: $($_.Exception.Message)"
+            Write-Host "Continuing release workflow with SKIPPED trufflehog status if binary unavailable."
+          }
+
       - name: Build with PyInstaller
         working-directory: source
         shell: pwsh
@@ -90,6 +124,9 @@ jobs:
         shell: pwsh
         env:
           RELEASE_TAG: ${{ steps.vars.outputs.tag }}
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          HACKHUB_VT_STRICT: ${{ vars.HACKHUB_VT_STRICT }}
+          HACKHUB_VT_FAIL_ON_SUSPICIOUS: ${{ vars.HACKHUB_VT_FAIL_ON_SUSPICIOUS }}
         run: |
           python - <<'PY'
           import datetime as dt
@@ -98,6 +135,8 @@ jobs:
           import os
           import shutil
           import subprocess
+          import urllib.error
+          import urllib.request
           from pathlib import Path
 
           dist = Path("dist")
@@ -169,7 +208,7 @@ jobs:
           except Exception:
               semgrep_status = "SKIPPED"
 
-          # TruffleHog (not bundled in public runtime workflow by default)
+          # TruffleHog
           trufflehog_status = "SKIPPED"
           trufflehog_findings = 0
           trufflehog_verified = 0
@@ -178,6 +217,44 @@ jobs:
           trufflehog_strict = "false"
           trufflehog_results = "verified,unknown"
           trufflehog_exclude = "n/a (public workflow)"
+          trufflehog_bin = shutil.which("trufflehog")
+          if trufflehog_bin:
+              rc, out, err = run_cmd(
+                  [
+                      trufflehog_bin,
+                      "filesystem",
+                      str(src_root),
+                      "--json",
+                      "--no-update",
+                      "--results=verified,unknown",
+                      "--force-skip-binaries",
+                      "--force-skip-archives",
+                  ]
+              )
+              findings = []
+              for raw in (out or "").splitlines():
+                  raw = raw.strip()
+                  if not raw:
+                      continue
+                  try:
+                      obj = json.loads(raw)
+                  except Exception:
+                      continue
+                  # Finding objects include detector/source metadata; ignore pure info rows.
+                  if isinstance(obj, dict) and (
+                      "DetectorName" in obj or "Raw" in obj or "SourceMetadata" in obj
+                  ):
+                      findings.append(obj)
+              trufflehog_findings = len(findings)
+              for obj in findings:
+                  v = obj.get("Verified")
+                  if v is True:
+                      trufflehog_verified += 1
+                  elif v is False:
+                      trufflehog_unverified += 1
+                  else:
+                      trufflehog_unknown += 1
+              trufflehog_status = "PASS" if trufflehog_findings == 0 else "FAIL"
 
           # Defender local scan (best-effort)
           defender_status = "SKIPPED"
@@ -200,15 +277,53 @@ jobs:
           else:
               mpcmd = "MpCmdRun.exe"
 
-          # VirusTotal (hash permalink only in public workflow)
+          # VirusTotal
           vt_status = "SKIPPED"
-          vt_source = "hash_miss"
+          vt_source = "no_api_key"
           vt_mal = 0
           vt_susp = 0
           vt_harm = 0
           vt_und = 0
           vt_timeout = "false"
           vt_link = f"https://www.virustotal.com/gui/file/{exe_sha}/detection"
+          vt_api_key = (os.getenv("VT_API_KEY") or "").strip()
+          vt_strict = (os.getenv("HACKHUB_VT_STRICT") or "").strip().lower() in {"1", "true", "yes", "on"}
+          vt_fail_on_susp = (os.getenv("HACKHUB_VT_FAIL_ON_SUSPICIOUS") or "").strip().lower() in {"1", "true", "yes", "on"}
+          if vt_api_key:
+              req = urllib.request.Request(
+                  f"https://www.virustotal.com/api/v3/files/{exe_sha}",
+                  headers={
+                      "x-apikey": vt_api_key,
+                      "Accept": "application/json",
+                      "User-Agent": "HackHub-Release-Workflow/1.0",
+                  },
+                  method="GET",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      payload = json.loads(resp.read().decode("utf-8", "replace") or "{}")
+                  stats = (((payload.get("data") or {}).get("attributes") or {}).get("last_analysis_stats") or {})
+                  vt_mal = int(stats.get("malicious", 0) or 0)
+                  vt_susp = int(stats.get("suspicious", 0) or 0)
+                  vt_harm = int(stats.get("harmless", 0) or 0)
+                  vt_und = int(stats.get("undetected", 0) or 0)
+                  vt_source = "hash_lookup"
+                  if vt_mal > 0 or (vt_fail_on_susp and vt_susp > 0):
+                      vt_status = "FAIL"
+                  else:
+                      vt_status = "PASS"
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      vt_source = "hash_miss"
+                      vt_status = "FAIL" if vt_strict else "SKIPPED"
+                  else:
+                      vt_source = f"http_{exc.code}"
+                      vt_status = "FAIL" if vt_strict else "SKIPPED"
+              except Exception:
+                  vt_source = "request_error"
+                  vt_status = "FAIL" if vt_strict else "SKIPPED"
+          elif vt_strict:
+              vt_status = "FAIL"
 
           # Bandit
           bandit_status = "SKIPPED"
