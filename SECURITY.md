@@ -10,11 +10,11 @@ Release version: **v1.3.5**
 - ![BANDIT FAIL](https://img.shields.io/badge/BANDIT-FAIL-red?style=flat-square) `BANDIT`
 - ![SAFETY STATUS SKIP](https://img.shields.io/badge/SAFETY%20STATUS-SKIP-lightgrey?style=flat-square) `SAFETY STATUS`
 - ![MICROSOFT DEFENDER SKIP](https://img.shields.io/badge/MICROSOFT%20DEFENDER-SKIP-lightgrey?style=flat-square) `MICROSOFT DEFENDER`
-- ![VIRUS TOTAL SKIP](https://img.shields.io/badge/VIRUS%20TOTAL-SKIP-lightgrey?style=flat-square) `VIRUS TOTAL`
+- ![VIRUS TOTAL FAIL](https://img.shields.io/badge/VIRUS%20TOTAL-FAIL-red?style=flat-square) `VIRUS TOTAL`
 - ![SHA256 PASS](https://img.shields.io/badge/SHA256-PASS-brightgreen?style=flat-square) `SHA256`
 
 ## VirusTotal Report
 
-- VirusTotal permalink: [https://www.virustotal.com/gui/file/3780c9bbda70e1c769315dc22496659c6b7d4a6461d8a3ea0f5758302726388a/detection](https://www.virustotal.com/gui/file/3780c9bbda70e1c769315dc22496659c6b7d4a6461d8a3ea0f5758302726388a/detection)
+- VirusTotal permalink: [https://www.virustotal.com/gui/file/5499086f568d2f3452bb2ec8cb2a0bd9d660b65f448d0a8caaf937944abf0034/detection](https://www.virustotal.com/gui/file/5499086f568d2f3452bb2ec8cb2a0bd9d660b65f448d0a8caaf937944abf0034/detection)
 
 See GitHub Releases for the matching release artifacts.
