@@ -161,6 +161,52 @@ jobs:
                   compact_items.append(f"- {item}.")
               return "\n".join(compact_items)
 
+          def _extract_version_changelog_from_readme(readme_text, version_text):
+              text = (readme_text or "")
+              version = (version_text or "").strip()
+              if not text or not version:
+                  return ""
+              lines = text.splitlines()
+              target = f"[ Version {version} ]".lower()
+              start = -1
+              for idx, line in enumerate(lines):
+                  if line.strip().lower() == target:
+                      start = idx + 1
+                      break
+              if start < 0:
+                  return ""
+              bullets = []
+              for line in lines[start:]:
+                  trimmed = line.strip()
+                  if trimmed.startswith("[") and trimmed.endswith("]"):
+                      break
+                  if trimmed.startswith("- "):
+                      bullets.append(trimmed)
+              return "\n".join(bullets).strip()
+
+          def _load_source_readme_changelog(repo_name, tag_name):
+              tag = (tag_name or "").strip()
+              if not repo_name or not tag:
+                  return ""
+              version = tag[1:] if tag.lower().startswith("v") else tag
+              # Pull from source-of-truth changelog file in repo main.
+              url = f"https://raw.githubusercontent.com/{repo_name}/main/source/assets/Readme.txt"
+              req = urllib.request.Request(
+                  url,
+                  headers={
+                      "Accept": "text/plain",
+                      "User-Agent": "HackHub-Release-Notifier/1.0 (+https://github.com/Siindbad/HackHub-Save-File-Editor)",
+                  },
+                  method="GET",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      content = resp.read().decode("utf-8", "replace")
+                  return _extract_version_changelog_from_readme(content, version)
+              except Exception as exc:
+                  print(f"Failed to load source Readme changelog fallback: {exc}", file=sys.stderr)
+                  return ""
+
           def _load_latest_release(repo_name):
               token = (os.getenv("GH_TOKEN") or "").strip()
               if not repo_name:
@@ -265,6 +311,8 @@ jobs:
               version_label = tag or title or "N/A"
               embed_title = f"SINS SAVE EDITOR {version_label}"
               notes_text = _sanitize_changelog(notes)
+              if not notes_text:
+                  notes_text = _load_source_readme_changelog(repo, tag)
               notes_text = _compact_changelog(notes_text)
               if len(notes_text) > 3850:
                   notes_text = notes_text[:3847] + "..."
