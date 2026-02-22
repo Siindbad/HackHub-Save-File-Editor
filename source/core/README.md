@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-21 (added centralized mode-scoped tree policy constants including INPUT Network subgroup hide controls, INPUT refresh/runtime constant sync updates, and optional bug-report Discord forum env toggle constants).
+Last sync: 2026-02-22 (updated APP_VERSION to 1.3.5 for release prep alignment).
 
 | Module | Purpose |
 | --- | --- |

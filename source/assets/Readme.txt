@@ -60,21 +60,21 @@ there HackTheCube web address if they deleted the email.
 =================================================================================
 
 [ CHANGE LOGS ]
-[ Version 1.3.4 ]
+[ Version 1.3.5 ]
 =================================================================================
 
-- Added targeted key-quote repair path.
-- Updated diagnostics to daily files and retained only today and yesterday logs.
-- Updated right-click menu to open above near bottom editor/app bounds for better.
-- Added magic-byte format verification and blocked extension/content mismatch uploads.
-- Updated dialog labels/layout.
-- Added browser fallback prompt to open direct update download page.
-- Added clearer Windows-friendly update errors for access denied.
-- Added install and restart hold timing for smoother update handoff visibility.
-- Added structured update failure logging with details to diagnostics logs.
-- HOTFIX: Added clear download/install/restart status and persistent update overlay.
-- HOTFIX: Updated version/changelog/disclaimer to include missed 1.3.2 items.
-- Updated sub marker nudge logic with fractional offsets for micro vertical centering.
+- Added local Microsoft Defender CLI scan gate and security-report summary fields.
+- Added shared startup-check checkbox in both update dialogs with saved preference.
+- Added themed Update-available Yes/No dialog and preserved existing install flow.
+- Updated Diagnostics triage.
+- Updated security report with git metadata, gate summaries, and shipped asset hashes.
+- Added select/render timing diagnostics and optimized large-category key highlight.
+- Updated Missing account fallback.
+- Added ROUTER subcategory INPUT renderer with framed two-row edit grid.
+- Disabled Find Next usage in INPUT mode to prevent subcategory unlock side effects.
+- Updated INPUT Find Next to search visible panel labels/fields and jump/scroll within.
+- Updated JSON Find Next to focus selected tree hit and open matching subcategory.
+- Updated SIINDBAD and KAMUE matrix palettes with theme-switch repaint and tab/row.
 
 [ DISCLAIMER ]
 =================================================================================
