@@ -14,9 +14,9 @@ Latest release snapshot generated from `dist/security-report.txt` for `1.3.5`.
 
 ## Links
 
-- VirusTotal: https://www.virustotal.com/gui/file/6eb3166dbbbc8fbc7923eb9a4e4b8aae41f460434880f104571168fd73e0f0e9/detection
+- VirusTotal: https://www.virustotal.com/gui/file/7671cd308a9723c7f001a10651affd74d250b4445b5d21af6e23ed496695530c/detection
 
 ## Metadata
 
-- generated_utc: `2026-02-22T05:04:41Z`
+- generated_utc: `2026-02-22T05:12:19Z`
 - app_version: `1.3.5`
