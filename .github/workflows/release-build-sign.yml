@@ -1277,12 +1277,11 @@ jobs:
 
           $maxAttempts = 3
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            git pull --rebase origin main
+            git pull --rebase --autostash origin main
             if ($LASTEXITCODE -ne 0) {
               if ($attempt -eq $maxAttempts) {
                 throw "Rebase failed after $maxAttempts attempts."
               }
-              git rebase --abort 2>$null
               Start-Sleep -Seconds 2
               continue
             }
