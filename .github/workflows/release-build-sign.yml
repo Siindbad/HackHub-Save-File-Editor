@@ -1,4 +1,4 @@
-name: Release Build and Sigstore Sign
+﻿name: Release Build and Sigstore Sign
 
 on:
   push:
@@ -168,9 +168,6 @@ jobs:
       - name: Package fallback zip and metadata
         shell: powershell
         run: |
-          if (-not (Test-Path "dist/sins_editor.exe")) {
-            throw "dist/sins_editor.exe not found after build."
-          }
           if (-not (Test-Path "dist/sins_editor-onedir")) {
             throw "dist/sins_editor-onedir not found after build."
           }
@@ -189,10 +186,8 @@ jobs:
           }
           Set-Content -Path "dist/version.txt" -Value $version -Encoding ASCII
 
-          $exeHash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor.exe").Hash.ToLowerInvariant()
-          Set-Content -Path "dist/sins_editor.exe.sha256" -Value "$exeHash *sins_editor.exe" -Encoding ASCII
-
           $zipHash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor-onedir.zip").Hash.ToLowerInvariant()
+          Set-Content -Path "dist/sins_editor-onedir.zip.sha256" -Value "$zipHash *sins_editor-onedir.zip" -Encoding ASCII
 
       - name: Generate full security report
         shell: powershell
@@ -219,7 +214,6 @@ jobs:
 
           dist = Path("dist")
           src_root = Path("source")
-          exe_path = dist / "sins_editor.exe"
           zip_path = dist / "sins_editor-onedir.zip"
           installer_path = dist / "sins_editor-installer.exe"
           ver_path = dist / "version.txt"
@@ -254,15 +248,14 @@ jobs:
           rc, out, _ = run_cmd(["git", "describe", "--tags", "--exact-match"])
           git_tag_exact = out.strip() if rc == 0 and out.strip() else "none"
 
-          exe_sha = file_sha(exe_path)
           zip_sha = file_sha(zip_path)
           installer_sha = file_sha(installer_path) if installer_path.exists() else "unknown"
           ver_sha = file_sha(ver_path)
-          checksum_path = dist / "sins_editor.exe.sha256"
+          checksum_path = dist / "sins_editor-onedir.zip.sha256"
           expected_sha = ""
           if checksum_path.exists():
               expected_sha = checksum_path.read_text(encoding="ascii", errors="replace").strip().split(" ")[0].lower()
-          sha_match = str(exe_sha == expected_sha).lower() if expected_sha else "false"
+          sha_match = str(zip_sha == expected_sha).lower() if expected_sha else "false"
 
           # Semgrep
           semgrep_findings = 0
@@ -361,7 +354,7 @@ jobs:
                       defender_engine = line.split(":", 1)[1].strip()
                   if "antispyware signature version" in lower and ":" in line:
                       defender_signature = line.split(":", 1)[1].strip()
-              rc, out, err = run_cmd([mpcmd, "-Scan", "-ScanType", "3", "-File", str(exe_path)])
+              rc, out, err = run_cmd([mpcmd, "-Scan", "-ScanType", "3", "-File", str(zip_path)])
               defender_exit = str(rc)
               scan_text = ((out or "") + "\n" + (err or "")).strip()
               if scan_text:
@@ -389,7 +382,7 @@ jobs:
           vt_harm = 0
           vt_und = 0
           vt_timeout = "false"
-          vt_link = f"https://www.virustotal.com/gui/file/{exe_sha}/detection"
+          vt_link = f"https://www.virustotal.com/gui/file/{zip_sha}/detection"
           vt_api_key = (
               os.getenv("VT_API_KEY")
               or os.getenv("VIRUSTOTAL_API_KEY")
@@ -424,7 +417,7 @@ jobs:
 
           if vt_api_key:
               try:
-                  stats = vt_fetch_hash(vt_api_key, exe_sha)
+                  stats = vt_fetch_hash(vt_api_key, zip_sha)
                   vt_mal = stats["mal"]
                   vt_susp = stats["susp"]
                   vt_harm = stats["harm"]
@@ -439,11 +432,11 @@ jobs:
                       vt_source = "hash_miss"
                       if vt_upload_fallback:
                           try:
-                              with exe_path.open("rb") as f:
+                              with zip_path.open("rb") as f:
                                   up = requests.post(
                                       "https://www.virustotal.com/api/v3/files",
                                       headers={"x-apikey": vt_api_key},
-                                      files={"file": ("sins_editor.exe", f, "application/octet-stream")},
+                                      files={"file": ("sins_editor-onedir.zip", f, "application/octet-stream")},
                                       timeout=120,
                                   )
                               if up.status_code >= 400:
@@ -471,7 +464,7 @@ jobs:
                                           time.sleep(10)
                                   if completed:
                                       try:
-                                          stats = vt_fetch_hash(vt_api_key, exe_sha)
+                                          stats = vt_fetch_hash(vt_api_key, zip_sha)
                                           vt_mal = stats["mal"]
                                           vt_susp = stats["susp"]
                                           vt_harm = stats["harm"]
@@ -561,12 +554,12 @@ jobs:
               "",
               "[ Primary Update Asset Integrity ]",
               "",
-              "asset_name: sins_editor.exe",
-              f"asset_size_bytes: {exe_path.stat().st_size}",
-              f"asset_sha256_actual: {exe_sha}",
+              "asset_name: sins_editor-onedir.zip",
+              f"asset_size_bytes: {zip_path.stat().st_size}",
+              f"asset_sha256_actual: {zip_sha}",
               f"asset_sha256_expected: {expected_sha or 'unknown'}",
               f"asset_sha256_match: {sha_match}",
-              "checksum_file: sins_editor.exe.sha256",
+              "checksum_file: sins_editor-onedir.zip.sha256",
               "authenticode_status: NotSigned",
               "authenticode_signer_subject: None",
               "authenticode_signer_thumbprint: None",
@@ -636,7 +629,7 @@ jobs:
               "",
               f"virustotal_status: {vt_status}",
               f"virustotal_source: {vt_source}",
-              f"virustotal_sha256: {exe_sha}",
+              f"virustotal_sha256: {zip_sha}",
               f"virustotal_malicious: {vt_mal}",
               f"virustotal_suspicious: {vt_susp}",
               f"virustotal_harmless: {vt_harm}",
@@ -649,10 +642,10 @@ jobs:
               "[ Shipped Asset SHA256 ]",
               "",
               "note: security-report.txt is excluded from this list to avoid self-reference.",
-              f"asset: dist\\sins_editor.exe",
-              "asset_name: sins_editor.exe",
-              f"asset_size_bytes: {exe_path.stat().st_size}",
-              f"asset_sha256: {exe_sha}",
+              f"asset: dist\\sins_editor-onedir.zip",
+              "asset_name: sins_editor-onedir.zip",
+              f"asset_size_bytes: {zip_path.stat().st_size}",
+              f"asset_sha256: {zip_sha}",
               "",
               f"asset: dist\\version.txt",
               "asset_name: version.txt",
@@ -664,15 +657,10 @@ jobs:
               f"asset_size_bytes: {installer_path.stat().st_size if installer_path.exists() else 0}",
               f"asset_sha256: {installer_sha}",
               "",
-              f"asset: dist\\sins_editor.exe.sha256",
-              "asset_name: sins_editor.exe.sha256",
+              f"asset: dist\\sins_editor-onedir.zip.sha256",
+              "asset_name: sins_editor-onedir.zip.sha256",
               f"asset_size_bytes: {checksum_path.stat().st_size if checksum_path.exists() else 0}",
               f"asset_sha256: {file_sha(checksum_path) if checksum_path.exists() else 'unknown'}",
-              "",
-              f"asset: dist\\sins_editor-onedir.zip",
-              "asset_name: sins_editor-onedir.zip",
-              f"asset_size_bytes: {zip_path.stat().st_size}",
-              f"asset_sha256: {zip_sha}",
           ]
 
           report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -817,10 +805,9 @@ jobs:
         run: |
           $artifacts = @(
             "dist/sins_editor-installer.exe",
-            "dist/sins_editor.exe",
             "dist/sins_editor-onedir.zip",
             "dist/version.txt",
-            "dist/sins_editor.exe.sha256",
+            "dist/sins_editor-onedir.zip.sha256",
             "dist/security-report.txt"
           )
           foreach ($path in $artifacts) {
@@ -885,11 +872,10 @@ jobs:
             '',
             '## Download',
             '- `sins_editor-installer.exe` (recommended installer)',
-            '- `sins_editor.exe` (main app + used for auto-updates)',
             '- `sins_editor-onedir.zip` (portable fallback)',
             '',
             '## Verify',
-            '- `sins_editor.exe.sha256`',
+            '- `sins_editor-onedir.zip.sha256`',
             '- `sigstore-proofs.zip`',
             '',
             '## Release Metadata',
@@ -1049,9 +1035,8 @@ jobs:
           generate_release_notes: false
           files: |
             dist/sins_editor-installer.exe
-            dist/sins_editor.exe
             dist/sins_editor-onedir.zip
-            dist/sins_editor.exe.sha256
+            dist/sins_editor-onedir.zip.sha256
             dist/version.txt
             dist/security-report.txt
             dist/sigstore-proofs.zip
