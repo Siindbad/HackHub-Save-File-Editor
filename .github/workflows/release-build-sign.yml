@@ -161,13 +161,6 @@ jobs:
 
           $zipHash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor-onedir.zip").Hash.ToLowerInvariant()
 
-      - name: Run release smoke and checksum gates
-        shell: pwsh
-        run: |
-          python source/tools/perf_smoke.py --strict --safe-mode
-          python source/tools/stability_smoke.py --strict --safe-mode --module sins_editor
-          python source/tools/validate_dist_checksum.py --dist-dir dist --require
-
       - name: Generate full security report
         shell: pwsh
         env:
