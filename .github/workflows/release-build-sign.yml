@@ -384,7 +384,9 @@ jobs:
                       defender_engine = line.split(":", 1)[1].strip()
                   if "antispyware signature version" in lower and ":" in line:
                       defender_signature = line.split(":", 1)[1].strip()
-              rc, out, err = run_cmd([mpcmd, "-Scan", "-ScanType", "3", "-File", str(zip_path)])
+              scan_target = installer_path if installer_path.exists() else zip_path
+              defender_source = "local_scan_installer" if installer_path.exists() else "local_scan_zip_fallback"
+              rc, out, err = run_cmd([mpcmd, "-Scan", "-ScanType", "3", "-File", str(scan_target)])
               defender_exit = str(rc)
               scan_text = ((out or "") + "\n" + (err or "")).strip()
               if scan_text:
