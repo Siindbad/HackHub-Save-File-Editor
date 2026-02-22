@@ -33,12 +33,12 @@ def apply_tree_mode(owner, mode):
     try:
         if not tree.winfo_exists():
             return
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return
     palette = _mode_palette(owner, mode)
     try:
         style = ttk.Style(owner.root)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         style = None
     try:
         owner._apply_tree_style(
@@ -48,9 +48,9 @@ def apply_tree_mode(owner, mode):
             select_bg=palette["select_bg"],
             select_fg=palette["select_fg"],
         )
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return
     try:
         owner._refresh_tree_item_markers()
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass

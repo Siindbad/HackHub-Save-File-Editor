@@ -8,7 +8,7 @@ def read_text_file_tail(path, max_chars):
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
             text = fh.read()
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return ""
     if limit <= 0 or len(text) <= limit:
         return text

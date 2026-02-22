@@ -14,13 +14,13 @@ def selected_tree_path_text(item_id, item_to_path):
     path = None
     try:
         path = item_to_path.get(item_id, None)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         path = None
     if path is None:
         return "unknown"
     try:
         return repr(path)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return "unknown"
 
 

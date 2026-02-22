@@ -225,7 +225,7 @@ def format_json_error(owner, exc):
             if lineno:
                 try:
                     line_text = owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-                except Exception:
+                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                     line_text = ""
             if owner._is_missing_object_close() and line_text.startswith("{"):
                 return owner._format_suggestion(
@@ -273,7 +273,7 @@ def format_json_error(owner, exc):
                 lineno = getattr(exc, "lineno", None)
                 if lineno:
                     line_text = owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 line_text = ""
             before = line_text if line_text else example
             if line_text and owner._line_has_trailing_stray_quote_after_comma(line_text):
@@ -316,7 +316,7 @@ def format_json_error(owner, exc):
                 lineno = getattr(exc, "lineno", None)
                 if lineno:
                     line_text = owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 line_text = ""
             before = line_text if line_text else example
             after = owner._fix_missing_quote(line_text) if line_text else "\"key\": \"value\""
@@ -338,7 +338,7 @@ def format_json_error(owner, exc):
                 lineno = getattr(exc, "lineno", None)
                 if lineno:
                     line_text = owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 line_text = ""
             if owner._is_key_colon_comma_line(line_text):
                 return owner._format_suggestion(
@@ -447,7 +447,7 @@ def format_json_error(owner, exc):
         try:
             if isinstance(example, str) and example.startswith('"') and not example.endswith('"'):
                 before, after = owner._suggestion_from_example(example, add_after='"')
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             before, after = example, example
         return (
             "Invalid Entry: check the highlighted line.\n\n"
@@ -1434,14 +1434,14 @@ def _find_nearby_missing_value_close_quote_line(owner, lineno, lookback=2):
     candidates = []
     try:
         candidates.append((lineno, owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     line = max(lineno - 1, 1)
     scanned = 0
     while line >= 1 and scanned < lookback:
         try:
             txt = owner.text.get(f"{line}.0", f"{line}.0 lineend")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             break
         if str(txt or "").strip():
             candidates.append((line, txt))
@@ -1459,14 +1459,14 @@ def _find_nearby_missing_value_open_quote_line(owner, lineno, lookback=3):
     candidates = []
     try:
         candidates.append((lineno, owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     line = max(lineno - 1, 1)
     scanned = 0
     while line >= 1 and scanned < lookback:
         try:
             txt = owner.text.get(f"{line}.0", f"{line}.0 lineend")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             break
         if str(txt or "").strip():
             candidates.append((line, txt))
@@ -1485,14 +1485,14 @@ def _find_nearby_unquoted_value_line(owner, lineno, lookback=3):
     candidates = []
     try:
         candidates.append((lineno, owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     line = max(lineno - 1, 1)
     scanned = 0
     while line >= 1 and scanned < lookback:
         try:
             txt = owner.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             break
         if txt:
             candidates.append((line, txt))
@@ -1588,7 +1588,7 @@ def _find_missing_list_close_before_object_end(owner, lineno, lookback=4):
 def _next_non_empty_line_number(owner, start_line):
     try:
         last_line = int(owner.text.index("end-1c").split(".")[0])
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     line = max(start_line + 1, 1)
     while line <= last_line:
@@ -1705,7 +1705,7 @@ def _is_missing_object_open_at(owner, lineno):
 def _line_text(owner, lineno):
     try:
         return owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return ""
 
 def _line_has_missing_open_key_quote(owner, line_text):
@@ -1790,7 +1790,7 @@ def _missing_close_insertion_point(owner, open_bracket, close_bracket, exc=None)
     open_line = owner._last_unmatched_bracket_line(open_bracket, close_bracket)
     try:
         max_line = int(owner.text.index("end-1c").split(".")[0])
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         max_line = 1
     if not open_line:
         fallback_line = owner._last_non_empty_line_number() or 1
@@ -1851,7 +1851,7 @@ def _find_comma_only_line_before(owner, start_line):
     while line >= 1:
         try:
             text = owner.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             return None
         if text == ",":
             return line
@@ -1879,7 +1879,7 @@ def _find_blank_line_before(owner, start_line):
     while line >= 1:
         try:
             text = owner.text.get(f"{line}.0", f"{line}.0 lineend")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             return None
         if text.strip() == "":
             return line
@@ -1891,7 +1891,7 @@ def _closest_non_empty_line_before(owner, start_line):
     while line >= 1:
         try:
             text = owner.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             return None
         if text:
             return line
@@ -1901,12 +1901,12 @@ def _closest_non_empty_line_before(owner, start_line):
 def _last_non_empty_line_number(owner):
     try:
         line = int(owner.text.index("end-1c").split(".")[0])
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     while line >= 1:
         try:
             text = owner.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             return None
         if text:
             return line
@@ -1923,7 +1923,7 @@ def _missing_close_target_line(owner, open_bracket, close_bracket):
     while line <= last_line:
         try:
             text = owner.text.get(f"{line}.0", f"{line}.0 lineend")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             return open_line
         if text.strip():
             return line
@@ -2007,7 +2007,7 @@ def _missing_object_open_from_extra_data(owner):
 def _first_non_ws_char(owner):
     try:
         text = owner.text.get("1.0", "end-1c")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return ""
     for ch in text:
         if ch == "\ufeff":
@@ -2033,7 +2033,7 @@ def _previous_non_empty_line(owner, lineno):
     while line >= 1:
         try:
             text = owner.text.get(f"{line}.0", f"{line}.0 lineend")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             return ""
         if text.strip():
             return text
@@ -2046,7 +2046,7 @@ def _next_non_empty_line(owner, lineno):
     while line <= last_line:
         try:
             text = owner.text.get(f"{line}.0", f"{line}.0 lineend")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             return ""
         if text.strip():
             return text
@@ -2105,7 +2105,7 @@ def _highlight_custom_range(owner, line, start_col, end_col):
         owner.text.mark_set("insert", insert_index)
         owner.text.see(insert_index)
         owner._position_error_overlay(line)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return
 
 def _fix_missing_at(owner, value, domain_roots=None):
@@ -2171,7 +2171,7 @@ def _format_phone(owner, value):
 def _find_phone_format_issue(owner):
     try:
         text = owner.text.get("1.0", "end-1c")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     for idx, line_text in enumerate(text.splitlines(), start=1):
         match = owner.PHONE_FIELD_PATTERN.search(line_text)
@@ -2204,7 +2204,7 @@ def _find_json_spacing_issue(owner):
     """
     try:
         text = owner.text.get("1.0", "end-1c")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     for line_no, line_text in enumerate(text.splitlines(), start=1):
         # Match object-member lines where ":" is immediately followed by a
@@ -2227,7 +2227,7 @@ def _find_json_spacing_issue(owner):
 def _find_missing_email_at(owner):
     try:
         text = owner.text.get("1.0", "end-1c")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     lines = text.splitlines()
     domain_roots = set()
@@ -2322,7 +2322,7 @@ def _format_path_for_display(owner, path):
 def _find_value_span_in_editor(owner, value, preferred_key=None):
     try:
         text = owner.text.get("1.0", "end-1c")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     if not text or not value:
         return None
@@ -2556,7 +2556,7 @@ def _is_valid_email_domain(owner, domain):
 def _find_invalid_email_format_issue(owner):
     try:
         text = owner.text.get("1.0", "end-1c")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     for idx, line_text in enumerate(text.splitlines(), start=1):
         match = owner.EMAIL_FIELD_PATTERN.search(line_text)
@@ -2686,14 +2686,14 @@ def _find_nearby_unclosed_quoted_value_invalid_tail_line(owner, lineno, lookback
     candidates = []
     try:
         candidates.append((lineno, owner.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     line = max(lineno - 1, 1)
     scanned = 0
     while line >= 1 and scanned < lookback:
         try:
             txt = owner.text.get(f"{line}.0", f"{line}.0 lineend")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             break
         if str(txt or "").strip():
             candidates.append((line, txt))
@@ -2711,7 +2711,7 @@ def _comma_example_line(owner, lineno):
     target_line = max(lineno - 1, 1)
     try:
         line_text = owner.text.get(f"{target_line}.0", f"{target_line}.0 lineend").strip()
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         line_text = ""
     if not line_text:
         return "\"item1\",\n\"item2\""
@@ -2729,7 +2729,7 @@ def _symbol_error_focus_index(owner, start_index, end_index):
         if trimmed <= 0:
             return end_index
         return owner.text.index(f"{start_index} +{trimmed}c")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return end_index
 
 def _apply_json_error_highlight(owner, exc, line, start_index, end_index, note=""):
@@ -2755,7 +2755,7 @@ def _apply_json_error_highlight(owner, exc, line, start_index, end_index, note="
             str(note or "") in missing_key_quote_notes
             and owner._line_has_missing_open_key_quote(owner._line_text(line))
         )
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         missing_key_quote_focus = False
     insertion_only = start_index == end_index
     owner._last_error_insertion_only = bool(insertion_only)
@@ -2780,7 +2780,7 @@ def _apply_json_error_highlight(owner, exc, line, start_index, end_index, note="
             comma_col = raw.find(",")
             if comma_col >= 0:
                 focus_index = f"{line}.{comma_col}"
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     owner._error_focus_index = focus_index
     if insertion_only:
@@ -2788,7 +2788,7 @@ def _apply_json_error_highlight(owner, exc, line, start_index, end_index, note="
         try:
             owner.text.see(start_index)
             owner.text.update_idletasks()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
         # For comma-focus insertion hints, keep only cursor+overlay guidance
         # and avoid token/line fill so the comma itself is not highlighted.
@@ -2836,7 +2836,7 @@ def _apply_json_error_highlight(owner, exc, line, start_index, end_index, note="
                     fallback_start = start_index
                     fallback_end = owner.text.index(f"{start_index} +1c")
                 owner.text.tag_add("json_error", fallback_start, fallback_end)
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
         else:
             # Keep a subtle marker immediately before the insertion point so
@@ -2853,13 +2853,13 @@ def _apply_json_error_highlight(owner, exc, line, start_index, end_index, note="
                         if prev_char == "," and col > 1:
                             subtle_start = f"{lno}.{col - 2}"
                             subtle_end = f"{lno}.{col - 1}"
-                    except Exception:
+                    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                         pass
                 else:
                     subtle_start = start_index
                     subtle_end = owner.text.index(f"{start_index} +1c")
                 owner.text.tag_add("json_error", subtle_start, subtle_end)
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
     else:
         owner.text.tag_add("json_error", start_index, end_index)
@@ -2874,7 +2874,7 @@ def _apply_json_error_highlight(owner, exc, line, start_index, end_index, note="
     # Keep drag-selection visible above error tags.
     try:
         owner.text.tag_raise("sel")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     # For insertion errors, keep focus at the insertion target so the
     # marker/overlay does not jump away during live validation.

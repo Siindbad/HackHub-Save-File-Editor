@@ -137,7 +137,7 @@ def detect_bug_screenshot_magic_ext(source_path):
     try:
         with open(source_path, "rb") as fh:
             header = fh.read(16)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return ""
     if header.startswith(b"\x89PNG\r\n\x1a\n"):
         return ".png"
@@ -158,7 +158,7 @@ def validate_bug_screenshot_dimensions(source_path, max_dimension=4096):
         with Image.open(source_path) as img:
             width = int(img.width or 0)
             height = int(img.height or 0)
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
         raise RuntimeError("Unable to inspect screenshot dimensions.") from exc
     if width <= 0 or height <= 0:
         raise RuntimeError("Selected screenshot has invalid image dimensions.")

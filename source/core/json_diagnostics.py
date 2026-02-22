@@ -18,7 +18,7 @@ def expected_closer_before_position(
     try:
         target_line = max(int(target_line), 1)
         target_col = max(int(target_col), 0)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
 
     stack = []
@@ -223,14 +223,14 @@ def find_nearby_boolean_literal_typo_line(
     candidates = []
     try:
         candidates.append((lineno, line_getter(lineno)))
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     line = max(int(lineno) - 1, 1)
     scanned = 0
     while line >= 1 and scanned < int(max(0, lookback)):
         try:
             txt = line_getter(line)
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             break
         if str(txt or "").strip():
             candidates.append((line, txt))

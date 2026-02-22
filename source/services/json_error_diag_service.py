@@ -29,7 +29,7 @@ def diag_system_from_note(note, is_symbol_error_note=None):
         try:
             if is_symbol_error_note(note_text):
                 return "symbol_recovery"
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     return "json_highlight"
 
@@ -46,7 +46,7 @@ def log_json_error(owner, exc, target_line, note=""):
             try:
                 if os.path.isfile(legacy_path):
                     os.remove(legacy_path)
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = getattr(exc, "msg", str(exc))
@@ -60,7 +60,7 @@ def log_json_error(owner, exc, target_line, note=""):
         try:
             item_id = owner.tree.focus()
             selected_path = owner.item_to_path.get(item_id, None)
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             selected_path = None
         path_text = repr(selected_path)
         context = []
@@ -69,7 +69,7 @@ def log_json_error(owner, exc, target_line, note=""):
         for ln in range(start, end + 1):
             try:
                 text = owner.text.get(f"{ln}.0", f"{ln}.0 lineend")
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 text = ""
             context.append(f"{ln}: {text}")
         entry = (
@@ -88,5 +88,5 @@ def log_json_error(owner, exc, target_line, note=""):
         )
         with open(log_path, "a", encoding="utf-8") as handle:
             handle.write(entry)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return

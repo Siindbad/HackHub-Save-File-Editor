@@ -150,12 +150,12 @@ def refresh_tree_item_markers(owner):
             for item_id in owner.item_to_path.keys():
                 if tree.exists(item_id):
                     tree.item(item_id, image="")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
         return
     try:
         selected = set(tree.selection())
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         selected = set()
     for item_id, path in owner.item_to_path.items():
         try:
@@ -186,7 +186,7 @@ def refresh_tree_item_markers(owner):
                     expanded=is_expanded,
                 )
             tree.item(item_id, image=icon if icon is not None else "")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             continue
 
 
@@ -225,7 +225,7 @@ def refresh_tree_marker_for_item(owner, item_id, selected=False):
                 expanded=is_expanded,
             )
         tree.item(item_id, image=icon if icon is not None else "")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return
 
 
@@ -237,13 +237,13 @@ def tree_item_can_toggle(owner, item_id):
     try:
         if owner.tree.get_children(item_id):
             return True
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     path = owner.item_to_path.get(item_id)
     try:
         value = owner._get_value(path)
         return tree_view_service.tree_item_can_toggle_from_value(path, value)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return False
 
 
@@ -257,7 +257,7 @@ def on_tree_click_toggle(owner, event):
     # Only intercept clicks in the tree/icon gutter (arrow+marker area).
     try:
         bbox = tree.bbox(item_id, "#0")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         bbox = None
     if not bbox:
         return None
@@ -275,7 +275,7 @@ def on_tree_click_toggle(owner, event):
             # Ensure lazy tree children are materialized on first single-click expand.
             populate_children(owner, item_id)
         refresh_tree_item_markers(owner)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     return "break"
 
@@ -292,7 +292,7 @@ def on_tree_double_click_guard(owner, event):
         tree.selection_set(item_id)
         tree.item(item_id, open=False)
         owner.root.after_idle(lambda iid=item_id: owner.tree.item(iid, open=False))
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return "break"
     owner.set_status("INPUT mode: selected subcategory is locked.")
     return "break"

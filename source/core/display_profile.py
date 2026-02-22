@@ -5,14 +5,14 @@ def _to_float(value, default=0.0) -> float:
     # Safe numeric coercion helper for mixed tk/system metric inputs.
     try:
         return float(value)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return float(default)
 
 
 def _to_int(value, default=0) -> int:
     try:
         return int(value)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return int(default)
 
 
@@ -174,7 +174,7 @@ def compute_centered_toplevel_geometry(
             max_y = max(vy, (vy + vh) - height)
             x = max(vx, min(max_x, x))
             y = max(vy, min(max_y, y))
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             x = max(0, int(round((screen_width - width) / 2.0)))
             y = max(0, int(round((screen_height - height) / 2.0)))
     else:

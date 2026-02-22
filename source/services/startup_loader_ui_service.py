@@ -64,7 +64,7 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
         overlay.overrideredirect(True)
         try:
             overlay.attributes("-topmost", True)
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
         overlay.configure(bg=overlay_bg, cursor="watch")
         owner._apply_centered_toplevel_geometry(
@@ -278,7 +278,7 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
         try:
             overlay.update_idletasks()
             overlay.update()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     root = getattr(owner, "root", None)
     if root is not None:
@@ -286,7 +286,7 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
         if after_id:
             try:
                 root.after_cancel(after_id)
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
         cycle_ms = max(2200, int(getattr(owner, "_startup_loader_title_cycle_ms", 4200) or 4200))
         owner._startup_loader_title_after_id = root.after(cycle_ms, owner._tick_startup_loader_title)

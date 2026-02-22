@@ -27,7 +27,7 @@ def open_bug_report_dialog(
                 existing.lift()
                 existing.focus_force()
                 return
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
@@ -36,7 +36,7 @@ def open_bug_report_dialog(
     dlg = tk.Toplevel(owner.root)
     try:
         dlg.withdraw()
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     owner._bug_report_dialog = dlg
     dlg.title("Submit Bug Report")
@@ -181,7 +181,7 @@ def open_bug_report_dialog(
             return
         try:
             validated = owner._validate_bug_screenshot_file(file_path)
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
             messagebox.showwarning("Bug Report", str(exc))
             return
         screenshot_var.set(validated)
@@ -293,7 +293,7 @@ def open_bug_report_dialog(
     if str(details_prefill or "").strip():
         try:
             details_text.insert("1.0", str(details_prefill))
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
 
     include_diag_var = tk.BooleanVar(value=bool(include_diag_default))
@@ -432,7 +432,7 @@ def open_bug_report_dialog(
                                 "Screenshot selected locally, but token is unavailable. "
                                 "Attach image manually in browser issue form."
                             )
-                    except Exception as upload_exc:
+                    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as upload_exc:
                         screenshot_note = str(upload_exc)
                 body = owner._build_bug_report_markdown(
                     summary=summary,
@@ -463,7 +463,7 @@ def open_bug_report_dialog(
                             discord_mirror_note = " Discord forum mirror sent."
                         elif mirror_result.get("reason") == "webhook_not_configured":
                             discord_mirror_note = " Discord forum mirror skipped (webhook not configured)."
-                except Exception:
+                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                     # Discord forum mirror is optional and must not block bug submissions.
                     discord_mirror_note = " Discord forum mirror failed."
                 owner._set_status(f"Bug report submitted.{discord_mirror_note}")
@@ -475,7 +475,7 @@ def open_bug_report_dialog(
                     "BUG REPORT SUBMITTED",
                     wait=False,
                 )
-            except Exception as exc:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
                 owner._set_status("")
                 owner._ui_call(status_var.set, "Submit failed.", wait=False)
                 owner._ui_call(messagebox.showerror, "Bug Report", str(exc), wait=False)
@@ -497,20 +497,20 @@ def open_bug_report_dialog(
             owner._apply_windows_titlebar_theme(dlg)
             try:
                 close_badge.pack_forget()
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
     else:
         owner._set_window_icon_for(dlg)
         owner._apply_windows_titlebar_theme(dlg)
         try:
             close_badge.pack_forget()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     try:
         dlg.deiconify()
         dlg.lift()
         dlg.focus_force()
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     owner._arm_bug_report_follow_root(dlg)
     dlg.bind("<Escape>", lambda _e: owner._close_bug_report_dialog())

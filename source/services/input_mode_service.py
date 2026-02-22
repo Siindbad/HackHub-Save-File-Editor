@@ -161,5 +161,5 @@ def deep_copy_json_compatible(value):
     # Avoid mutating live tree data while validating/applying INPUT edits.
     try:
         return json.loads(json.dumps(value, ensure_ascii=False))
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return value

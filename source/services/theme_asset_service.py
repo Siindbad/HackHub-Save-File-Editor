@@ -4,7 +4,7 @@ import os
 def resource_base_dir(module_resource_base_dir_fn):
     try:
         return module_resource_base_dir_fn()
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return os.getcwd()
 
 

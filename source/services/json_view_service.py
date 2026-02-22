@@ -6,5 +6,5 @@ def show_json_no_file_message(text_widget):
         text_widget.delete("1.0", "end")
         text_widget.insert("1.0", NO_FILE_LOADED_MESSAGE)
         text_widget.edit_modified(False)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return

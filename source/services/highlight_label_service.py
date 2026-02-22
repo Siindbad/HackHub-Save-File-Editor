@@ -23,7 +23,7 @@ def network_context(path, value_getter, network_types_set):
         return None
     try:
         node = value_getter(["Network", idx])
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return None
     if not isinstance(node, dict):
         return None
@@ -547,7 +547,7 @@ def _find_policy_container(data, policy):
 def _copy_json_value(value):
     try:
         return copy.deepcopy(value)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return value
 
 

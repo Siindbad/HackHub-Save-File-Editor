@@ -4,14 +4,14 @@ from typing import Optional, Tuple
 def _to_float(value, default=0.0) -> float:
     try:
         return float(value)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return float(default)
 
 
 def _to_int(value, default=0) -> int:
     try:
         return int(value)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return int(default)
 
 

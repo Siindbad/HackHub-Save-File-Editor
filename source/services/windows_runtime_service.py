@@ -52,15 +52,15 @@ def write_text_file_atomic(
                 fh.flush()
                 try:
                     os.fsync(fh.fileno())
-                except Exception:
+                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                     pass
             os.replace(temp_path, target_path)
             return
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
             try:
                 if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
             if attempt + 1 < retries and retryable(exc):
                 sleeper(base_delay * (attempt + 1))
@@ -97,11 +97,11 @@ def commit_file_to_destination_with_retries(
             shutil.copyfile(source_path, temp_path)
             os.replace(temp_path, target_path)
             return
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
             try:
                 if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
             if attempt + 1 < retries and retryable(exc):
                 sleeper(base_delay * (attempt + 1))
@@ -212,7 +212,7 @@ def install_update(
 
     try:
         start_hidden_process_fn(["wscript.exe", "//nologo", vbs_path])
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         start_hidden_process_fn(
             [
                 "powershell.exe",

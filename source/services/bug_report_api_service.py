@@ -65,16 +65,16 @@ def upload_bug_screenshot(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             detail = str(exc)
         raise RuntimeError(f"Screenshot upload API error ({exc.code}): {detail}") from exc
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
         raise RuntimeError(f"Failed to upload screenshot: {exc}") from exc
 
     parsed = {}
     try:
         parsed = json.loads(raw) if raw else {}
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         parsed = {}
     content_block = parsed.get("content") if isinstance(parsed, dict) else {}
     download_url = ""
@@ -130,26 +130,26 @@ def submit_bug_report_issue(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             detail = str(exc)
         try:
             return open_browser_fn(title, body_markdown)
-        except Exception as fallback_exc:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as fallback_exc:
             raise RuntimeError(
                 f"GitHub API error ({exc.code}): {detail}. "
                 f"Browser fallback failed: {fallback_exc}"
             ) from exc
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
         try:
             return open_browser_fn(title, body_markdown)
-        except Exception as fallback_exc:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as fallback_exc:
             raise RuntimeError(
                 f"Failed to submit issue: {exc}. Browser fallback failed: {fallback_exc}"
             ) from exc
 
     try:
         parsed = json.loads(raw) if raw else {}
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         parsed = {}
     issue_url = str(parsed.get("html_url", "")).strip()
     if not issue_url:
@@ -269,7 +269,7 @@ def submit_bug_report_discord_forum(
             parsed = {}
             try:
                 parsed = json.loads(raw) if raw else {}
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 parsed = {}
             return {
                 "sent": True,
@@ -280,8 +280,8 @@ def submit_bug_report_discord_forum(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             detail = str(exc)
         raise RuntimeError(f"Discord forum webhook error ({exc.code}): {detail}") from exc
-    except Exception as exc:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
         raise RuntimeError(f"Failed to send Discord forum bug report: {exc}") from exc

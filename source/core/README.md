@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-22 (exception-handling hardening sync for updater retry/backoff parsing and transfer cleanup diagnostics updates).
+Last sync: 2026-02-22 (exception-hardening sweep plus updater/diagnostics path safety alignment).
 
 | Module | Purpose |
 | --- | --- |

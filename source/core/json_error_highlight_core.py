@@ -47,7 +47,7 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
                 debug_char = owner._first_non_ws_char()
                 note = f"highlight_enter_extra first_char={debug_char!r}"
                 log_error_fn(owner, exc, line or 1, note=note)
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
             top_close_no, top_close_text = owner._find_nearby_illegal_comma_after_top_level_close_line(line)
             if top_close_text and top_close_no:
@@ -288,7 +288,7 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
                     next_text = str(owner._line_text(next_line) or "")
                     after_next_text = str(owner._line_text(next_line + 1) or "")
                     current_line_text = str(owner._line_text(line) or "")
-                except Exception:
+                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                     next_text = ""
                     after_next_text = ""
                     current_line_text = ""
@@ -301,7 +301,7 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
                             exc, line, start_index, end_index, note="missing_list_close_before_object_end"
                         )
                         return
-                except Exception:
+                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                     pass
                 if (not next_text.strip()) and after_next_text.strip().startswith("}"):
                     line = next_line
@@ -600,9 +600,9 @@ def highlight_json_error(owner, exc, apply_highlight_fn, log_error_fn):
             start_index = line_end
             end_index = line_end
         apply_highlight_fn(owner, exc, line, start_index, end_index)
-    except Exception as highlight_exc:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as highlight_exc:
         try:
             log_error_fn(owner, exc, line or 1, note=f"highlight_failed: {highlight_exc}")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
         return

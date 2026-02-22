@@ -187,7 +187,7 @@ def check_for_updates(owner, auto=False, messagebox=None):
                 stage="restarting",
                 wait=True,
             )
-        except Exception as exc:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
             owner._set_status("")
             pretty_error = owner._format_update_error(exc)
             owner._log_update_failure(exc, auto=auto, pretty_error=pretty_error)

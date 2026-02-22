@@ -38,7 +38,7 @@ def place_error_pin(owner, index):
         line_text = owner._line_text(line)
         try:
             col = int(str(index).split(".")[1])
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             col = len(line_text)
         col = max(0, min(col, len(line_text)))
         font = tkfont.Font(font=owner.text.cget("font"))
@@ -52,7 +52,7 @@ def place_error_pin(owner, index):
         owner.error_pin.place(x=x, y=pin_y, width=pin_w, height=pin_h)
         owner.error_pin.lift()
         return True
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return False
 
 
@@ -60,7 +60,7 @@ def clear_error_pin(owner):
     if owner.error_pin is not None:
         try:
             owner.error_pin.place_forget()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
 
 
@@ -158,7 +158,7 @@ def destroy_error_overlay(owner):
     if owner.error_overlay is not None:
         try:
             owner.error_overlay.destroy()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
         owner.error_overlay = None
     owner._last_error_overlay_message = ""
@@ -176,7 +176,7 @@ def apply_error_tint(owner):
         owner.text.tag_config("error_tint", background=palette["tint_bg"], foreground=palette["tint_fg"])
         owner.text.tag_lower("error_tint")
         owner._apply_text_selection_style(use_error_palette=True)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return
 
 
@@ -184,7 +184,7 @@ def clear_error_tint(owner):
     try:
         owner.text.tag_remove("error_tint", "1.0", "end")
         owner._apply_text_selection_style(use_error_palette=False)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return
 
 
@@ -192,11 +192,11 @@ def refresh_active_error_theme(owner):
     # Recolor active error visuals when app theme changes.
     try:
         palette = owner._current_error_palette()
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return
     try:
         has_overlay = bool(owner.error_overlay is not None and owner.error_overlay.winfo_exists())
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         has_overlay = False
     has_tint = owner._tag_has_ranges("error_tint")
     has_line = owner._tag_has_ranges("json_error_line")
@@ -209,12 +209,12 @@ def refresh_active_error_theme(owner):
         try:
             owner.text.tag_config("error_tint", background=palette["tint_bg"], foreground=palette["tint_fg"])
             owner.text.tag_lower("error_tint")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     if has_line:
         try:
             owner.text.tag_config("json_error_line", background=palette["line_bg"], foreground="#ffffff")
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     if has_error:
         try:
@@ -224,7 +224,7 @@ def refresh_active_error_theme(owner):
                 insertion_only=bool(getattr(owner, "_last_error_insertion_only", False)),
             )
             owner.text.tag_config("json_error", background=marker_bg, foreground=marker_fg)
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     try:
         if owner.error_pin is not None and owner.error_pin.winfo_exists():
@@ -234,7 +234,7 @@ def refresh_active_error_theme(owner):
                 insertion_only=bool(getattr(owner, "_last_error_insertion_only", False)),
             )
             owner.error_pin.configure(bg=marker_bg)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
 
     try:
@@ -243,7 +243,7 @@ def refresh_active_error_theme(owner):
         if has_error:
             owner.text.tag_raise("json_error")
         owner.text.tag_raise("sel")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
 
     if has_overlay:
@@ -281,12 +281,12 @@ def refresh_active_error_theme(owner):
                         widget.configure(bg=overlay_bg)
                     else:
                         widget.configure(bg=overlay_bg)
-                except Exception:
+                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                     pass
                 try:
                     for child in widget.winfo_children():
                         _refresh_widget(child)
-                except Exception:
+                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                     return
             owner.error_overlay.configure(
                 bg=overlay_bg,
@@ -301,13 +301,13 @@ def refresh_active_error_theme(owner):
                     child.pack_configure(padx=metrics["pad_x"], pady=(metrics["pad_y"], metrics["pad_y"]))
                 elif role == "button_row":
                     child.pack_configure(padx=metrics["pad_x"], pady=(0, metrics["pad_y"]))
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
         try:
             line = owner._line_number_from_index(getattr(owner, "_error_focus_index", None))
             if line:
                 owner._position_error_overlay(line)
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
 
 
@@ -332,19 +332,19 @@ def position_error_overlay(owner, line):
                         break
                 font = tkfont.Font(font=owner.text.cget("font"))
                 return x0 + int(font.measure(line_text[:first_col]))
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 return int(fallback_x)
 
         def _nearest_non_empty_line(line_no):
             try:
                 max_line = int(owner.text.index("end-1c").split(".")[0])
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 max_line = max(int(line_no or 1), 1)
             line_no = max(1, min(int(line_no or 1), max_line))
             try:
                 if owner._line_text(line_no).strip():
                     return line_no
-            except Exception:
+            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                 pass
             for delta in range(1, 6):
                 up = line_no - delta
@@ -352,28 +352,28 @@ def position_error_overlay(owner, line):
                     try:
                         if owner._line_text(up).strip():
                             return up
-                    except Exception:
+                    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                         pass
                 down = line_no + delta
                 if down <= max_line:
                     try:
                         if owner._line_text(down).strip():
                             return down
-                    except Exception:
+                    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
                         pass
             return line_no
 
         anchor_index = getattr(owner, "_error_focus_index", None) or f"{line}.0"
         try:
             anchor_line = int(str(anchor_index).split(".")[0])
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             anchor_line = int(line)
         note_text = str(getattr(owner, "_last_error_highlight_note", "") or "")
         preserve_blank_anchor = False
         try:
             if note_text.endswith("_eof") and not owner._line_text(anchor_line).strip():
                 preserve_blank_anchor = True
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             preserve_blank_anchor = False
         if not preserve_blank_anchor:
             anchor_line = _nearest_non_empty_line(anchor_line)
@@ -415,7 +415,7 @@ def position_error_overlay(owner, line):
             anchor_font = tkfont.Font(font=owner.text.cget("font"))
             tab_shift_x = int(anchor_font.measure("    "))
             line_px = int(anchor_font.metrics("linespace"))
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             tab_shift_x = 28
             line_px = 16
         if is_warning_overlay:
@@ -458,5 +458,5 @@ def position_error_overlay(owner, line):
                 ny = max_y
 
         overlay.place_configure(x=nx, y=ny)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return

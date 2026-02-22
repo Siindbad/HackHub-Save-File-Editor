@@ -133,7 +133,7 @@ def _load_phone_photo(owner, path, max_width=440):
             ratio = max_width / float(width)
             image = image.resize((max_width, max(1, int(height * ratio))), image_module.LANCZOS)
         photo = image_tk_module.PhotoImage(image)
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         try:
             raw = tk.PhotoImage(file=path)
             width = raw.width()
@@ -141,7 +141,7 @@ def _load_phone_photo(owner, path, max_width=440):
                 factor = max(1, int(round(width / float(max_width))))
                 raw = raw.subsample(factor, factor)
             photo = raw
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             photo = None
     cache[key] = photo
     return photo

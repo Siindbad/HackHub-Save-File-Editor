@@ -119,14 +119,14 @@ def build_header_variant_switch(owner, parent, show_title, tk):
     try:
         if not parent.winfo_exists():
             return
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         return
     old_host = getattr(owner, "_header_variant_host", None)
     if old_host is not None:
         try:
             if old_host.winfo_exists():
                 old_host.destroy()
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
     if not bool(getattr(owner, "_show_header_variant_controls", False)):
         owner._header_variant_host = None
@@ -220,7 +220,7 @@ def build_input_mode_panel(owner, parent, scroll_style, tk, ttk):
         try:
             width = max(120, canvas.winfo_width())
             canvas.itemconfigure(canvas_window, width=width)
-        except Exception:
+        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
             pass
 
     fields_host.bind(
@@ -293,7 +293,7 @@ def build_ui(owner, tk, ttk):
     try:
         tree_inset = 6 if str(getattr(owner, "_tree_style_variant", "B")).upper() == "B" else 0
         owner.tree.configure(padding=(tree_inset, 0, 0, 0))
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         pass
     scroll_style = getattr(owner, "_v_scrollbar_style", "Vertical.TScrollbar")
     tree_scroll = ttk.Scrollbar(
@@ -357,7 +357,7 @@ def build_ui(owner, tk, ttk):
         owner.text.bind("<Control-y>", owner._safe_edit_redo, add="+")
         # Some keyboards/OS use Ctrl+Shift+Z for redo
         owner.text.bind("<Control-Shift-Z>", owner._safe_edit_redo, add="+")
-    except Exception:
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
         # If widget doesn't support undo methods for any reason, ignore.
         pass
 
