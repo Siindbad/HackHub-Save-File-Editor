@@ -260,6 +260,8 @@ jobs:
               trufflehog_status = "PASS" if trufflehog_findings == 0 else "FAIL"
 
           # Defender local scan (best-effort)
+          # Non-strict policy: capture Defender signal for reporting, but do not fail release on tool availability issues.
+          defender_strict = False
           defender_status = "SKIPPED"
           defender_source = "local_scan"
           defender_threat = "false"
@@ -494,6 +496,8 @@ jobs:
               f"trufflehog_results: {trufflehog_results}",
               f"trufflehog_exclude_paths: {trufflehog_exclude}",
               f"defender_status: {defender_status}",
+              f"defender_strict_mode: {str(defender_strict).lower()}",
+              "defender_policy: best_effort_non_strict",
               f"defender_source: {defender_source}",
               f"defender_threat_detected: {defender_threat}",
               f"defender_threat_count: {defender_threat_count}",
