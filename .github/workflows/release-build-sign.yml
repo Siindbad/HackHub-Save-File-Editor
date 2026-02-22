@@ -1017,8 +1017,7 @@ jobs:
               token = quote(gate_label, safe="")
               return (
                   f"- ![{gate_label} {result}]"
-                  f"(https://img.shields.io/badge/{token}-{result}-{color}?style=flat-square) "
-                  f"`{gate_label}`"
+                  f"(https://img.shields.io/badge/{token}-{result}-{color}?style=flat-square)"
               )
 
           semgrep = values.get("semgrep_status", "UNKNOWN")
@@ -1047,7 +1046,7 @@ jobs:
               gate_badge_line("SAFETY STATUS", safety),
               gate_badge_line("MICROSOFT DEFENDER", defender),
               gate_badge_line("VIRUS TOTAL", vt),
-              f"- ![SHA256 {sha_status}](https://img.shields.io/badge/SHA256-{sha_status}-{badge_color(sha_status)}?style=flat-square) `SHA256`",
+              f"- ![SHA256 {sha_status}](https://img.shields.io/badge/SHA256-{sha_status}-{badge_color(sha_status)}?style=flat-square)",
               "",
               "## VirusTotal Report",
               "",
