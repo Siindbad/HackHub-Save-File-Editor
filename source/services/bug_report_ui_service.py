@@ -447,7 +447,19 @@ def open_bug_report_dialog(
                     screenshot_note=screenshot_note,
                 )
                 owner._ui_call(status_var.set, "Submitting issue...", wait=False)
-                owner._submit_bug_report_issue(issue_title, body)
+                issue_url = owner._submit_bug_report_issue(issue_title, body)
+                try:
+                    owner._submit_bug_report_discord_forum(
+                        summary=summary,
+                        details=details,
+                        issue_url=issue_url,
+                        screenshot_url=screenshot_url,
+                        screenshot_filename=selected_name,
+                        screenshot_note=screenshot_note,
+                    )
+                except Exception:
+                    # Discord forum mirror is optional and must not block bug submissions.
+                    pass
                 owner._set_status("Bug report submitted.")
                 owner._ui_call(status_var.set, "Submitted successfully.", wait=False)
                 # Release modal grab and close dialog first.
@@ -513,4 +525,3 @@ def open_bug_report_dialog(
         owner._bug_report_is_dragging = False
 
     dlg.bind("<Destroy>", clear_ref, add="+")
-

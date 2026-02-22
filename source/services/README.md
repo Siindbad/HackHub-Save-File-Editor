@@ -1,10 +1,10 @@
 # Services Suite
 
-Last sync: 2026-02-21 (added Network FIREWALL Input style service plus prior editor mode/tree/ui service extractions, INPUT nested write/boolean render behavior sync, INPUT font-size scaling/rerender sync across category renderers, themed update warning path sync, and cleanup of retired fallback locals in INPUT-related services).
+Last sync: 2026-02-21 (added Network FIREWALL Input style service plus prior editor mode/tree/ui service extractions, INPUT nested write/boolean render behavior sync, INPUT font-size scaling/rerender sync across category renderers, themed update warning path sync, cleanup of retired fallback locals in INPUT-related services, and optional Discord forum bug-report mirror helpers).
 
 | Module | Purpose |
 | --- | --- |
-| `bug_report_api_service.py` | Handles bug-report API/browser submission operations, including screenshot upload and issue creation fallback behavior. |
+| `bug_report_api_service.py` | Handles bug-report API/browser submission operations, including screenshot upload, issue creation fallback behavior, and optional Discord forum webhook mirror posting helpers. |
 | `bug_report_service.py` | Contains bug-report helper logic for markdown composition, screenshot validation/prep, issue URL construction (including optional body-query omission), and submit cooldown math. |
 | `bug_report_ui_service.py` | Provides the bug-report dialog UI builder/orchestration, including screenshot picker, submit worker state updates, and themed dialog lifecycle wiring. |
 | `edit_guard_service.py` | Compatibility shim that forwards legacy imports to `highlight_label_service.py` during the service rename transition. |

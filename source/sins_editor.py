@@ -154,6 +154,8 @@ class JsonEditor:
     BUG_REPORT_SCREENSHOT_MAX_DIMENSION = app_constants.BUG_REPORT_SCREENSHOT_MAX_DIMENSION
     BUG_REPORT_SCREENSHOT_RETENTION_DAYS = app_constants.BUG_REPORT_SCREENSHOT_RETENTION_DAYS
     BUG_REPORT_SUBMIT_COOLDOWN_SECONDS = app_constants.BUG_REPORT_SUBMIT_COOLDOWN_SECONDS
+    BUG_REPORT_DISCORD_WEBHOOK_ENV = app_constants.BUG_REPORT_DISCORD_WEBHOOK_ENV
+    BUG_REPORT_DISCORD_FORUM_TAG_IDS_ENV = app_constants.BUG_REPORT_DISCORD_FORUM_TAG_IDS_ENV
     PHONE_FIELD_PATTERN = re.compile(r'"phone"\s*:\s*"([^"]*)"')
     EMAIL_FIELD_PATTERN = re.compile(r'"(email|from|to)"\s*:\s*"([^"]*)"')
     DIAG_LOG_MAX_BYTES = app_constants.DIAG_LOG_MAX_BYTES
@@ -2616,6 +2618,33 @@ if not install_started:
             title=title,
             body_markdown=body_markdown,
             open_browser_fn=self._open_bug_report_in_browser,
+        )
+
+    def _submit_bug_report_discord_forum(
+        self,
+        *,
+        summary,
+        details,
+        issue_url,
+        screenshot_url="",
+        screenshot_filename="",
+        screenshot_note="",
+    ):
+        # Optional Discord Forum mirror for bug reports; enable via env webhook.
+        return bug_report_api_service.submit_bug_report_discord_forum(
+            webhook_env_name=getattr(self, "BUG_REPORT_DISCORD_WEBHOOK_ENV", "DISCORD_BUGREPORT_WEBHOOK"),
+            summary=summary,
+            details=details,
+            issue_url=issue_url,
+            app_version=getattr(self, "APP_VERSION", ""),
+            theme_variant=str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper(),
+            selected_path=self._selected_tree_path_text(),
+            last_json_error=getattr(self, "_last_json_error_msg", ""),
+            last_highlight_note=getattr(self, "_last_error_highlight_note", ""),
+            screenshot_url=screenshot_url,
+            screenshot_filename=screenshot_filename,
+            screenshot_note=screenshot_note,
+            forum_tag_ids_raw=os.getenv(getattr(self, "BUG_REPORT_DISCORD_FORUM_TAG_IDS_ENV", ""), ""),
         )
 
     def _bug_report_new_issue_url(self, title, body_markdown, include_body=True):
