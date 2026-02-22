@@ -85,11 +85,48 @@ jobs:
             Write-Host "Continuing release workflow with SKIPPED trufflehog status if binary unavailable."
           }
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+
       - name: Build with PyInstaller
         working-directory: source
         shell: pwsh
         run: |
           python -m PyInstaller --noconfirm --distpath ../dist --workpath ../build sins_editor.spec
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iss = "source\\installer\\sins_editor_installer.iss"
+          if (-not (Test-Path $iss)) {
+            throw "Missing installer script: $iss"
+          }
+          $sourceRoot = (Resolve-Path "dist\sins_editor-onedir").Path
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+            )
+            foreach ($candidate in $candidates) {
+              if (Test-Path $candidate) {
+                $iscc = @{ Source = $candidate }
+                break
+              }
+            }
+          }
+          if (-not $iscc) {
+            throw "ISCC.exe not found after Inno Setup install."
+          }
+          & $iscc.Source "/DSourceRoot=$sourceRoot" "/DAppVersion=${{ steps.vars.outputs.version }}" $iss
+          if ($LASTEXITCODE -ne 0) {
+            throw "ISCC build failed with exit code $LASTEXITCODE."
+          }
+          if (-not (Test-Path "dist\sins_editor-installer.exe")) {
+            throw "Installer output missing: dist\\sins_editor-installer.exe"
+          }
 
       - name: Package fallback zip and metadata
         shell: pwsh
@@ -146,6 +183,7 @@ jobs:
           src_root = Path("source")
           exe_path = dist / "sins_editor.exe"
           zip_path = dist / "sins_editor-onedir.zip"
+          installer_path = dist / "sins_editor-installer.exe"
           ver_path = dist / "version.txt"
           report_path = dist / "security-report.txt"
 
@@ -180,6 +218,7 @@ jobs:
 
           exe_sha = file_sha(exe_path)
           zip_sha = file_sha(zip_path)
+          installer_sha = file_sha(installer_path) if installer_path.exists() else "unknown"
           ver_sha = file_sha(ver_path)
           checksum_path = dist / "sins_editor.exe.sha256"
           expected_sha = ""
@@ -540,6 +579,11 @@ jobs:
               f"asset_size_bytes: {ver_path.stat().st_size}",
               f"asset_sha256: {ver_sha}",
               "",
+              f"asset: dist\\sins_editor-installer.exe",
+              "asset_name: sins_editor-installer.exe",
+              f"asset_size_bytes: {installer_path.stat().st_size if installer_path.exists() else 0}",
+              f"asset_sha256: {installer_sha}",
+              "",
               f"asset: dist\\sins_editor.exe.sha256",
               "asset_name: sins_editor.exe.sha256",
               f"asset_size_bytes: {checksum_path.stat().st_size if checksum_path.exists() else 0}",
@@ -630,6 +674,7 @@ jobs:
         shell: pwsh
         run: |
           $artifacts = @(
+            "dist/sins_editor-installer.exe",
             "dist/sins_editor.exe",
             "dist/sins_editor-onedir.zip",
             "dist/version.txt",
@@ -697,6 +742,7 @@ jobs:
           ) + $changelogLines + @(
             '',
             '## Download',
+            '- `sins_editor-installer.exe` (recommended installer)',
             '- `sins_editor.exe` (main app)',
             '- `sins_editor-onedir.zip` (portable fallback)',
             '',
@@ -805,9 +851,11 @@ jobs:
           append_body: false
           generate_release_notes: false
           files: |
+            dist/sins_editor-installer.exe
             dist/sins_editor.exe
             dist/sins_editor-onedir.zip
             dist/sins_editor.exe.sha256
             dist/version.txt
             dist/security-report.txt
             dist/sigstore-proofs.zip
+
