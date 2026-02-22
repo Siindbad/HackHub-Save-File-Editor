@@ -526,6 +526,8 @@ jobs:
                   vt_status = "FAIL" if vt_strict else "SKIPPED"
           elif vt_strict:
               vt_status = "FAIL"
+          if vt_strict and vt_status == "FAIL":
+              raise SystemExit("VirusTotal strict mode: failing status detected.")
 
           # Bandit
           bandit_status = "SKIPPED"
