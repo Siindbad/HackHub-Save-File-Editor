@@ -448,8 +448,9 @@ def open_bug_report_dialog(
                 )
                 owner._ui_call(status_var.set, "Submitting issue...", wait=False)
                 issue_url = owner._submit_bug_report_issue(issue_title, body)
+                discord_mirror_note = ""
                 try:
-                    owner._submit_bug_report_discord_forum(
+                    mirror_result = owner._submit_bug_report_discord_forum(
                         summary=summary,
                         details=details,
                         issue_url=issue_url,
@@ -457,11 +458,16 @@ def open_bug_report_dialog(
                         screenshot_filename=selected_name,
                         screenshot_note=screenshot_note,
                     )
+                    if isinstance(mirror_result, dict):
+                        if mirror_result.get("sent"):
+                            discord_mirror_note = " Discord forum mirror sent."
+                        elif mirror_result.get("reason") == "webhook_not_configured":
+                            discord_mirror_note = " Discord forum mirror skipped (webhook not configured)."
                 except Exception:
                     # Discord forum mirror is optional and must not block bug submissions.
-                    pass
-                owner._set_status("Bug report submitted.")
-                owner._ui_call(status_var.set, "Submitted successfully.", wait=False)
+                    discord_mirror_note = " Discord forum mirror failed."
+                owner._set_status(f"Bug report submitted.{discord_mirror_note}")
+                owner._ui_call(status_var.set, f"Submitted successfully.{discord_mirror_note}", wait=False)
                 # Release modal grab and close dialog first.
                 owner._ui_call(owner._close_bug_report_dialog, wait=True)
                 owner._ui_call(
