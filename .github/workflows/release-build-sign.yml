@@ -139,20 +139,20 @@ jobs:
         shell: pwsh
         run: |
           $body = @(
-            "## Download",
-            "- `sins_editor.exe` (main app)",
-            "- `sins_editor-onedir.zip` (portable fallback)",
-            "",
-            "## Verify",
-            "- `sins_editor.exe.sha256`",
-            "- `sigstore-proofs.zip`",
-            "",
-            "## Release Metadata",
-            "- `version.txt`",
-            "- `security-report.txt`",
-            "",
-            "## Changelog Information",
-            "Auto-generated changelog notes are appended below."
+            '## Download',
+            '- `sins_editor.exe` (main app)',
+            '- `sins_editor-onedir.zip` (portable fallback)',
+            '',
+            '## Verify',
+            '- `sins_editor.exe.sha256`',
+            '- `sigstore-proofs.zip`',
+            '',
+            '## Release Metadata',
+            '- `version.txt`',
+            '- `security-report.txt`',
+            '',
+            '## Changelog Information',
+            'Auto-generated changelog notes are appended below.'
           )
           Set-Content -Path "dist/release-body.md" -Value ($body -join "`r`n") -Encoding UTF8
 
