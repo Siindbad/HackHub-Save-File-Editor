@@ -570,7 +570,8 @@ jobs:
                                   analysis_id = (((up.json() or {}).get("data") or {}).get("id") or "").strip()
                                   completed = False
                                   if analysis_id:
-                                      for _ in range(8):
+                                      # Allow slower VT analysis completion before marking timeout.
+                                      for _ in range(18):
                                           ar = requests.get(
                                               f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
                                               headers={"x-apikey": vt_api_key, "Accept": "application/json"},
