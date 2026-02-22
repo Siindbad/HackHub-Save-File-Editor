@@ -35,7 +35,7 @@ jobs:
         shell: powershell
         run: |
           python -c "import sys; print(sys.version)"
-          python -c "import sys; assert sys.version_info[:2]==(3,12), f'Self-hosted runner requires Python 3.12.x; found {sys.version}'; print('Self-hosted Python version check passed.')"
+          python -c "import sys; assert sys.version_info[:2] >= (3,12), f'Self-hosted runner requires Python >=3.12; found {sys.version}'; print('Self-hosted Python version check passed.')"
 
       - name: Resolve tag
         id: vars
