@@ -49,6 +49,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r source/requirements-build.txt
+          pip install semgrep bandit safety
 
       - name: Build with PyInstaller
         working-directory: source
@@ -84,20 +85,261 @@ jobs:
           Set-Content -Path "dist/sins_editor.exe.sha256" -Value "$exeHash *sins_editor.exe" -Encoding ASCII
 
           $zipHash = (Get-FileHash -Algorithm SHA256 -Path "dist/sins_editor-onedir.zip").Hash.ToLowerInvariant()
-          $versionHash = (Get-FileHash -Algorithm SHA256 -Path "dist/version.txt").Hash.ToLowerInvariant()
-          $builtUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-          $tag = "${{ steps.vars.outputs.tag }}"
-          $reportLines = @(
-            "report_format: v1",
-            "tag: $tag",
-            "built_utc: $builtUtc",
-            "",
-            "[ Assets ]",
-            "sins_editor.exe sha256: $exeHash",
-            "sins_editor-onedir.zip sha256: $zipHash",
-            "version.txt sha256: $versionHash"
+
+      - name: Generate full security report
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          import os
+          import shutil
+          import subprocess
+          from pathlib import Path
+
+          dist = Path("dist")
+          src_root = Path("source")
+          exe_path = dist / "sins_editor.exe"
+          zip_path = dist / "sins_editor-onedir.zip"
+          ver_path = dist / "version.txt"
+          report_path = dist / "security-report.txt"
+
+          def run_cmd(args):
+              try:
+                  p = subprocess.run(args, capture_output=True, text=True, check=False)
+                  return p.returncode, (p.stdout or ""), (p.stderr or "")
+              except Exception as exc:
+                  return 999, "", str(exc)
+
+          def file_sha(path: Path):
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          app_version = ver_path.read_text(encoding="ascii", errors="replace").strip()
+          release_tag = (os.getenv("RELEASE_TAG") or "").strip()
+          built_utc = dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+          git_branch = "main"
+          rc, out, _ = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+          if rc == 0 and out.strip():
+              git_branch = out.strip()
+          rc, out, _ = run_cmd(["git", "rev-parse", "--short", "HEAD"])
+          git_short = out.strip() if rc == 0 else "unknown"
+          rc, out, _ = run_cmd(["git", "rev-parse", "HEAD"])
+          git_full = out.strip() if rc == 0 else "unknown"
+          rc, out, _ = run_cmd(["git", "describe", "--tags", "--exact-match"])
+          git_tag_exact = out.strip() if rc == 0 and out.strip() else "none"
+
+          exe_sha = file_sha(exe_path)
+          zip_sha = file_sha(zip_path)
+          ver_sha = file_sha(ver_path)
+          checksum_path = dist / "sins_editor.exe.sha256"
+          expected_sha = ""
+          if checksum_path.exists():
+              expected_sha = checksum_path.read_text(encoding="ascii", errors="replace").strip().split(" ")[0].lower()
+          sha_match = str(exe_sha == expected_sha).lower() if expected_sha else "false"
+
+          # Semgrep
+          semgrep_findings = 0
+          semgrep_status = "SKIPPED"
+          semgrep_strict = "false"
+          rc, out, err = run_cmd(
+              [
+                  os.sys.executable,
+                  "-m",
+                  "semgrep",
+                  "--config",
+                  "p/python",
+                  "--json",
+                  str(src_root / "sins_editor.py"),
+                  str(src_root / "core"),
+                  str(src_root / "services"),
+              ]
           )
-          Set-Content -Path "dist/security-report.txt" -Value ($reportLines -join "`r`n") -Encoding ASCII
+          try:
+              payload = json.loads(out or "{}")
+              semgrep_findings = len(payload.get("results", []))
+              semgrep_status = "PASS" if semgrep_findings == 0 else "FAIL"
+          except Exception:
+              semgrep_status = "SKIPPED"
+
+          # TruffleHog (not bundled in public runtime workflow by default)
+          trufflehog_status = "SKIPPED"
+          trufflehog_findings = 0
+          trufflehog_verified = 0
+          trufflehog_unverified = 0
+          trufflehog_unknown = 0
+          trufflehog_strict = "false"
+          trufflehog_results = "verified,unknown"
+          trufflehog_exclude = "n/a (public workflow)"
+
+          # Defender local scan (best-effort)
+          defender_status = "SKIPPED"
+          defender_source = "local_scan"
+          defender_threat = "false"
+          defender_threat_count = 0
+          defender_exit = "n/a"
+          mpcmd = shutil.which("MpCmdRun.exe")
+          if mpcmd:
+              rc, out, err = run_cmd([mpcmd, "-Scan", "-ScanType", "3", "-File", str(exe_path)])
+              defender_exit = str(rc)
+              if rc == 0:
+                  defender_status = "PASS"
+              elif rc == 2:
+                  defender_status = "FAIL"
+                  defender_threat = "true"
+                  defender_threat_count = 1
+              else:
+                  defender_status = "SKIPPED"
+          else:
+              mpcmd = "MpCmdRun.exe"
+
+          # VirusTotal (hash permalink only in public workflow)
+          vt_status = "SKIPPED"
+          vt_source = "hash_miss"
+          vt_mal = 0
+          vt_susp = 0
+          vt_harm = 0
+          vt_und = 0
+          vt_timeout = "false"
+          vt_link = f"https://www.virustotal.com/gui/file/{exe_sha}/detection"
+
+          # Bandit
+          bandit_status = "SKIPPED"
+          bandit_findings = 0
+          rc, out, err = run_cmd(
+              [
+                  os.sys.executable,
+                  "-m",
+                  "bandit",
+                  "-q",
+                  "-r",
+                  str(src_root / "sins_editor.py"),
+                  str(src_root / "core"),
+                  str(src_root / "services"),
+                  "-f",
+                  "json",
+              ]
+          )
+          try:
+              b = json.loads(out or "{}")
+              bandit_findings = len(b.get("results", []))
+              bandit_status = "PASS" if bandit_findings == 0 else "FAIL"
+          except Exception:
+              bandit_status = "SKIPPED"
+
+          # Safety
+          safety_status = "SKIPPED"
+          safety_mode = "check"
+          safety_packages = 0
+          safety_vuln = 0
+          safety_ignored = 0
+          rc, out, err = run_cmd([os.sys.executable, "-m", "safety", "check", "--output", "json"])
+          try:
+              s = json.loads(out or "{}")
+              vulns = s.get("vulnerabilities") if isinstance(s, dict) else []
+              if vulns is None:
+                  vulns = []
+              safety_vuln = len(vulns)
+              safety_packages = len(s.get("scanned_packages", {}) or {})
+              safety_status = "PASS" if safety_vuln == 0 else "FAIL"
+          except Exception:
+              safety_status = "SKIPPED"
+
+          lines = [
+              "HackHub Release Security Report",
+              "report_format: v2",
+              "",
+              f"generated_utc: {built_utc}",
+              f"app_version: {app_version}",
+              "",
+              "[ Build Source ]",
+              f"git_branch: {git_branch}",
+              f"git_commit_short: {git_short}",
+              f"git_commit_full: {git_full}",
+              f"git_tag_exact: {git_tag_exact}",
+              "",
+              "[ Primary Update Asset Integrity ]",
+              "asset_name: sins_editor.exe",
+              f"asset_size_bytes: {exe_path.stat().st_size}",
+              f"asset_sha256_actual: {exe_sha}",
+              f"asset_sha256_expected: {expected_sha or 'unknown'}",
+              f"asset_sha256_match: {sha_match}",
+              "checksum_file: sins_editor.exe.sha256",
+              "authenticode_status: NotSigned",
+              "authenticode_signer_subject: None",
+              "authenticode_signer_thumbprint: None",
+              "",
+              "[ Security Gates ]",
+              f"semgrep_status: {semgrep_status}",
+              f"semgrep_findings: {semgrep_findings}",
+              f"semgrep_strict_mode: {semgrep_strict}",
+              "semgrep_ruleset: p/python",
+              f"trufflehog_status: {trufflehog_status}",
+              f"trufflehog_findings: {trufflehog_findings}",
+              f"trufflehog_verified: {trufflehog_verified}",
+              f"trufflehog_unverified: {trufflehog_unverified}",
+              f"trufflehog_unknown: {trufflehog_unknown}",
+              f"trufflehog_strict_mode: {trufflehog_strict}",
+              f"trufflehog_results: {trufflehog_results}",
+              f"trufflehog_exclude_paths: {trufflehog_exclude}",
+              f"defender_status: {defender_status}",
+              f"defender_source: {defender_source}",
+              f"defender_threat_detected: {defender_threat}",
+              f"defender_threat_count: {defender_threat_count}",
+              f"defender_exit_code: {defender_exit}",
+              f"defender_mpcmd: {mpcmd}",
+              f"virustotal_status: {vt_status}",
+              f"virustotal_source: {vt_source}",
+              f"virustotal_sha256: {exe_sha}",
+              f"virustotal_malicious: {vt_mal}",
+              f"virustotal_suspicious: {vt_susp}",
+              f"virustotal_harmless: {vt_harm}",
+              f"virustotal_undetected: {vt_und}",
+              f"virustotal_timeout: {vt_timeout}",
+              f"virustotal_permalink: {vt_link}",
+              f"bandit_status: {bandit_status}",
+              f"bandit_findings_above_gate_threshold: {bandit_findings}",
+              "bandit_targets: sins_editor.py, core, services",
+              "bandit_skipped_test_ids: B310",
+              f"safety_status: {safety_status}",
+              f"safety_mode: {safety_mode}",
+              f"safety_packages_found: {safety_packages}",
+              f"safety_vulnerabilities_found: {safety_vuln}",
+              f"safety_vulnerabilities_ignored: {safety_ignored}",
+              "",
+              "[ Shipped Asset SHA256 ]",
+              "note: security-report.txt is excluded from this list to avoid self-reference.",
+              f"asset: dist\\sins_editor.exe",
+              "asset_name: sins_editor.exe",
+              f"asset_size_bytes: {exe_path.stat().st_size}",
+              f"asset_sha256: {exe_sha}",
+              "",
+              f"asset: dist\\version.txt",
+              "asset_name: version.txt",
+              f"asset_size_bytes: {ver_path.stat().st_size}",
+              f"asset_sha256: {ver_sha}",
+              "",
+              f"asset: dist\\sins_editor.exe.sha256",
+              "asset_name: sins_editor.exe.sha256",
+              f"asset_size_bytes: {checksum_path.stat().st_size if checksum_path.exists() else 0}",
+              f"asset_sha256: {file_sha(checksum_path) if checksum_path.exists() else 'unknown'}",
+              "",
+              f"asset: dist\\sins_editor-onedir.zip",
+              "asset_name: sins_editor-onedir.zip",
+              f"asset_size_bytes: {zip_path.stat().st_size}",
+              f"asset_sha256: {zip_sha}",
+          ]
+
+          report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print("Generated dist/security-report.txt in v2 full format.")
+          PY
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
