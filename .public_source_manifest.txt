@@ -538,8 +538,6 @@ source/services/update_ui_service.py
 source/services/windows_runtime_service.py
 source/sins_editor.py
 source/sins_editor.spec
-source/tools/perf_smoke.py
-source/tools/stability_smoke.py
 source/tools/validate_defender.py
 source/tools/validate_dist_checksum.py
 source/tools/validate_security_snapshot_sync.py
