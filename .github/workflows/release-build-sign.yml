@@ -792,8 +792,25 @@ jobs:
         shell: powershell
         run: |
           python source/tools/validate_security_snapshot_sync.py --report dist/security-report.txt --security-md SECURITY.md --version "${{ steps.vars.outputs.version }}"
-      - name: Install Cosign
+      - name: Install Cosign (hosted runners)
+        if: ${{ runner.environment == 'github-hosted' }}
         uses: sigstore/cosign-installer@v3
+
+      - name: Install Cosign (self-hosted runners)
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: powershell
+        run: |
+          $version = "v2.5.2"
+          $url = "https://github.com/sigstore/cosign/releases/download/$version/cosign-windows-amd64.exe"
+          $binDir = Join-Path $env:RUNNER_TEMP "cosign-bin"
+          New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+          $exePath = Join-Path $binDir "cosign.exe"
+          Invoke-WebRequest -Uri $url -OutFile $exePath
+          if (-not (Test-Path $exePath)) {
+            throw "Failed to install cosign.exe from $url"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $binDir
+          Write-Host "Installed cosign to $exePath"
 
       - name: Sigstore keyless sign artifacts
         shell: powershell
