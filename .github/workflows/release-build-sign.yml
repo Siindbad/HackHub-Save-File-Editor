@@ -511,9 +511,12 @@ jobs:
               or os.getenv("VIRUSTOTAL_API_KEY")
               or ""
           ).strip()
-          vt_strict = (os.getenv("HACKHUB_VT_STRICT") or "").strip().lower() in {"1", "true", "yes", "on"}
+          # Strict by default so release gates stay PASS/FAIL only unless explicitly disabled.
+          vt_strict = (os.getenv("HACKHUB_VT_STRICT") or "1").strip().lower() in {"1", "true", "yes", "on"}
           vt_fail_on_susp = (os.getenv("HACKHUB_VT_FAIL_ON_SUSPICIOUS") or "").strip().lower() in {"1", "true", "yes", "on"}
           vt_upload_fallback = (os.getenv("HACKHUB_VT_UPLOAD_FALLBACK") or "1").strip().lower() in {"1", "true", "yes", "on"}
+          # Allow extended polling on slower analysis queues before final timeout.
+          vt_max_wait_seconds = int((os.getenv("HACKHUB_VT_MAX_WAIT_SECONDS") or "900").strip() or "900")
 
           def vt_apply_stats(stats):
               return {
@@ -538,6 +541,63 @@ jobs:
               stats = (((payload.get("data") or {}).get("attributes") or {}).get("last_analysis_stats") or {})
               return vt_apply_stats(stats)
 
+          def vt_upload_file(api_key, file_path: Path):
+              with file_path.open("rb") as f:
+                  up = requests.post(
+                      "https://www.virustotal.com/api/v3/files",
+                      headers={"x-apikey": api_key},
+                      files={"file": ("sins_editor-onedir.zip", f, "application/octet-stream")},
+                      timeout=180,
+                  )
+              if up.status_code == 413:
+                  large_req = requests.get(
+                      "https://www.virustotal.com/api/v3/files/upload_url",
+                      headers={"x-apikey": api_key, "Accept": "application/json"},
+                      timeout=60,
+                  )
+                  if large_req.status_code >= 400:
+                      return large_req
+                  large_url = str((((large_req.json() or {}).get("data")) or "")).strip()
+                  if not large_url:
+                      return large_req
+                  with file_path.open("rb") as f:
+                      return requests.post(
+                          large_url,
+                          headers={"x-apikey": api_key},
+                          files={"file": ("sins_editor-onedir.zip", f, "application/octet-stream")},
+                          timeout=300,
+                      )
+              return up
+
+          def vt_wait_for_analysis_completion(api_key, analysis_id, max_wait_seconds):
+              elapsed = 0
+              while elapsed < max_wait_seconds:
+                  ar = requests.get(
+                      f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                      headers={"x-apikey": api_key, "Accept": "application/json"},
+                      timeout=30,
+                  )
+                  if ar.status_code < 400:
+                      ap = ar.json() or {}
+                      status = ((((ap.get("data") or {}).get("attributes") or {}).get("status")) or "").lower()
+                      if status == "completed":
+                          return True
+                  time.sleep(10)
+                  elapsed += 10
+              return False
+
+          def vt_wait_for_hash_stats(api_key, sha, max_wait_seconds):
+              elapsed = 0
+              while elapsed < max_wait_seconds:
+                  try:
+                      return vt_fetch_hash(api_key, sha)
+                  except urllib.error.HTTPError as exc:
+                      if exc.code != 404:
+                          raise
+                  time.sleep(10)
+                  elapsed += 10
+              return None
+
           if vt_api_key:
               try:
                   stats = vt_fetch_hash(vt_api_key, zip_sha)
@@ -555,13 +615,7 @@ jobs:
                       vt_source = "hash_miss"
                       if vt_upload_fallback:
                           try:
-                              with zip_path.open("rb") as f:
-                                  up = requests.post(
-                                      "https://www.virustotal.com/api/v3/files",
-                                      headers={"x-apikey": vt_api_key},
-                                      files={"file": ("sins_editor-onedir.zip", f, "application/octet-stream")},
-                                      timeout=120,
-                                  )
+                              up = vt_upload_file(vt_api_key, zip_path)
                               if up.status_code >= 400:
                                   vt_source = f"upload_http_{up.status_code}"
                                   vt_status = "FAIL" if vt_strict else "SKIPPED"
@@ -570,32 +624,17 @@ jobs:
                                   analysis_id = (((up.json() or {}).get("data") or {}).get("id") or "").strip()
                                   completed = False
                                   if analysis_id:
-                                      # Allow slower VT analysis completion before marking timeout.
-                                      for _ in range(18):
-                                          ar = requests.get(
-                                              f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
-                                              headers={"x-apikey": vt_api_key, "Accept": "application/json"},
-                                              timeout=30,
-                                          )
-                                          if ar.status_code >= 400:
-                                              time.sleep(10)
-                                              continue
-                                          ap = ar.json() or {}
-                                          status = ((((ap.get("data") or {}).get("attributes") or {}).get("status")) or "").lower()
-                                          if status == "completed":
-                                              completed = True
-                                              break
-                                          time.sleep(10)
+                                      completed = vt_wait_for_analysis_completion(vt_api_key, analysis_id, vt_max_wait_seconds)
                                   if completed:
-                                      try:
-                                          stats = vt_fetch_hash(vt_api_key, zip_sha)
+                                      stats = vt_wait_for_hash_stats(vt_api_key, zip_sha, vt_max_wait_seconds)
+                                      if stats is not None:
                                           vt_mal = stats["mal"]
                                           vt_susp = stats["susp"]
                                           vt_harm = stats["harm"]
                                           vt_und = stats["und"]
                                           vt_source = "upload_lookup"
                                           vt_status = "FAIL" if (vt_mal > 0 or (vt_fail_on_susp and vt_susp > 0)) else "PASS"
-                                      except Exception:
+                                      else:
                                           vt_source = "upload_completed_hash_pending"
                                           vt_status = "FAIL" if vt_strict else "SKIPPED"
                                   else:
