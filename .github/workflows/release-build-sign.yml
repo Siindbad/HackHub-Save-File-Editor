@@ -189,6 +189,89 @@ jobs:
           )
           Set-Content -Path "dist/release-body.md" -Value ($body -join "`r`n") -Encoding UTF8
 
+      - name: Sync public README changelog row
+        shell: pwsh
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          import sys
+
+          version = os.environ.get("APP_VERSION", "").strip()
+          if not version:
+              print("APP_VERSION env is required.", file=sys.stderr)
+              sys.exit(1)
+
+          readme_txt = Path("source/assets/Readme.txt")
+          public_readme = Path("README.md")
+          if not readme_txt.exists() or not public_readme.exists():
+              print("Required files missing for README changelog sync.", file=sys.stderr)
+              sys.exit(1)
+
+          src_lines = readme_txt.read_text(encoding="utf-8", errors="replace").splitlines()
+          target_header = f"[ Version {version} ]".lower()
+          start = -1
+          for i, line in enumerate(src_lines):
+              if line.strip().lower() == target_header:
+                  start = i + 1
+                  break
+
+          bullets = []
+          if start >= 0:
+              for line in src_lines[start:]:
+                  t = line.strip()
+                  if re.match(r"^\[.*\]$", t):
+                      break
+                  if t.startswith("- "):
+                      bullets.append(t)
+
+          if not bullets:
+              bullets = ["- No changelog notes provided."]
+
+          row = f"| **[ Version {version} ]**<br>" + "<br>".join(bullets) + " |"
+
+          readme_lines = public_readme.read_text(encoding="utf-8", errors="replace").splitlines()
+          change_logs_idx = -1
+          for i, line in enumerate(readme_lines):
+              if 'alt="CHANGE LOGS"' in line:
+                  change_logs_idx = i
+                  break
+
+          if change_logs_idx < 0:
+              print("CHANGE LOGS section not found in README.md", file=sys.stderr)
+              sys.exit(1)
+
+          replace_idx = -1
+          for i in range(change_logs_idx + 1, min(change_logs_idx + 12, len(readme_lines))):
+              if readme_lines[i].startswith("| **[ Version "):
+                  replace_idx = i
+                  break
+
+          if replace_idx < 0:
+              print("Version row not found near CHANGE LOGS section in README.md", file=sys.stderr)
+              sys.exit(1)
+
+          readme_lines[replace_idx] = row
+          public_readme.write_text("\n".join(readme_lines) + "\n", encoding="utf-8")
+          print(f"Synced README.md CHANGE LOGS row to Version {version}")
+          PY
+        env:
+          APP_VERSION: ${{ steps.vars.outputs.version }}
+
+      - name: Commit README changelog sync
+        shell: pwsh
+        run: |
+          if ((git status --porcelain README.md).Length -eq 0) {
+            Write-Host "README.md changelog already up to date."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Sync public README changelog for v${{ steps.vars.outputs.version }}"
+          git push origin HEAD:main
+
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
