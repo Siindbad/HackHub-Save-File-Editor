@@ -58,7 +58,8 @@ jobs:
         run: |
           $wait = "$env:WAIT_SECONDS".Trim()
           if ([string]::IsNullOrWhiteSpace($wait)) { $wait = "900" }
-          $raw = & python source/tools/validate_virustotal.py --file dist/sins_editor-onedir.zip --allow-upload --strict --fail-on-suspicious --wait-seconds $wait 2>&1
+          $artifact = Join-Path $PWD "dist/sins_editor-onedir.zip"
+          $raw = & python source/tools/validate_virustotal.py --file $artifact --allow-upload --strict --fail-on-suspicious --wait-seconds $wait 2>&1
           $raw | Tee-Object -FilePath dist/vt-refresh.log
           if ($LASTEXITCODE -ne 0) { throw "VirusTotal strict gate failed." }
 
