@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-22 (exception-hardening sweep plus updater/diagnostics path safety alignment).
+Last sync: 2026-02-22 (exception-hardening sweep plus updater/diagnostics path safety alignment and zip-update asset contract migration).
 
 | Module | Purpose |
 | --- | --- |

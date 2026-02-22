@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-22 (exception-hardening sweep across service fallback, diagnostics, and UI safety paths).
+Last sync: 2026-02-22 (exception-hardening sweep across service fallback, diagnostics, UI safety paths, and zip-payload update install flow).
 
 | Module | Purpose |
 | --- | --- |

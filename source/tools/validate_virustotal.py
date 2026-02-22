@@ -15,7 +15,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 VT_API_BASE = "https://www.virustotal.com/api/v3"
-DEFAULT_TARGET = ROOT / "dist" / "sins_editor.exe"
+DEFAULT_TARGET = ROOT / "dist" / "sins_editor-onedir.zip"
 
 
 def _parse_args() -> argparse.Namespace:

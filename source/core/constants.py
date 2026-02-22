@@ -2,7 +2,7 @@ APP_VERSION = "1.3.5"
 
 GITHUB_OWNER = "Siindbad"
 GITHUB_REPO = "HackHub-Save-File-Editor"
-GITHUB_ASSET_NAME = "sins_editor.exe"
+GITHUB_ASSET_NAME = "sins_editor-onedir.zip"
 DIST_BRANCH = "main"
 DIST_VERSION_FILE = "version.txt"
 GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
@@ -37,7 +37,7 @@ CRASH_LOG_FILENAME = "sins_editor_crash.log"
 CRASH_STATE_FILENAME = "crash_prompt_state.json"
 CRASH_LOG_TAIL_MAX_CHARS = 12000
 
-DIST_ASSET_SHA256_CANDIDATES = ("sins_editor.exe.sha256", "sha256.txt", "checksums.txt")
+DIST_ASSET_SHA256_CANDIDATES = ("sins_editor-onedir.zip.sha256", "sha256.txt", "checksums.txt")
 UPDATE_REQUIRE_SHA256 = True
 UPDATE_VERIFY_AUTHENTICODE = True
 UPDATE_REQUIRE_AUTHENTICODE = False
@@ -234,4 +234,3 @@ TREE_B2_MARKER_SHA256 = {
     "b2-sub-on-leaf-kamue.png": "646df2efb3680b16c9f24f4aab3edb36299e2712d24ad758221f938d19fd7837",
     "b2-sub-on-leaf-siindbad.png": "ff99396f98d06c7939a92a547191d7d64c3791600498d0ea25b6f365d2018a50",
 }
-

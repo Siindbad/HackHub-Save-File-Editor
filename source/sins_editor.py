@@ -17,6 +17,7 @@ import traceback
 import urllib.error
 import urllib.request
 import webbrowser
+import zipfile
 from collections import deque
 from datetime import datetime, timedelta
 import tkinter as tk
@@ -1910,11 +1911,16 @@ if not install_started:
         self._download_to_file_with_retries(url, new_path)
         if not os.path.isfile(new_path) or os.path.getsize(new_path) <= 0:
             raise RuntimeError("Downloaded update is empty.")
-        # Basic sanity check for a Windows PE executable.
-        with open(new_path, "rb") as handle:
-            signature = handle.read(2)
-        if signature != b"MZ":
-            raise RuntimeError("Downloaded update is not a valid EXE file.")
+        update_asset_name = str(getattr(self, "GITHUB_ASSET_NAME", "")).strip().lower()
+        if update_asset_name.endswith(".zip"):
+            if not zipfile.is_zipfile(new_path):
+                raise RuntimeError("Downloaded update is not a valid ZIP package.")
+        else:
+            # Basic sanity check for a Windows PE executable.
+            with open(new_path, "rb") as handle:
+                signature = handle.read(2)
+            if signature != b"MZ":
+                raise RuntimeError("Downloaded update is not a valid EXE file.")
         expected_sha256 = self._fetch_dist_asset_sha256(release_info=release_info)
         if not expected_sha256:
             if self.UPDATE_REQUIRE_SHA256:
@@ -1923,7 +1929,8 @@ if not install_started:
             actual_sha256 = self._sha256_file(new_path).strip().lower()
             if actual_sha256 != expected_sha256:
                 raise RuntimeError("Downloaded update checksum mismatch.")
-        self._verify_downloaded_update_signature(new_path)
+        if not update_asset_name.endswith(".zip"):
+            self._verify_downloaded_update_signature(new_path)
         return new_path
 
     @staticmethod
@@ -2176,6 +2183,7 @@ if not install_started:
             new_path=new_path,
             exe_path=exe_path,
             current_pid=current_pid,
+            asset_name=str(getattr(self, "GITHUB_ASSET_NAME", "")).strip(),
             start_hidden_process_fn=self._start_hidden_process,
             schedule_root_destroy_fn=lambda delay_ms: self.root.after(int(delay_ms), self.root.destroy),
             ps_escape_fn=self._ps_escape,

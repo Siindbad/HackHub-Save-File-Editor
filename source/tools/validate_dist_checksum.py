@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate dist checksum artifact for sins_editor.exe."""
+"""Validate dist checksum artifact for shipped update payload."""
 
 from __future__ import annotations
 
@@ -41,8 +41,8 @@ def _sha256_file(path: pathlib.Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dist-dir", default="dist")
-    parser.add_argument("--exe-name", default="sins_editor.exe")
-    parser.add_argument("--checksum-name", default="sins_editor.exe.sha256")
+    parser.add_argument("--exe-name", default="sins_editor-onedir.zip")
+    parser.add_argument("--checksum-name", default="sins_editor-onedir.zip.sha256")
     parser.add_argument(
         "--require",
         action="store_true",
@@ -56,7 +56,7 @@ def main() -> int:
 
     if not exe_path.is_file():
         if args.require:
-            print(f"Checksum validation failed: missing executable '{exe_path}'.")
+            print(f"Checksum validation failed: missing asset '{exe_path}'.")
             return 1
         print(f"Checksum validation skipped: '{exe_path}' not found.")
         return 0

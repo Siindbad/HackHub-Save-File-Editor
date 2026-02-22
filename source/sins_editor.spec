@@ -79,12 +79,12 @@ VSVersionInfo(
       StringTable(
         '040904B0',
         [
-        StringStruct('CompanyName', 'Independent Developer'),
-        StringStruct('FileDescription', 'Save File Editor'),
+        StringStruct('CompanyName', 'Siindbad'),
+        StringStruct('FileDescription', 'SINS Save Editor'),
         StringStruct('FileVersion', '{app_version}'),
         StringStruct('InternalName', 'sins_editor'),
         StringStruct('OriginalFilename', 'sins_editor.exe'),
-        StringStruct('ProductName', 'HackHub Save File Editor'),
+        StringStruct('ProductName', 'SINS Save Editor'),
         StringStruct('ProductVersion', '{app_version}')
         ])
       ]),
