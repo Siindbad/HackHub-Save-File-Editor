@@ -666,6 +666,144 @@ jobs:
           report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
           print("Generated dist/security-report.txt in v2 full format.")
           '@ | python -
+      - name: Compare VirusTotal trend vs previous release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          CURRENT_TAG: ${{ steps.vars.outputs.tag }}
+          HACKHUB_VT_TREND_STRICT: ${{ vars.HACKHUB_VT_TREND_STRICT }}
+        run: |
+          @'
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          report_path = Path("dist/security-report.txt")
+          if not report_path.exists():
+              raise SystemExit("dist/security-report.txt not found for VT trend check.")
+
+          def parse_report(path: Path) -> dict:
+              data = {}
+              for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                  if ":" not in raw:
+                      continue
+                  k, v = raw.split(":", 1)
+                  key = k.strip().lower()
+                  if key:
+                      data[key] = v.strip()
+              return data
+
+          def parse_int(value, default=0):
+              try:
+                  return int(str(value).strip())
+              except Exception:
+                  return int(default)
+
+          current = parse_report(report_path)
+          current_mal = parse_int(current.get("virustotal_malicious", "0"))
+          current_susp = parse_int(current.get("virustotal_suspicious", "0"))
+          current_status = str(current.get("virustotal_status", "UNKNOWN")).strip()
+
+          repo = (os.getenv("GH_REPO") or "").strip()
+          current_tag = (os.getenv("CURRENT_TAG") or "").strip()
+          token = (os.getenv("GH_TOKEN") or "").strip()
+          strict = (os.getenv("HACKHUB_VT_TREND_STRICT") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+          trend_lines = [
+              "## VirusTotal Trend",
+              "",
+              f"- Current tag: `{current_tag or 'unknown'}`",
+              f"- Current VT status: `{current_status}`",
+              f"- Current detections: malicious=`{current_mal}`, suspicious=`{current_susp}`",
+          ]
+
+          prev_tag = ""
+          prev_mal = None
+          prev_susp = None
+
+          if repo:
+              releases_url = f"https://api.github.com/repos/{repo}/releases?per_page=20"
+              headers = {"Accept": "application/vnd.github+json", "User-Agent": "hackhub-vt-trend-check"}
+              if token:
+                  headers["Authorization"] = f"Bearer {token}"
+              req = urllib.request.Request(releases_url, headers=headers, method="GET")
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      releases = json.loads(resp.read().decode("utf-8", "replace") or "[]")
+              except Exception:
+                  releases = []
+
+              previous_release = None
+              for rel in releases:
+                  tag = str((rel or {}).get("tag_name", "")).strip()
+                  if not tag:
+                      continue
+                  if current_tag and tag == current_tag:
+                      continue
+                  previous_release = rel
+                  break
+
+              if previous_release:
+                  prev_tag = str(previous_release.get("tag_name", "")).strip()
+                  sec_asset = None
+                  for asset in (previous_release.get("assets") or []):
+                      if str((asset or {}).get("name", "")).strip() == "security-report.txt":
+                          sec_asset = asset
+                          break
+                  if sec_asset:
+                      sec_url = str(sec_asset.get("browser_download_url", "")).strip()
+                      if sec_url:
+                          sec_req = urllib.request.Request(sec_url, headers=headers, method="GET")
+                          try:
+                              with urllib.request.urlopen(sec_req, timeout=30) as resp:
+                                  sec_body = resp.read().decode("utf-8", "replace")
+                              prev_report = {}
+                              for raw in sec_body.splitlines():
+                                  if ":" not in raw:
+                                      continue
+                                  k, v = raw.split(":", 1)
+                                  key = k.strip().lower()
+                                  if key:
+                                      prev_report[key] = v.strip()
+                              prev_mal = parse_int(prev_report.get("virustotal_malicious", "0"))
+                              prev_susp = parse_int(prev_report.get("virustotal_suspicious", "0"))
+                          except Exception:
+                              prev_mal = None
+                              prev_susp = None
+
+          regression = False
+          if prev_mal is not None and prev_susp is not None:
+              delta_m = current_mal - prev_mal
+              delta_s = current_susp - prev_susp
+              regression = (delta_m > 0) or (delta_s > 0)
+              trend_lines.extend(
+                  [
+                      f"- Previous tag: `{prev_tag or 'unknown'}`",
+                      f"- Previous detections: malicious=`{prev_mal}`, suspicious=`{prev_susp}`",
+                      f"- Delta: malicious=`{delta_m:+d}`, suspicious=`{delta_s:+d}`",
+                      f"- Regression: `{'true' if regression else 'false'}`",
+                  ]
+              )
+          else:
+              trend_lines.extend(
+                  [
+                      "- Previous VT baseline: `unavailable`",
+                      "- Regression: `unknown`",
+                  ]
+              )
+
+          summary_path = os.getenv("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as fh:
+                  fh.write("\n".join(trend_lines) + "\n")
+          print("\n".join(trend_lines))
+
+          # Optional hard gate when explicitly enabled by repo variable.
+          if strict and regression:
+              raise SystemExit("VirusTotal trend regression detected and strict trend mode is enabled.")
+          '@ | python -
       - name: Sync SECURITY.md from security report
         shell: powershell
         run: |
