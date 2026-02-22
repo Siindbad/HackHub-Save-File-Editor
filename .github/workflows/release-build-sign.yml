@@ -343,7 +343,33 @@ jobs:
           defender_engine = "unknown"
           defender_signature = "unknown"
           defender_output_excerpt = ""
-          mpcmd = shutil.which("MpCmdRun.exe")
+          def resolve_mpcmd() -> str:
+              # Resolve Defender CLI robustly on self-hosted Windows runners.
+              candidate = shutil.which("MpCmdRun.exe")
+              if candidate:
+                  return str(candidate)
+              roots = []
+              for env_name in ("ProgramFiles", "ProgramW6432"):
+                  value = (os.getenv(env_name) or "").strip()
+                  if value:
+                      roots.append(Path(value))
+              for root in roots:
+                  for rel in ("Windows Defender/MpCmdRun.exe", "Microsoft Defender/MpCmdRun.exe"):
+                      path = root / rel
+                      if path.exists():
+                          return str(path)
+              program_data = (os.getenv("ProgramData") or "").strip()
+              if program_data:
+                  platform_root = Path(program_data) / "Microsoft" / "Windows Defender" / "Platform"
+                  if platform_root.exists():
+                      versions = sorted([p for p in platform_root.iterdir() if p.is_dir()], key=lambda p: p.name, reverse=True)
+                      for version_dir in versions:
+                          path = version_dir / "MpCmdRun.exe"
+                          if path.exists():
+                              return str(path)
+              return ""
+
+          mpcmd = resolve_mpcmd()
           if mpcmd:
               rc_ver, out_ver, err_ver = run_cmd([mpcmd, "-GetEngineVersion"])
               ver_text = (out_ver or "") + "\n" + (err_ver or "")
