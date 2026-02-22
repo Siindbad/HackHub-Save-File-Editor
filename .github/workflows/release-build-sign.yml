@@ -195,6 +195,8 @@ jobs:
           RELEASE_TAG: ${{ steps.vars.outputs.tag }}
           VT_API_KEY: ${{ secrets.VT_API_KEY }}
           VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+          HACKHUB_DEFENDER_STRICT: ${{ vars.HACKHUB_DEFENDER_STRICT }}
+          HACKHUB_DEFENDER_REQUIRE_INSTALLED: ${{ vars.HACKHUB_DEFENDER_REQUIRE_INSTALLED }}
           HACKHUB_VT_STRICT: ${{ vars.HACKHUB_VT_STRICT }}
           HACKHUB_VT_FAIL_ON_SUSPICIOUS: ${{ vars.HACKHUB_VT_FAIL_ON_SUSPICIOUS }}
           HACKHUB_VT_UPLOAD_FALLBACK: ${{ vars.HACKHUB_VT_UPLOAD_FALLBACK }}
@@ -331,9 +333,10 @@ jobs:
               if trufflehog_findings > 0:
                   raise SystemExit("TruffleHog strict mode: findings detected.")
 
-          # Defender local scan (best-effort)
-          # Non-strict policy: capture Defender signal for reporting, but do not fail release on tool availability issues.
-          defender_strict = False
+          # Defender local scan
+          # Strict policy can block release on Defender FAIL and on SKIPPED when installation is required.
+          defender_strict = (os.getenv("HACKHUB_DEFENDER_STRICT") or "1").strip().lower() in {"1", "true", "yes", "on"}
+          defender_require_installed = (os.getenv("HACKHUB_DEFENDER_REQUIRE_INSTALLED") or "1").strip().lower() in {"1", "true", "yes", "on"}
           defender_status = "SKIPPED"
           defender_source = "local_scan"
           defender_threat = "false"
@@ -399,6 +402,11 @@ jobs:
           else:
               mpcmd = "MpCmdRun.exe"
               defender_reason = "mpcmd_not_found_on_runner"
+          if defender_strict:
+              if defender_status == "FAIL":
+                  raise SystemExit("Defender strict mode: detection found.")
+              if defender_status == "SKIPPED" and defender_require_installed:
+                  raise SystemExit(f"Defender strict mode: required scan unavailable ({defender_reason}).")
 
           # VirusTotal
           vt_status = "SKIPPED"
