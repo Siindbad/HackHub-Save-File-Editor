@@ -124,6 +124,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "ISCC build failed with exit code $LASTEXITCODE."
           }
+          if ((Test-Path "source\dist\sins_editor-installer.exe") -and -not (Test-Path "dist\sins_editor-installer.exe")) {
+            New-Item -ItemType Directory -Force -Path "dist" | Out-Null
+            Move-Item -Force "source\dist\sins_editor-installer.exe" "dist\sins_editor-installer.exe"
+          }
           if (-not (Test-Path "dist\sins_editor-installer.exe")) {
             throw "Installer output missing: dist\\sins_editor-installer.exe"
           }
