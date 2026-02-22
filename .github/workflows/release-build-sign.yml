@@ -783,7 +783,7 @@ jobs:
             '',
             '## Download',
             '- `sins_editor-installer.exe` (recommended installer)',
-            '- `sins_editor.exe` (main app)',
+            '- `sins_editor.exe` (main app + used for auto-updates)',
             '- `sins_editor-onedir.zip` (portable fallback)',
             '',
             '## Verify',
