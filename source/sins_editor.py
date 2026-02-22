@@ -4490,18 +4490,25 @@ if not install_started:
         after = str(after_text or "")
 
         new_line = None
+        caret_col = 0
         if before and before in raw_line:
+            replace_at = raw_line.find(before)
             new_line = raw_line.replace(before, after, 1)
+            caret_col = max(0, int(replace_at + len(after)))
         elif before and raw_line.strip() == before.strip():
             new_line = indent + after.lstrip()
+            caret_col = max(0, len(new_line))
         elif not before:
             new_line = indent + after.lstrip()
+            caret_col = max(0, len(new_line))
         else:
             stripped_raw = raw_line.strip()
             if stripped_raw:
                 new_line = indent + after.lstrip()
+                caret_col = max(0, len(new_line))
             else:
                 new_line = after
+                caret_col = max(0, len(new_line))
         if new_line is None:
             return False
 
@@ -4509,7 +4516,7 @@ if not install_started:
             start_idx = f"{int(line_no)}.0"
             self.text.delete(start_idx, f"{int(line_no)}.0 lineend")
             self.text.insert(start_idx, new_line)
-            caret_col = max(len(new_line), 0)
+            caret_col = min(max(int(caret_col), 0), len(new_line))
             self.text.mark_set("insert", f"{int(line_no)}.{caret_col}")
             self.text.see(f"{int(line_no)}.{caret_col}")
             return True
@@ -4564,11 +4571,11 @@ if not install_started:
             return
         item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
         path = self.item_to_path.get(item_id, []) if item_id else []
-        restore_index = ""
+        restore_index_before = ""
         try:
-            restore_index = str(self.text.index("insert") or "")
+            restore_index_before = str(self.text.index("insert") or "")
         except _EXPECTED_APP_ERRORS:
-            restore_index = ""
+            restore_index_before = ""
         if self.error_overlay is not None:
             self._destroy_error_overlay()
             self._clear_json_error_highlight()
@@ -4578,13 +4585,22 @@ if not install_started:
             payload.get("after"),
         )
         if changed:
-            self._restore_insert_index(restore_index)
+            # Cursor policy for right-click Auto-Fix: keep the caret at the
+            # post-fix edit position (typically after inserted fix chars).
+            restore_index_after = ""
+            try:
+                restore_index_after = str(self.text.index("insert") or "")
+            except _EXPECTED_APP_ERRORS:
+                restore_index_after = ""
+            target_restore_index = str(restore_index_after or restore_index_before or "")
+            self._restore_insert_index(target_restore_index)
             try:
                 self._apply_json_view_lock_state(path)
             except _EXPECTED_APP_ERRORS:
                 pass
             # Defer final cursor restore until apply_edit() completes and repaints this node.
-            self._pending_insert_restore_index = str(restore_index or "")
+            # Keep the exact post-fix column so mid-line fixes do not jump to line start/end.
+            self._pending_insert_restore_index = target_restore_index
             self._auto_apply_pending = True
 
     @staticmethod
@@ -11833,6 +11849,10 @@ if not install_started:
                     self._restore_insert_index(pending_restore, log_failure=True)
             except _EXPECTED_APP_ERRORS:
                 pass
+        # Successful Apply Edit ends any prior live-error feedback cycle so
+        # subsequent typing stays quiet until the next explicit invalid apply.
+        self._auto_apply_pending = False
+        self._auto_apply_in_progress = False
         self.set_status("Edited")
 
     def _extract_key_name_from_diag_line(self, line_text):
@@ -15130,6 +15150,18 @@ if not install_started:
                 comma_col = raw.find(",")
                 if comma_col >= 0:
                     focus_index = f"{line}.{comma_col}"
+            except _EXPECTED_APP_ERRORS:
+                pass
+        if insertion_only and str(note or "") == "missing_list_close_before_object_end":
+            # Keep list-close insertion guidance anchored on the blank insert row,
+            # but place caret at this row's edit edge so editing does not jump to another line.
+            try:
+                focus_line_s, focus_col_s = str(start_index).split(".")
+                focus_line_no = int(focus_line_s)
+                focus_col_no = int(focus_col_s)
+                focus_line_text = str(self._line_text(focus_line_no) or "")
+                if focus_col_no == 0 and not focus_line_text.strip():
+                    focus_index = self.text.index(f"{focus_line_no}.0 lineend")
             except _EXPECTED_APP_ERRORS:
                 pass
         self._error_focus_index = focus_index

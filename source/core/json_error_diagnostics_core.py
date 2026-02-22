@@ -968,6 +968,7 @@ def build_json_diagnostic(owner, exc):
         return None
 
     lineno = getattr(exc, "lineno", None) or 1
+    colno = getattr(exc, "colno", None) or 1
     line_text = owner._line_text(lineno)
     stripped = line_text.strip()
 
@@ -986,9 +987,15 @@ def build_json_diagnostic(owner, exc):
             "note": "missing_list_open_typed_comma",
         }
 
-    # Missing closing value quote before comma/EOL should be resolved first
-    # so cursor focus lands on the quote insertion point (before comma).
+    # For control-char/delimiter parser variants, prioritize property-key quote
+    # diagnostics first so `"name: true` routes to key-quote repair instead of
+    # value-quote repair (which misplaces highlight/caret).
     if msg.startswith("Invalid control character") or msg in ("Expecting ',' delimiter", "Expecting value"):
+        key_quote_diag = owner._missing_key_quote_before_colon_diag(lineno, colno=colno)
+        if key_quote_diag:
+            return key_quote_diag
+        # Missing closing value quote before comma/EOL should be resolved first
+        # so cursor focus lands on the quote insertion point (before comma).
         invalid_tail_no, invalid_tail_text, invalid_tail_span = (
             owner._find_nearby_unclosed_quoted_value_invalid_tail_line(lineno)
         )
@@ -2889,5 +2896,3 @@ def _apply_json_error_highlight(owner, exc, line, start_index, end_index, note="
     else:
         owner._log_json_error(exc, line, note="highlight")
     owner._position_error_overlay(line)
-
-

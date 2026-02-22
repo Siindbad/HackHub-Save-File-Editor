@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-22 (diagnostics logging hardening for parse-entry reliability plus updater/asset contract alignment).
+Last sync: 2026-02-22 (diagnostics routing updates for key-quote vs value-quote highlight/caret alignment plus parse-entry logging hardening).
 
 | Module | Purpose |
 | --- | --- |
