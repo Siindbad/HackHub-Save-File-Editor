@@ -74,6 +74,23 @@ jobs:
                   return data
               return data[: limit - 3] + "..."
 
+          def extract_screenshot_url(markdown_text):
+              text = str(markdown_text or "")
+              # Prefer markdown image syntax used by bug-report body:
+              # ![name](https://...)
+              match = re.search(r"!\[[^\]]*\]\((https?://[^)\s]+)\)", text, flags=re.IGNORECASE)
+              if match:
+                  return match.group(1).strip()
+              # Fallback: first direct image URL in body.
+              match = re.search(
+                  r"(https?://[^\s)]+?\.(?:png|jpe?g|webp|gif)(?:\?[^\s)]*)?)",
+                  text,
+                  flags=re.IGNORECASE,
+              )
+              if match:
+                  return match.group(1).strip()
+              return ""
+
           # Manual run can target a specific existing issue for testing.
           if event_name == "workflow_dispatch" and manual_issue_number and repo and gh_token:
               api_url = f"https://api.github.com/repos/{repo}/issues/{manual_issue_number}"
@@ -115,6 +132,7 @@ jobs:
               thread_name = thread_name[:97] + "..."
 
           body_text = to_short(issue_body or "(no details provided)", 1400)
+          screenshot_url = extract_screenshot_url(issue_body)
           embed = {
               "title": to_short(issue_title or f"Bug Report #{issue_number}", 250),
               "description": body_text,
@@ -126,6 +144,9 @@ jobs:
                   {"name": "Labels", "value": ", ".join(labels) if labels else "none", "inline": True},
               ],
           }
+          if screenshot_url:
+              embed["thumbnail"] = {"url": screenshot_url}
+              embed["fields"].append({"name": "Screenshot", "value": screenshot_url[:1024], "inline": False})
 
           payload = {
               "thread_name": thread_name or "Bug Report",
