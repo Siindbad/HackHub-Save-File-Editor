@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-22 (diagnostics log writer hardening with stable mirror file and robust fallback write behavior).
+Last sync: 2026-02-22 (updater runtime now handles protected-folder elevation and verifies ZIP-applied EXE hash before relaunch).
 
 | Module | Purpose |
 | --- | --- |
@@ -37,4 +37,4 @@ Last sync: 2026-02-22 (diagnostics log writer hardening with stable mirror file 
 | `update_orchestrator_service.py` | Provides updater orchestration flow for demo/update checks while reusing owner callbacks and existing update helpers. |
 | `update_service.py` | Provides updater service facade exports consumed by UI entrypoints while core logic stays in `core/update_service.py`. |
 | `update_ui_service.py` | Provides update-related UI dialog/overlay helpers for themed info/confirm prompts (including shared startup-check checkbox state), staged progress/percent rendering, rotating updater header text, and popup lifecycle handling. |
-| `windows_runtime_service.py` | Provides Windows-focused updater/runtime helpers for hidden process launch, installer script handoff (including hidden-window relaunch command), configurable restart-notice delay, and retryable atomic file writes. |
+| `windows_runtime_service.py` | Provides Windows-focused updater/runtime helpers for hidden process launch, installer script handoff (including hidden-window relaunch command), protected-folder elevation retry, ZIP EXE hash-verify apply guard, configurable restart-notice delay, and retryable atomic file writes. |
