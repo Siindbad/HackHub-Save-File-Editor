@@ -127,34 +127,34 @@ def _apply_footer_layout_variant(owner: Any):
 def _extract_badge_boxes(image, threshold=16):
         rgb = image.convert("RGB")
         width, height = rgb.size
-        pixels = rgb.load()
+        channels = rgb.split()
+        image_chops_module = importlib.import_module("PIL.ImageChops")
+        max_channel = image_chops_module.lighter(
+            image_chops_module.lighter(channels[0], channels[1]),
+            channels[2],
+        )
+        mask = max_channel.point(lambda value: 255 if value > threshold else 0)
         min_row_pixels = max(8, width // 60)
         min_group_height = max(20, height // 20)
 
         def row_lit_count(y):
-            lit = 0
-            for x in range(width):
-                if max(pixels[x, y]) > threshold:
-                    lit += 1
-            return lit
+            row = mask.crop((0, y, width, y + 1))
+            return int(row.histogram()[255])
 
         def box_for_rows(y1, y2):
-            x1, x2 = width, -1
-            for yy in range(y1, y2 + 1):
-                for xx in range(width):
-                    if max(pixels[xx, yy]) > threshold:
-                        if xx < x1:
-                            x1 = xx
-                        if xx > x2:
-                            x2 = xx
-            if x2 < x1:
+            segment = mask.crop((0, y1, width, y2 + 1))
+            bounds = segment.getbbox()
+            if not bounds:
                 return None
+            x1, rel_top, x2, rel_bottom_exclusive = bounds
+            top = y1 + int(rel_top)
+            bottom = y1 + int(rel_bottom_exclusive) - 1
             pad = 4
             return (
                 max(0, x1 - pad),
-                max(0, y1 - pad),
+                max(0, top - pad),
                 min(width, x2 + pad + 1),
-                min(height, y2 + pad + 1),
+                min(height, bottom + pad + 1),
             )
 
         row_has = [row_lit_count(y) >= min_row_pixels for y in range(height)]
@@ -210,6 +210,57 @@ def _extract_badge_boxes(image, threshold=16):
             )[:2]
         boxes.sort(key=lambda b: b[1])
         return boxes
+
+
+def _footer_badge_pool_state(owner: Any, attr_name: str, parent):
+        state = getattr(owner, attr_name, None)
+        if not isinstance(state, dict) or state.get("parent") is not parent:
+            state = {"parent": parent, "entries": {}}
+            setattr(owner, attr_name, state)
+        return state
+
+
+def _footer_badge_pool_hide(entry: Any):
+        widgets = list((entry or {}).get("widgets", []) or [])
+        for widget, _pack_opts in widgets:
+            try:
+                if widget is not None and widget.winfo_exists():
+                    widget.pack_forget()
+            except EXPECTED_ERRORS:
+                continue
+
+
+def _footer_badge_pool_show(entry: Any):
+        widgets = list((entry or {}).get("widgets", []) or [])
+        for widget, pack_opts in widgets:
+            try:
+                if widget is not None and widget.winfo_exists():
+                    widget.pack(**dict(pack_opts or {}))
+            except EXPECTED_ERRORS:
+                continue
+
+
+def _footer_badge_pool_reuse(owner: Any, parent, pool_attr: str, active_attr: str, signature: Any):
+        state = _footer_badge_pool_state(owner, pool_attr, parent)
+        entries = state.get("entries", {})
+        previous = getattr(owner, active_attr, None)
+        if previous and previous != signature:
+            _footer_badge_pool_hide(entries.get(previous))
+        existing = entries.get(signature)
+        if existing:
+            _footer_badge_pool_show(existing)
+            setattr(owner, active_attr, signature)
+            return existing
+        return None
+
+
+def _footer_badge_pool_store(owner: Any, parent, pool_attr: str, active_attr: str, signature: Any, entry: Any):
+        state = _footer_badge_pool_state(owner, pool_attr, parent)
+        entries = state.get("entries", {})
+        entries[signature] = entry
+        state["entries"] = entries
+        _footer_badge_pool_show(entry)
+        setattr(owner, active_attr, signature)
 
 
 def _load_credit_github_icon(owner: Any, max_size=16, tint="#dff6ff", with_plate=False):
@@ -391,13 +442,17 @@ def _render_credit_badges(owner: Any):
             int(icon_size),
             tuple(spec["chip_font"]),
         )
-        if (
-            render_signature == getattr(owner, "_credit_badge_render_signature", None)
-            and parent.winfo_children()
-        ):
+        reused = _footer_badge_pool_reuse(
+            owner,
+            parent,
+            "_credit_badge_widget_pool",
+            "_credit_badge_active_signature",
+            render_signature,
+        )
+        if reused is not None:
+            owner._credit_badge_images = list(reused.get("images", []) or [])
+            owner._credit_badge_render_signature = render_signature
             return
-        for child in parent.winfo_children():
-            child.destroy()
 
         github_icon_photo = owner._load_credit_github_icon(
             max_size=icon_size,
@@ -407,6 +462,7 @@ def _render_credit_badges(owner: Any):
         if github_icon_photo is not None:
             owner._credit_badge_images.append(github_icon_photo)
         name_font = spec["chip_font"]
+        pool_widgets = []
 
         for idx, (name, url) in enumerate(github_specs):
             source = sources[idx] if idx < len(sources) else None
@@ -421,7 +477,7 @@ def _render_credit_badges(owner: Any):
                 highlightbackground=chip_border,
                 highlightcolor=chip_border,
             )
-            chip.pack(side="left", padx=(pad_left, 0))
+            pool_widgets.append((chip, {"side": "left", "padx": (pad_left, 0)}))
             if github_icon_photo is not None:
                 icon_label = tk.Label(
                     chip,
@@ -459,6 +515,14 @@ def _render_credit_badges(owner: Any):
             )
             text_label.pack(side="left", padx=(0, spec["chip_text_right_pad"]), pady=0)
             owner._bind_click_recursive(chip, open_cb)
+        _footer_badge_pool_store(
+            owner,
+            parent,
+            "_credit_badge_widget_pool",
+            "_credit_badge_active_signature",
+            render_signature,
+            {"widgets": pool_widgets, "images": list(owner._credit_badge_images)},
+        )
         owner._credit_badge_render_signature = render_signature
 
 
@@ -497,13 +561,17 @@ def _render_credit_discord_badges(owner: Any):
             int(icon_size),
             tuple(spec["chip_font"]),
         )
-        if (
-            render_signature == getattr(owner, "_credit_discord_badge_render_signature", None)
-            and parent.winfo_children()
-        ):
+        reused = _footer_badge_pool_reuse(
+            owner,
+            parent,
+            "_credit_discord_widget_pool",
+            "_credit_discord_active_signature",
+            render_signature,
+        )
+        if reused is not None:
+            owner._credit_discord_badge_images = list(reused.get("images", []) or [])
+            owner._credit_discord_badge_render_signature = render_signature
             return
-        for child in parent.winfo_children():
-            child.destroy()
         discord_icon_photo = owner._load_credit_discord_icon(
             max_size=icon_size,
             tint=icon_tint,
@@ -512,6 +580,7 @@ def _render_credit_discord_badges(owner: Any):
         if discord_icon_photo is not None:
             owner._credit_discord_badge_images.append(discord_icon_photo)
         name_font = spec["chip_font"]
+        pool_widgets = []
         discord_label = tk.Label(
             parent,
             text="DISCORD :",
@@ -523,7 +592,7 @@ def _render_credit_discord_badges(owner: Any):
             padx=0,
             pady=spec["chip_text_pady"],
         )
-        discord_label.pack(side="left", padx=(0, spec["label_gap"]))
+        pool_widgets.append((discord_label, {"side": "left", "padx": (0, spec["label_gap"])}))
 
         for idx, (name, url) in enumerate(discord_specs):
             pad_left = 0 if idx == 0 else int(spec["chip_gap"])
@@ -535,7 +604,7 @@ def _render_credit_discord_badges(owner: Any):
                 highlightbackground=chip_border,
                 highlightcolor=chip_border,
             )
-            chip.pack(side="left", padx=(pad_left, 0))
+            pool_widgets.append((chip, {"side": "left", "padx": (pad_left, 0)}))
             if discord_icon_photo is not None:
                 icon_label = tk.Label(
                     chip,
@@ -559,4 +628,12 @@ def _render_credit_discord_badges(owner: Any):
             text_label.pack(side="left", padx=(0, spec["chip_text_right_pad"]), pady=0)
             if url:
                 owner._bind_click_recursive(chip, lambda _event, link=url: owner._open_external_link(link))
+        _footer_badge_pool_store(
+            owner,
+            parent,
+            "_credit_discord_widget_pool",
+            "_credit_discord_active_signature",
+            render_signature,
+            {"widgets": pool_widgets, "images": list(owner._credit_discord_badge_images)},
+        )
         owner._credit_discord_badge_render_signature = render_signature

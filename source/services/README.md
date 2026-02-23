@@ -22,7 +22,7 @@ Last sync: 2026-02-23 (toolbar service variant mapping cleaned to A/B-only behav
 | `error_hook_service.py` | Provides unhandled exception hook wiring helpers for sys/thread/Tk callbacks and previous-hook forwarding safeguards. |
 | `error_overlay_service.py` | Provides error-overlay UI helpers for pin placement, tint lifecycle, overlay teardown, and theme refresh behavior. |
 | `error_service.py` | Provides error-system helper logic for before/after suggestion parsing, overlay payload shaping, marker color rules, and theme-aware error palettes. |
-| `footer_service.py` | Provides bottom-footer style and visual spec helpers used by badge/chip layout rendering. |
+| `footer_service.py` | Provides bottom-footer style/spec helpers plus vectorized badge-region detection and pooled badge widget reuse for theme-switch stability. |
 | `highlight_label_service.py` | Provides edit-guard helpers for network list/context detection, key-rename guard payload shaping, and global JSON key/value label-policy detection/restore/highlight rules. |
 | `input_bank_style_service.py` | Provides Bank-specific Input-mode row discovery and themed style rendering (account/IBAN labels, provider pill, rounded balance input) with editor FONT-linked size scaling support. |
 | `input_database_style_service.py` | Provides Database Grades Input-mode matrix detection/rendering with editability-aware cells (editable inputs vs centered read-only values) and editor FONT-linked size scaling support. |
@@ -64,7 +64,7 @@ Last sync: 2026-02-23 (toolbar service variant mapping cleaned to A/B-only behav
 | `text_context_state_service.py` | Provides text-context state helpers for selection, clipboard, and undo/redo availability checks. |
 | `text_context_widget_service.py` | Provides text-context widget relationship helpers for popup child-path checks. |
 | `theme_asset_service.py` | Provides theme-related asset path helpers used by sprite/icon/theme resource lookups. |
-| `theme_service.py` | Provides centralized theme palettes and chip/color mapping helpers for SIINDBAD and KAMUE variants. |
+| `theme_service.py` | Provides centralized theme palettes/chip mapping plus titlebar no-op guards and idle-batched footer refresh orchestration for stable switch latency. |
 | `token_env_service.py` | Provides environment-token resolution helpers for updater and bug-report fallback behavior. |
 | `toolbar_service.py` | Provides toolbar helper logic for style resolution, button symbols, display labels, and width presets. |
 | `tree_engine_service.py` | Provides shared tree engine mechanics for child population, marker refresh, and click/double-click toggle behavior used by both JSON and INPUT modes. |

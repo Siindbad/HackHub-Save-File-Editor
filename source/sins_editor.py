@@ -1,6 +1,7 @@
 import hashlib
 import importlib
 import json
+import logging
 import os
 import platform
 import re
@@ -109,6 +110,8 @@ from core import json_error_diagnostics_core
 from core import json_error_highlight_core
 from core import layout_topbar as layout_topbar_core
 from core import startup_loader as startup_loader_core
+
+_LOG = logging.getLogger(__name__)
 
 # Keep explicit import references for compatibility/regression contracts.
 _IMPORT_COMPAT_TOUCH = (
@@ -1608,6 +1611,7 @@ if button._siindbad_base_image is None:
             "_updates_auto_after_id",
             "_update_overlay_title_after_id",
             "_theme_prewarm_after_id",
+            "_theme_footer_refresh_after_id",
             "_startup_loader_text_after_id",
             "_startup_loader_hide_after_id",
             "_startup_loader_progress_after_id",
@@ -4377,6 +4381,10 @@ if button._siindbad_base_image is None:
         self._credit_discord_icon_cache = {}
         self._credit_badge_render_signature = None
         self._credit_discord_badge_render_signature = None
+        self._credit_badge_widget_pool = {}
+        self._credit_badge_active_signature = None
+        self._credit_discord_widget_pool = {}
+        self._credit_discord_active_signature = None
         self._credit_badge_host = None
         self._credit_discord_badge_host = None
         self._credit_bar = None
@@ -4417,6 +4425,8 @@ if button._siindbad_base_image is None:
         self._last_bug_report_submit_monotonic = 0.0
         self._bug_submit_splash = None
         self._bug_submit_splash_after_id = None
+        self._theme_footer_refresh_after_id = None
+        self._titlebar_theme_signature_by_hwnd = {}
         self._font_stepper_label = None
         self._font_size_value_label = None
         self._font_control_host = None
@@ -6730,10 +6740,10 @@ if button._siindbad_base_image is None:
         if not bool(getattr(self, "_theme_perf_logging", False)):
             return
         if started_ts is None:
-            print(f"[theme-perf] {label}")
+            _LOG.debug("theme_perf label=%s", label)
             return
         elapsed = (time.perf_counter() - float(started_ts)) * 1000.0
-        print(f"[theme-perf] {label}: {elapsed:.1f}ms")
+        _LOG.debug("theme_perf label=%s elapsed_ms=%.1f", label, elapsed)
 
     def _build_theme_prewarm_tasks(self, variant):
         variant = str(variant).upper()

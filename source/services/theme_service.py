@@ -305,10 +305,6 @@ def _apply_windows_titlebar_theme(owner: Any, bg=None, fg=None, border=None, win
             except EXPECTED_ERRORS:
                 return False
 
-        dark_flag = ctypes.c_int(1)
-        if not _set_dwm_attr(20, dark_flag):
-            _set_dwm_attr(19, dark_flag)
-
         theme = getattr(owner, "_theme", {}) or {}
         variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
         default_bg = "#180c32" if variant == "KAMUE" else "#102535"
@@ -317,6 +313,16 @@ def _apply_windows_titlebar_theme(owner: Any, bg=None, fg=None, border=None, win
         effective_bg = bg or theme.get("title_bar_bg", default_bg)
         effective_fg = fg or theme.get("title_bar_fg", default_fg)
         effective_border = border or theme.get("title_bar_border", default_border)
+        signature_by_hwnd = getattr(owner, "_titlebar_theme_signature_by_hwnd", None)
+        if not isinstance(signature_by_hwnd, dict):
+            signature_by_hwnd = {}
+            owner._titlebar_theme_signature_by_hwnd = signature_by_hwnd
+        signature = (str(effective_bg or ""), str(effective_fg or ""), str(effective_border or ""))
+        if signature_by_hwnd.get(int(hwnd)) == signature:
+            return
+        dark_flag = ctypes.c_int(1)
+        if not _set_dwm_attr(20, dark_flag):
+            _set_dwm_attr(19, dark_flag)
 
         if effective_bg:
             caption_color = owner._hex_to_colorref(effective_bg)
@@ -330,6 +336,47 @@ def _apply_windows_titlebar_theme(owner: Any, bg=None, fg=None, border=None, win
             text_color = owner._hex_to_colorref(effective_fg)
             if text_color is not None:
                 _set_dwm_attr(36, ctypes.c_uint(text_color))
+        signature_by_hwnd[int(hwnd)] = signature
+
+
+def _schedule_footer_theme_refresh(owner: Any):
+        root = getattr(owner, "root", None)
+        if root is None:
+            return
+        after_id = getattr(owner, "_theme_footer_refresh_after_id", None)
+        if after_id:
+            try:
+                root.after_cancel(after_id)
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            owner._theme_footer_refresh_after_id = None
+
+        def _run():
+            owner._theme_footer_refresh_after_id = None
+            if owner._credit_badge_host and owner._credit_badge_host.winfo_exists():
+                try:
+                    owner._render_credit_badges()
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    pass
+            if owner._credit_discord_badge_host and owner._credit_discord_badge_host.winfo_exists():
+                try:
+                    owner._render_credit_discord_badges()
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    pass
+            if owner._bug_report_chip and owner._bug_report_chip.winfo_exists():
+                try:
+                    owner._sync_bug_report_chip_colors()
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    pass
+            try:
+                owner._apply_footer_layout_variant()
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+
+        try:
+            owner._theme_footer_refresh_after_id = root.after_idle(_run)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            owner._theme_footer_refresh_after_id = None
 
 
 def _refresh_runtime_theme_widgets(owner: Any):
@@ -426,7 +473,6 @@ def _refresh_runtime_theme_widgets(owner: Any):
                 owner._credit_badge_host.configure(bg=theme.get("credit_bg", "#0b1118"))
             except (tk.TclError, RuntimeError, AttributeError):
                 pass
-            owner._render_credit_badges()
         if owner._header_variant_bar and owner._header_variant_bar.winfo_exists():
             try:
                 owner._header_variant_bar.configure(bg=theme.get("bg", "#0f131a"))
@@ -437,7 +483,6 @@ def _refresh_runtime_theme_widgets(owner: Any):
                 owner._credit_discord_badge_host.configure(bg=theme.get("credit_bg", "#0b1118"))
             except (tk.TclError, RuntimeError, AttributeError):
                 pass
-            owner._render_credit_discord_badges()
         divider = getattr(owner, "_credit_badges_divider", None)
         if divider and divider.winfo_exists():
             try:
@@ -498,9 +543,7 @@ def _refresh_runtime_theme_widgets(owner: Any):
                 )
             except (tk.TclError, RuntimeError, AttributeError):
                 pass
-        if owner._bug_report_chip and owner._bug_report_chip.winfo_exists():
-            owner._sync_bug_report_chip_colors()
-        owner._apply_footer_layout_variant()
+        _schedule_footer_theme_refresh(owner)
         owner._update_editor_mode_controls()
         bug_dialog = getattr(owner, "_bug_report_dialog", None)
         if bug_dialog is not None:
