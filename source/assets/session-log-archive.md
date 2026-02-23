@@ -1,4 +1,4 @@
-﻿# Session Log Archive (Sources)
+# Session Log Archive (Sources)
 
 Older source development session logs rotated from `README.md`.
 
