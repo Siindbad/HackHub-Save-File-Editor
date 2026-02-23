@@ -26,7 +26,7 @@
 
 | <img align="left" alt="CHANGE LOGS" src="https://img.shields.io/badge/CHANGE%20LOGS-5B21B6?style=for-the-badge&labelColor=0F172A"> |
 |---|
-| **[ Version 1.3.6 ]**<br>- Fixed JSON Find Next to cycle global value matches across categories and include.<br>- Updated JSON Find Next to collapse the previous top-level category. |
+| **[ Version 1.3.7 ]**<br>- No changelog notes provided. |
 
 | <img align="left" alt="VERIFICATION SUITE" src="https://img.shields.io/badge/VERIFICATION%20SUITE-0F172A?style=for-the-badge&labelColor=0F172A"> |
 |---|
