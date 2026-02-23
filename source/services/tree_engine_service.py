@@ -16,7 +16,6 @@ def populate_children(owner: Any, item_id: Any) -> Any:
     if not isinstance(value, (dict, list)):
         return
 
-    # Clear existing children.
     for child in owner.tree.get_children(item_id):
         owner.tree.delete(child)
 
@@ -27,7 +26,6 @@ def populate_children(owner: Any, item_id: Any) -> Any:
         )
         keys = list(value.keys())
         if isinstance(path, list) and len(path) == 0:
-            # UI-only ordering for top-level categories; does not mutate save data.
             keys = sorted(
                 keys,
                 key=lambda raw: str(owner._tree_display_label_for_key(raw)).casefold(),
@@ -77,7 +75,6 @@ def populate_children(owner: Any, item_id: Any) -> Any:
             )
             owner.item_to_path[group_id] = ("__group__", path, group)
             for idx, item in items:
-                # Network subgroup rows use descriptive labels only; hide raw [index] prefixes.
                 label = ""
                 if isinstance(item, dict):
                     if group in ("ROUTER", "DEVICE", "FIREWALL", "SPLITTER"):

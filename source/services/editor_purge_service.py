@@ -32,6 +32,7 @@ from services import ui_build_service
 from services import update_headers_service
 from services import update_release_info_service
 from services import update_ui_service
+from services import validation_service
 from services import windows_runtime_service
 from services import crash_offer_service
 from services import toolbar_service
@@ -351,25 +352,18 @@ def _maybe_restore_locked_parse_error(owner: Any, path, diag, exc=None):
             diag_line = int((diag or {}).get("line") or 0)
         except EXPECTED_ERRORS:
             diag_line = 0
-        # Strict handoff gate:
-        # diagnostic line must match parser-reported line for this exact Apply Edit parse failure.
         try:
             parse_line = int(getattr(exc, "lineno", 0) or 0)
         except EXPECTED_ERRORS:
             parse_line = 0
         if parse_line and diag_line and int(parse_line) != int(diag_line):
             return False
-        # Lock handoff must be anchored to the actively edited line.
         if insert_line and diag_line and int(insert_line) != int(diag_line):
             return False
-        # Parse-lock guard gate:
-        # only auto-restore when the parse diagnostic is near the user's active edit location.
         if insert_line and diag_line and abs(int(insert_line) - int(diag_line)) > 1:
             return False
         if diag_line and not owner._diag_line_mentions_locked_field(diag_line, field_name):
             return False
-        # Strict key-quote gate:
-        # only route into lock auto-restore when the parser line itself is a key-quote syntax issue.
         if diag_line:
             try:
                 diag_line_text = str(owner._line_text(diag_line) or "")
@@ -388,7 +382,6 @@ def _maybe_restore_locked_parse_error(owner: Any, path, diag, exc=None):
             line_field = owner._extract_key_name_from_diag_line(diag_line_text)
             if line_field and str(line_field).casefold() != str(field_name).casefold():
                 return False
-        # Also require the current insert line to be the same locked key-quote issue.
         try:
             insert_has_key_quote_issue = bool(
                 owner._line_has_missing_key_quote_before_colon(insert_line_text)
@@ -460,8 +453,6 @@ def _apply_input_edit(owner: Any):
             messagebox.showwarning("No selection", "Select a node in the tree.")
             return
         tree_path = owner.item_to_path.get(item_id, [])
-        # Grouped INPUT edits (e.g. Network ROUTER/FIREWALL buckets) must always
-        # write against the group source list path from the selected tree tuple.
         if isinstance(tree_path, tuple) and tree_path[0] == "__group__":
             _, list_path, _group = tree_path
             path = list(list_path or [])
@@ -470,7 +461,6 @@ def _apply_input_edit(owner: Any):
             if not path:
                 path = tree_path
         if isinstance(path, tuple) and path[0] == "__group__":
-            # Allow INPUT edits for grouped selections by writing against the source list path.
             _, list_path, _group = path
             path = list(list_path or [])
         if owner._is_input_mode_category_disabled(path):
@@ -519,21 +509,16 @@ def _apply_input_edit(owner: Any):
             messagebox.showwarning("Invalid Entry", f"Could not apply INPUT edits: {exc}")
             return
 
-        # INPUT mode should apply validated field edits directly; JSON warning-policy
-        # prompts are scoped to raw JSON key edits and can block INPUT writes silently.
         changed = working != value
         owner.data = working_root
         owner._reset_find_state()
         owner._log_input_mode_apply_result(path, changed)
         owner._log_input_mode_apply_trace("applied", path, len(specs), changed=changed)
         if owner._is_bank_input_style_path(path):
-            # Bank INPUT rows already reflect the edited value; skip full repaint to avoid flicker.
             owner._input_mode_last_render_item = item_id
             owner._input_mode_last_render_path_key = owner._input_mode_path_key(path)
             owner._input_mode_force_refresh = False
         else:
-            # Ensure INPUT custom rows (ROUTER/FIREWALL/etc.) fully repaint so
-            # value-driven styles (for example true/false colors) update immediately.
             owner._input_mode_force_refresh = True
             owner._populate_children(item_id)
             owner.on_select(None)
@@ -557,6 +542,10 @@ def apply_edit(owner: Any):
             return
 
         raw = owner.text.get("1.0", "end").strip()
+        is_valid_input, input_reason = validation_service.validate_editor_text_payload(raw)
+        if not is_valid_input:
+            owner._show_error_overlay("Invalid Entry", input_reason)
+            return
         try:
             new_value = json.loads(raw)
         except EXPECTED_ERRORS as exc:
@@ -619,8 +608,7 @@ def _set_startup_loader_bar_fill(fill_widget, pct):
                 fill_label.place_forget()
                 payload["last_w"] = 0
                 return
-            # Keep loader animation lightweight: avoid per-frame PIL image redraws.
-            # Rounded track shell stays intact while fill uses a fast solid block.
+            # NOTE: Keep fill updates lightweight; per-frame image redraws caused visible loader hitching.
             last_color = str(payload.get("last_color", ""))
             if last_color != str(fill_color):
                 fill_label.configure(bg=fill_color, image="", text="")
@@ -726,7 +714,6 @@ def _apply_json_view_key_highlights(owner: Any, path, line_limit=None):
         xy_keys = ("x", "y") if len(use_path) == 1 else ()
         dimension_keys = ("width", "height")
         if highlight_label_service.is_locked_field_path(use_path):
-            # Subcategory JSON stays white; apply-time guard still blocks locked edits.
             return
         locked_fields = tuple(highlight_label_service.locked_highlight_fields_for_path(use_path))
         if owner._should_batch_tag_locked_keys(locked_fields):
@@ -738,7 +725,6 @@ def _apply_json_view_key_highlights(owner: Any, path, line_limit=None):
                 owner._tag_json_locked_key_occurrences(field_name)
         for dim_key in dimension_keys:
             owner._tag_json_xy_key_occurrences(dim_key)
-        # Global value tint: render quoted values in light green without overriding key highlights.
         owner._tag_json_string_value_literals(line_limit=line_limit)
 
 

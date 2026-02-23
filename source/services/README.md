@@ -86,5 +86,6 @@ Last sync: 2026-02-23 (toolbar service variant mapping cleaned to A/B-only behav
 | `update_ui_service.py` | Provides update-related UI dialog/overlay helpers for themed info/confirm prompts (including shared startup-check checkbox state), staged progress/percent rendering, rotating updater header text, and popup lifecycle handling. |
 | `update_url_service.py` | Provides release/update URL builder helpers for latest API and release-asset download links. |
 | `update_version_service.py` | Provides update dist-version resolution helpers with release-tag preference and version-file fallback. |
+| `validation_service.py` | Provides text-input sanitization gates for clipboard paste and Apply Edit flows, including hidden-unicode, control-byte, surrogate, and oversize payload checks. |
 | `version_format_service.py` | Provides version parsing/formatting helpers used by update and display flows. |
 | `windows_runtime_service.py` | Provides Windows-focused updater/runtime helpers for hidden process launch, installer script handoff (including hidden-window relaunch command), strict Program Files elevation detection, direct EXE replacement fallback, ZIP EXE hash-verify apply guard, configurable restart-notice delay, and retryable atomic file writes. |

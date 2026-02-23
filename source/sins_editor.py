@@ -100,6 +100,7 @@ from services import update_signature_service
 from services import update_ui_service
 from services import update_url_service
 from services import update_version_service
+from services import validation_service
 from services import version_format_service
 from services import windows_runtime_service
 from core import constants as app_constants
@@ -3780,6 +3781,13 @@ if button._siindbad_base_image is None:
             return
         if pasted is None:
             return
+        is_valid, safe_text, reason = clipboard_service.validate_clipboard_paste_payload(
+            pasted,
+            validation_service.validate_editor_text_payload,
+        )
+        if not is_valid:
+            self._show_error_overlay("Invalid Entry", reason)
+            return
         if self.error_overlay is not None:
             self._destroy_error_overlay()
             self._clear_json_error_highlight()
@@ -3789,7 +3797,7 @@ if button._siindbad_base_image is None:
         except _EXPECTED_APP_ERRORS:
             pass
         try:
-            self.text.insert("insert", pasted)
+            self.text.insert("insert", safe_text)
             self.text.see("insert")
             self._auto_apply_pending = True
         except _EXPECTED_APP_ERRORS:

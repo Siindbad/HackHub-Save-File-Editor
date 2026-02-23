@@ -1,10 +1,10 @@
 # Core Suite
 
-Last sync: 2026-02-23 (topbar maximize spacing behavior reverted to stable no-overlap/no-jitter baseline).
+Last sync: 2026-02-23 (input sanitization limits/constants added for paste and apply-edit guardrails).
 
 | Module | Purpose |
 | --- | --- |
-| `constants.py` | Defines shared static configuration values used across editor components, including updater/bug-report token env names, bug-report destination, screenshot-upload limits, submit cooldown settings, optional bug-report Discord forum webhook/tag env names, and mode-scoped tree policy category/key sets. |
+| `constants.py` | Defines shared static configuration values used across editor components, including updater/bug-report token env names, bug-report destination, screenshot-upload limits, submit cooldown settings, input sanitization limits/character policy, optional bug-report Discord forum webhook/tag env names, and mode-scoped tree policy category/key sets. |
 | `display_profile.py` | Provides display-scale detection and window/profile geometry helper logic. |
 | `editor_state.py` | Defines grouped runtime state dataclasses (`UIState`, `DocumentState`, `UpdateState`, and related buckets) plus centralized flag routing used by `JsonEditor`. |
 | `exceptions.py` | Defines shared app exception types and expected-error tuples used by service/core modules. |

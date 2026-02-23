@@ -590,6 +590,7 @@ source/services/update_signature_service.py
 source/services/update_ui_service.py
 source/services/update_url_service.py
 source/services/update_version_service.py
+source/services/validation_service.py
 source/services/version_format_service.py
 source/services/windows_runtime_service.py
 source/sins_editor.py

@@ -1,4 +1,4 @@
-"""Deep JSON repair helpers delegated from JsonEditor."""
+"""JSON repair rules used by apply/live feedback flows."""
 
 from __future__ import annotations
 
@@ -29,7 +29,6 @@ def _strip_invalid_trailing_chars(value_str: str) -> str:
 
 
 def _json_token_followed_by_colon(owner: Any, end_index, lookahead_chars=24):
-        # Locked-key highlight guard: only tag JSON object keys ("key":), not string values ("KEY").
         text = getattr(owner, "text", None)
         if text is None:
             return False
@@ -53,7 +52,6 @@ def _missing_colon_example(owner: Any, line_text):
         stripped = line_text.strip().strip(",")
         if not stripped:
             return "\"key\": \"value\""
-        # Handle: "key" value  ->  "key": value
         m = re.match(r'^\s*"([^"]+)"\s+(.+?)\s*$', stripped)
         if m:
             key = m.group(1)
@@ -62,7 +60,6 @@ def _missing_colon_example(owner: Any, line_text):
             if has_trailing_comma and not result.rstrip().endswith(","):
                 result += ","
             return result
-        # If we have two quoted strings, insert colon between them.
         if "\"" in stripped:
             try:
                 first = stripped.split("\"", 2)
@@ -148,7 +145,6 @@ def _key_colon_comma_to_list_open(owner: Any, line_text):
 
 
 def _line_extra_quote_in_string_value(owner: Any, line_text):
-        # Detect: "key": "value""   -> likely meant comma after closing quote.
         if not line_text:
             return False
         return bool(re.match(r'^\s*"[^"]+"\s*:\s*"[^"]*""\s*,?\s*$', line_text))
@@ -164,7 +160,6 @@ def _fix_extra_quote_to_comma(owner: Any, line_text):
 
 
 def _line_has_trailing_stray_quote_after_comma(owner: Any, line_text):
-        # Detect: "key": "value","
         if not line_text:
             return False
         return bool(re.match(r'^\s*"[^"]+"\s*:\s*"[^"]*"\s*,\s*"\s*$', line_text))
@@ -252,8 +247,6 @@ def _duplicate_comma_run_span(owner: Any, line_text, lineno=None):
         if not line_text:
             return None
         raw = line_text.rstrip()
-        # Detect any trailing duplicate-comma run and return span of only the
-        # extra commas (or all commas when no delimiter is allowed).
         m = re.match(r'^(?P<prefix>.*?),(?P<extra>\s*,+\s*)$', raw)
         if not m:
             return None
@@ -261,7 +254,6 @@ def _duplicate_comma_run_span(owner: Any, line_text, lineno=None):
         extra = m.group("extra") or ""
         if not extra or "," not in extra:
             return None
-        # Guard against non-value lines like "key:" where comma runs are handled elsewhere.
         prefix_stripped = prefix.strip()
         if not prefix_stripped or prefix_stripped.endswith(":"):
             return None
@@ -271,7 +263,6 @@ def _duplicate_comma_run_span(owner: Any, line_text, lineno=None):
             leading_ws = len(extra) - len(extra.lstrip())
             start_col = len(prefix) + 1 + leading_ws
         else:
-            # No delimiter is valid before a closer; highlight the whole comma run.
             start_col = len(prefix)
         end_col = len(raw.rstrip())
         if end_col <= start_col:
@@ -357,10 +348,8 @@ def _analyze_invalid_prefix_after_colon(owner: Any, line_text):
                 break
         if first_non_ws is None:
             return None
-        # Comma-after-colon has a dedicated diagnostic path.
         if tail[first_non_ws] == ",":
             return None
-        # Keep existing value-typo paths for normal value starts.
         first_ch = tail[first_non_ws]
         if first_ch.isalnum() or first_ch in ('"', "-"):
             return None
@@ -392,7 +381,6 @@ def _analyze_invalid_prefix_after_colon(owner: Any, line_text):
                 while j < len(s) and s[j].isspace():
                     j += 1
                 if j >= len(s):
-                    # Allow container start at EOL (valid multi-line value).
                     return len(s)
                 if j < len(s) and s[j] == close:
                     end = j + 1
@@ -412,8 +400,6 @@ def _analyze_invalid_prefix_after_colon(owner: Any, line_text):
                 return end
             return None
 
-        # If the first value token is valid and the rest of the tail is clean,
-        # this is not an invalid-prefix-after-colon case.
         if token_end_if_clean(tail, first_non_ws) is not None:
             return None
 
@@ -1436,8 +1422,7 @@ def _fix_missing_at(owner: Any, value, domain_roots=None):
         last_dot = value.rfind(".")
         if last_dot > 0:
             return value[:last_dot] + "@" + value[last_dot + 1 :]
-        # If there's no dot in the value, it's unlikely to be an email (e.g. IBAN).
-        # Do not append '@' in that case; return the original value unchanged.
+        # Non-email strings (for example IBAN-like values) should pass through untouched.
         return value
 
 
@@ -1474,23 +1459,16 @@ def _find_phone_format_issue(owner: Any):
 def _fix_missing_space_after_colon(owner: Any, line_text):
         if not line_text:
             return line_text
-        # Normalize object-member style: "key": value
         return re.sub(r'^(\s*"[^"]+"\s*):\s*(\S.*)$', r"\1: \2", line_text.rstrip(), count=1)
 
 
 def _find_json_spacing_issue(owner: Any):
-        """Detect valid-JSON style issues we enforce in editor text.
-
-        Current rule:
-        - object member must include a space after ":" (e.g. `"key": value`)
-        """
+        """Return first missing-space-after-colon style issue in JSON text."""
         try:
             text = owner.text.get("1.0", "end-1c")
         except EXPECTED_ERRORS:
             return None
         for line_no, line_text in enumerate(text.splitlines(), start=1):
-            # Match object-member lines where ":" is immediately followed by a
-            # non-whitespace character (e.g. `"isMine":true`).
             m = re.match(r'^(?P<head>\s*"[^"]+"\s*):(?P<tail>\S.*)$', line_text)
             if not m:
                 continue
@@ -1500,7 +1478,6 @@ def _find_json_spacing_issue(owner: Any):
                 continue
             before = line_text.strip()
             after = owner._fix_missing_space_after_colon(line_text).strip()
-            # Highlight at the value start after ":" so the missing space is obvious.
             start_col = len(head) + 1
             end_col = start_col + 1
             return line_no, start_col, end_col, before, after
@@ -1605,7 +1582,6 @@ def _iter_candidate_email_values(owner: Any, node, rel_path=None):
 
 
 def _find_invalid_email_in_value(owner: Any, base_path, value):
-        # Direct string edit for an email-targeted field.
         if (
             isinstance(value, str)
             and owner._path_targets_email(base_path)
@@ -1614,7 +1590,6 @@ def _find_invalid_email_in_value(owner: Any, base_path, value):
             issue = owner._validate_email_address(value)
             if issue:
                 return base_path, value, issue
-        # Nested object/list edit: validate all candidate email fields.
         if isinstance(value, (dict, list)):
             for rel_path, email_val in owner._iter_candidate_email_values(value):
                 issue = owner._validate_email_address(email_val)
@@ -1634,8 +1609,7 @@ def _suggest_email_for_malformed(owner: Any, value):
         sub_prefix = ".".join(parts[:-2]).strip(".")
         sld = parts[-2]
         tld = parts[-1]
-        # If the second-level domain is too short, first try rebuilding it
-        # from known roots by pulling only the missing prefix from local-part.
+        # Rebuild broken short SLDs by borrowing the missing prefix from local part.
         if len(sld) < 2:
             best_prefix_fix = None
             best_prefix_len = -1
@@ -1657,21 +1631,20 @@ def _suggest_email_for_malformed(owner: Any, value):
                     cand_domain = f"{sub_prefix}.{cand_domain}"
                 if not owner._is_valid_email_domain(cand_domain):
                     continue
-                # Prefer the longest matched root (more specific fix).
                 if len(root) > best_prefix_len:
                     best_prefix_len = len(root)
                     best_prefix_fix = f"{cand_local}@{cand_domain}"
             if best_prefix_fix:
                 return best_prefix_fix
 
-        merged = local + sld
+        merged_token = local + sld
         local_re = re.compile(r"^[A-Za-z0-9._%+\-]+$")
         best = None
         best_score = -10**9
         original_len = len(local)
-        for split_idx in range(1, len(merged)):
-            cand_local = merged[:split_idx]
-            cand_sld = merged[split_idx:]
+        for cut in range(1, len(merged_token)):
+            cand_local = merged_token[:cut]
+            cand_sld = merged_token[cut:]
             if not local_re.fullmatch(cand_local):
                 continue
             cand_domain = f"{cand_sld}.{tld}"
@@ -1683,7 +1656,7 @@ def _suggest_email_for_malformed(owner: Any, value):
             if cand_sld.lower() in owner.KNOWN_EMAIL_DOMAIN_ROOTS:
                 score += 500.0
             score += owner._best_domain_root_similarity(cand_sld) * 100.0
-            score -= abs(split_idx - original_len) * 2.0
+            score -= abs(cut - original_len) * 2.0
             if score > best_score:
                 best_score = score
                 best = f"{cand_local}@{cand_domain}"
@@ -1732,9 +1705,15 @@ def _validate_email_address(owner: Any, value):
         if domain_lower not in owner.KNOWN_EMAIL_DOMAINS:
             suggestion = owner._suggest_known_domain_from_local_and_domain(local, domain_lower)
             if not suggestion:
-                close = difflib.get_close_matches(domain_lower, sorted(owner.KNOWN_EMAIL_DOMAINS), n=1, cutoff=0.72)
-                if close:
-                    suggestion = f"{local}@{close[0]}"
+                # NOTE: Keep this as the final fallback; fuzzy matching is expensive in hot parse loops.
+                near_match = difflib.get_close_matches(
+                    domain_lower,
+                    sorted(owner.KNOWN_EMAIL_DOMAINS),
+                    n=1,
+                    cutoff=0.72,
+                )
+                if near_match:
+                    suggestion = f"{local}@{near_match[0]}"
             return {
                 "message": "Invalid Entry: unknown email domain.",
                 "log_msg": "Unknown email domain",

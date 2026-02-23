@@ -30,8 +30,6 @@ def _log_expected_dispatch_error(stage: str, exc: Exception) -> None:
 
 def handle_live_parse_error(owner: Any, exc: Exception, path: list[str]) -> None:
     """Render and log live-feedback parse errors with overlay/highlight updates."""
-    # Live JSON feedback diagnostics: force one parse-entry marker so
-    # overlay-only validation errors always reach the diagnostics log.
     owner._begin_diag_action("live_json_feedback")
     try:
         emergency_logger = getattr(owner, "_log_json_error_emergency", None)
@@ -49,15 +47,12 @@ def handle_live_parse_error(owner: Any, exc: Exception, path: list[str]) -> None
         _log_expected_dispatch_error("live_primary_logger", dispatch_exc)
     owner._error_visual_mode = "guide"
     owner._show_error_overlay("Invalid Entry", owner._format_json_error(exc))
-    # Keep highlight-label colors active while JSON is temporarily invalid.
     owner._apply_json_view_lock_state(path)
     owner._highlight_json_error(exc)
 
 
 def handle_apply_parse_error(owner: Any, exc: Exception, path: list[str]) -> None:
     """Render and log apply-flow parse errors with fallback diagnostic note."""
-    # Hard guarantee: append at least one diagnostics entry for every
-    # Apply Edit parse failure, even if normal logger flow is bypassed.
     try:
         emergency_logger = getattr(owner, "_log_json_error_emergency", None)
         if callable(emergency_logger):
@@ -71,9 +66,7 @@ def handle_apply_parse_error(owner: Any, exc: Exception, path: list[str]) -> Non
     message = owner._format_json_error(exc)
     owner._error_visual_mode = "guide"
     owner._show_error_overlay("Invalid Entry", message)
-    # Keep highlight-label colors active while JSON is temporarily invalid.
     owner._apply_json_view_lock_state(path)
-    # Prefer one specific diagnostic note per apply cycle; use overlay_parse only as fallback.
     owner._last_error_highlight_note = ""
     owner._highlight_json_error(exc)
     highlight_note = str(getattr(owner, "_last_error_highlight_note", "") or "").strip()

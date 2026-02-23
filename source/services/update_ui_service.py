@@ -17,7 +17,6 @@ UPDATE_STAGE_TARGET_PCT = {
 }
 
 UPDATE_LOADER_BAR_COLORS = {
-    # Keep updater bars visually aligned with startup loader palette.
     "track_top_bg": "#081a2c",
     "track_bottom_bg": "#140f22",
     "bar_top_fill": "#1f7a8f",
@@ -27,7 +26,6 @@ _LOG = logging.getLogger(__name__)
 
 
 def _log_ignored_exception(context, exc):
-    # Record suppressed UI exceptions for diagnostics without changing flow.
     _LOG.debug("%s: %s", context, exc)
 
 def _widget_exists(widget):
@@ -84,7 +82,6 @@ def _apply_update_window_chrome(owner, overlay, root):
             icon_setter(overlay)
     except EXPECTED_ERRORS as exc:
         _log_ignored_exception("update_ui_service", exc)
-    # Force updater popup titlebar to SIINDBAD chrome for consistent update UX.
     siindbad_theme = {}
     try:
         palette_getter = getattr(owner, "_theme_palette_for_variant", None)
@@ -139,7 +136,6 @@ def _render_update_overlay_progress(owner, value):
         _log_ignored_exception("update_ui_service", exc)
     try:
         if bottom_bar is not None:
-            # Keep the lower bar slightly behind to preserve dual-bar depth.
             bottom_bar.configure(value=max(0.0, min(100.0, pct - 8.0)))
     except EXPECTED_ERRORS as exc:
         _log_ignored_exception("update_ui_service", exc)
@@ -152,7 +148,6 @@ def show_themed_update_info(
     startup_check_state: Any=None,
     on_startup_check_change: Any=None,
 ) -> Any:
-    # Theme-aware modal used for update notices and updater status messages.
     root = getattr(owner, "root", None)
     if root is None:
         try:

@@ -5,7 +5,6 @@ import logging
 _LOG = logging.getLogger(__name__)
 
 
-# Editor mode tabs are built in service so editor class stays orchestration-focused.
 def build_editor_mode_toggle(owner: Any, parent: Any, tk: Any) -> Any:
     owner._editor_mode_parent = parent
     theme = getattr(owner, "_theme", {})
@@ -315,11 +314,8 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
     owner.tree.bind("<<TreeviewOpen>>", owner.on_expand)
     owner.tree.bind("<<TreeviewClose>>", owner.on_collapse)
     owner.tree.bind("<<TreeviewSelect>>", owner.on_select)
-    # Re-apply tree styling now that the widget exists so level tag fonts
-    # (main/sub categories) are guaranteed to take effect on initial load.
     owner._apply_tree_style()
 
-    # Enable built-in Tk text undo/redo support (Ctrl+Z / Ctrl+Y)
     owner.text = tk.Text(
         right,
         wrap="none",
@@ -329,7 +325,6 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
         maxundo=100,
         padx=6,
     )
-    # Keep editor content below INPUT/JSON mode tabs anchored at pane top.
     editor_mode_top_inset = 24
     owner.text.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
     text_scroll = ttk.Scrollbar(
@@ -356,18 +351,14 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
     owner.root.bind("<FocusOut>", owner._on_root_focus_out, add="+")
     owner.root.bind("<FocusIn>", owner._on_root_focus_in, add="+")
     owner.root.bind("<Configure>", owner._on_root_configure, add="+")
-    # Run one extra delayed pass so startup picks the correct layout mode.
     owner._schedule_topbar_alignment(delay_ms=120)
 
-    # Undo / Redo keyboard bindings (common Windows shortcuts)
     try:
         owner.text.bind("<Control-z>", owner._safe_edit_undo, add="+")
         owner.text.bind("<Control-y>", owner._safe_edit_redo, add="+")
-        # Some keyboards/OS use Ctrl+Shift+Z for redo
         owner.text.bind("<Control-Shift-Z>", owner._safe_edit_redo, add="+")
     except EXPECTED_ERRORS as exc:
         _LOG.debug('expected_error', exc_info=exc)
-        # If widget doesn't support undo methods for any reason, ignore.
         pass
 
     theme = getattr(owner, "_theme", {})
@@ -411,7 +402,6 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
     owner._credit_center_slot = credit_center
     owner._credit_right_slot = credit_right
     credit_bar.grid_rowconfigure(0, weight=1)
-    # Let left/right size to content and keep center as flexible spacer.
     credit_bar.grid_columnconfigure(0, weight=0)
     credit_bar.grid_columnconfigure(1, weight=1)
     credit_bar.grid_columnconfigure(2, weight=0)
@@ -516,11 +506,9 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
     owner._build_header_variant_switch(theme_controls, show_title=False)
     owner._apply_footer_layout_variant()
 
-    # Pack main body after footer is created so footer keeps reserved space
-    # even when editor font size grows.
+    # NOTE: Keep footer packed before body; reversing this reintroduced footer overlap on resize.
     body.pack(fill="both", expand=True, padx=4, pady=(0, 8))
 
-    # Font size keyboard shortcuts
     owner.root.bind("<Control-plus>", lambda e: owner.increase_font_size())
     owner.root.bind("<Control-equal>", lambda e: owner.increase_font_size())  # Ctrl+= on some keyboards
     owner.root.bind("<Control-minus>", lambda e: owner.decrease_font_size())

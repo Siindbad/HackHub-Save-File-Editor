@@ -1,4 +1,4 @@
-"""Deep JSON diagnostics delegation extracted from JsonEditor."""
+"""JSON diagnostics helpers delegated from JsonEditor."""
 
 from __future__ import annotations
 
@@ -46,7 +46,6 @@ def _configure_json_lock_tags(owner: Any):
                 foreground=palette["fg"],
                 background=palette["block_bg"],
             )
-            # Lime-green label accents for coordinate/dimension keys.
             owner.text.tag_config("json_xy_key", foreground="#b6ff3b")
             owner.text.tag_raise("json_brace_token")
             owner.text.tag_raise("json_bracket_token")
@@ -106,8 +105,7 @@ def _tag_json_locked_key_occurrences(owner: Any, key_name):
             except EXPECTED_ERRORS:
                 break
             index = end
-        # Parse-error continuity: keep key labels highlighted when one quote is removed
-        # (for example `"key:` or `key"` before `:`) while user is fixing JSON syntax.
+        # Keep lock-label context alive while users fix half-typed key quotes.
         for malformed_token in (malformed_missing_close_quote, malformed_missing_open_quote):
             index = "1.0"
             while True:
@@ -149,12 +147,10 @@ def _tag_json_xy_key_occurrences(owner: Any, key_name):
 
 
 def _should_batch_tag_locked_keys(owner: Any, key_names):
-        # Large-category optimization: use one-pass key tagging for big root JSON blocks.
         if not key_names:
             return False
         if len(tuple(key_names)) < 12:
             return False
-        # While editing with active error overlays, keep per-key path for malformed key handling.
         try:
             if getattr(owner, "error_overlay", None) is not None:
                 return False
@@ -170,6 +166,7 @@ def _should_batch_tag_locked_keys(owner: Any, key_names):
 
 
 def _tag_json_key_occurrences_batch(owner: Any, locked_key_names, xy_key_names=(), line_limit=None):
+        # NOTE: Keep this batch path. Per-key search loops caused visible stalls on large saves.
         locked_targets = {
             str(name or "").strip().casefold()
             for name in tuple(locked_key_names or ())
@@ -213,7 +210,6 @@ def _tag_json_key_occurrences_batch(owner: Any, locked_key_names, xy_key_names=(
 
 
 def _tag_json_string_value_literals(owner: Any, line_limit=None):
-        # Value accent pass: tag quoted JSON string values while leaving object keys untagged.
         try:
             raw = owner.text.get("1.0", "end-1c")
         except EXPECTED_ERRORS:
@@ -244,7 +240,6 @@ def _tag_json_string_value_literals(owner: Any, line_limit=None):
 
 
 def _tag_json_brace_tokens(owner: Any, line_limit=None):
-        # Structural accent pass: color object/list tokens without touching quoted strings.
         try:
             raw = owner.text.get("1.0", "end-1c")
         except EXPECTED_ERRORS:
@@ -281,7 +276,6 @@ def _tag_json_brace_tokens(owner: Any, line_limit=None):
 
 
 def _tag_json_boolean_literals(owner: Any, line_limit=None):
-        # Boolean accent pass: color JSON literals true/false outside quoted strings.
         try:
             raw = owner.text.get("1.0", "end-1c")
         except EXPECTED_ERRORS:
@@ -321,7 +315,6 @@ def _tag_json_boolean_literals(owner: Any, line_limit=None):
 
 
 def _tag_json_property_keys(owner: Any, line_limit=None):
-        # Property-key accent pass: color all JSON object key tokens including quotes.
         try:
             raw = owner.text.get("1.0", "end-1c")
         except EXPECTED_ERRORS:
@@ -349,7 +342,6 @@ def _tag_json_property_keys(owner: Any, line_limit=None):
 
 
 def _json_literal_offsets_after_key(owner: Any, key_end_index, literal_token, lookahead_chars=120, ignore_case=False):
-        # Value-highlight guard: only tag when this key is immediately followed by the configured JSON literal.
         text = getattr(owner, "text", None)
         token = str(literal_token or "")
         if text is None or not token:
@@ -447,29 +439,26 @@ def _find_lock_anchor_index(owner: Any, field_name, preferred_index=None):
         token = f'"{str(field_name or "").strip()}"'
         if token == '""':
             token = ""
-        normalized_preferred = str(preferred_index or "")
+        anchor_idx = str(preferred_index or "")
         try:
-            if normalized_preferred:
-                normalized_preferred = str(owner.text.index(normalized_preferred))
+            if anchor_idx:
+                anchor_idx = str(owner.text.index(anchor_idx))
         except EXPECTED_ERRORS:
             pass
         if not token:
-            return normalized_preferred
+            return anchor_idx
         try:
-            if normalized_preferred:
-                # Anchor priority for repeated locked keys:
-                # 1) nearest key at/above current edit position
-                # 2) nearest key below current edit position
+            if anchor_idx:
                 backward_hit = owner.text.search(
                     token,
-                    normalized_preferred,
+                    anchor_idx,
                     stopindex="1.0",
                     nocase=True,
                     backwards=True,
                 )
                 if backward_hit:
                     return backward_hit
-                forward_hit = owner.text.search(token, normalized_preferred, stopindex="end", nocase=True)
+                forward_hit = owner.text.search(token, anchor_idx, stopindex="end", nocase=True)
                 if forward_hit:
                     return forward_hit
         except EXPECTED_ERRORS:
@@ -480,7 +469,7 @@ def _find_lock_anchor_index(owner: Any, field_name, preferred_index=None):
                 return hit
         except EXPECTED_ERRORS:
             pass
-        return normalized_preferred
+        return anchor_idx
 
 
 def _diag_line_mentions_locked_field(owner: Any, line_no, field_name):
