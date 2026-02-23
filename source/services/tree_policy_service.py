@@ -2,21 +2,24 @@
 
 Keeps JSON and INPUT tree behavior split by policy while sharing one tree engine.
 """
+from typing import Any
 
 
 def _normalize_mode(mode):
     return str(mode or "JSON").strip().upper()
 
 
-def hidden_root_keys_for_mode(owner, mode=None):
+def hidden_root_keys_for_mode(owner: Any, mode: Any=None) -> Any:
     # JSON and INPUT can keep different hidden root lists without branching in UI code.
     use_mode = _normalize_mode(mode or getattr(owner, "_editor_mode", "JSON"))
-    if use_mode == "INPUT":
-        return set(getattr(owner, "HIDDEN_ROOT_TREE_KEYS_INPUT", set()))
-    return set(getattr(owner, "HIDDEN_ROOT_TREE_KEYS_JSON", set()))
+    match use_mode:
+        case "INPUT":
+            return set(getattr(owner, "HIDDEN_ROOT_TREE_KEYS_INPUT", set()))
+        case _:
+            return set(getattr(owner, "HIDDEN_ROOT_TREE_KEYS_JSON", set()))
 
 
-def is_input_mode_root_disabled(owner, path):
+def is_input_mode_root_disabled(owner: Any, path: Any) -> Any:
     # INPUT-only root disable list drives category-level lock messaging.
     if _normalize_mode(getattr(owner, "_editor_mode", "JSON")) != "INPUT":
         return False
@@ -26,7 +29,7 @@ def is_input_mode_root_disabled(owner, path):
     return root_key in set(getattr(owner, "INPUT_MODE_DISABLED_ROOT_KEYS", set()))
 
 
-def is_input_mode_tree_expand_blocked(owner, item_id):
+def is_input_mode_tree_expand_blocked(owner: Any, item_id: Any) -> Any:
     # INPUT-only no-expand policy:
     # - configured root categories stay collapsed
     # - configured Network subgroup buckets stay collapsed
@@ -45,7 +48,7 @@ def is_input_mode_tree_expand_blocked(owner, item_id):
     return False
 
 
-def should_use_input_red_arrow_for_path(owner, path):
+def should_use_input_red_arrow_for_path(owner: Any, path: Any) -> Any:
     # Red-arrow marker is INPUT-only; JSON always uses standard markers.
     if _normalize_mode(getattr(owner, "_editor_mode", "JSON")) != "INPUT":
         return False
@@ -60,7 +63,7 @@ def should_use_input_red_arrow_for_path(owner, path):
     return False
 
 
-def is_network_group_hidden_for_mode(owner, list_path, group_name, mode=None):
+def is_network_group_hidden_for_mode(owner: Any, list_path: Any, group_name: Any, mode: Any=None) -> Any:
     # INPUT-only hide policy for Network subgroup buckets.
     use_mode = _normalize_mode(mode or getattr(owner, "_editor_mode", "JSON"))
     if use_mode != "INPUT":

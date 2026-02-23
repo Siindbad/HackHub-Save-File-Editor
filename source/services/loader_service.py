@@ -1,4 +1,5 @@
 import random
+from typing import Any
 
 
 _LOADER_LINES_LOADING = (
@@ -71,11 +72,11 @@ _LOADER_LINES_READY = (
 )
 
 
-def startup_loader_lines(ready=False):
+def startup_loader_lines(ready: Any=False) -> Any:
     return list(_LOADER_LINES_READY if ready else _LOADER_LINES_LOADING)
 
 
-def pop_startup_loader_line(ready=False, pool=None, shuffle_fn=None):
+def pop_startup_loader_line(ready: Any=False, pool: Any=None, shuffle_fn: Any=None) -> Any:
     lines = startup_loader_lines(ready=ready)
     if not lines:
         return "", []
@@ -89,28 +90,30 @@ def pop_startup_loader_line(ready=False, pool=None, shuffle_fn=None):
     return str(next_pool.pop()), next_pool
 
 
-def normalize_title_variant(variant):
+def normalize_title_variant(variant: Any) -> Any:
     name = str(variant or "SIINDBAD").upper()
     if name not in ("SIINDBAD", "KAMUE"):
         return "SIINDBAD"
     return name
 
 
-def next_title_variant(current_variant):
+def next_title_variant(current_variant: Any) -> Any:
     current = normalize_title_variant(current_variant)
     return "KAMUE" if current == "SIINDBAD" else "SIINDBAD"
 
 
-def title_color_for_variant(variant, siindbad_palette=None, kamue_palette=None):
+def title_color_for_variant(variant: Any, siindbad_palette: Any=None, kamue_palette: Any=None) -> Any:
     name = normalize_title_variant(variant)
-    if name == "KAMUE":
-        palette = kamue_palette if isinstance(kamue_palette, dict) else {}
-        return str(palette.get("find_border", "#cfb5ee"))
-    palette = siindbad_palette if isinstance(siindbad_palette, dict) else {}
-    return str(palette.get("logo_border_outer", "#349fc7"))
+    match name:
+        case "KAMUE":
+            palette = kamue_palette if isinstance(kamue_palette, dict) else {}
+            return str(palette.get("find_border", "#cfb5ee"))
+        case _:
+            palette = siindbad_palette if isinstance(siindbad_palette, dict) else {}
+            return str(palette.get("logo_border_outer", "#349fc7"))
 
 
-def compute_loader_fill_dimensions(track_width, track_height, pct):
+def compute_loader_fill_dimensions(track_width: Any, track_height: Any, pct: Any) -> Any:
     pct = max(0.0, min(100.0, float(pct or 0.0)))
     track_w = max(2, int(track_width or 0))
     track_h = max(2, int(track_height or 0))

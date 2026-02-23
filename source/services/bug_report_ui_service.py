@@ -6,19 +6,23 @@ runtime behavior through owner callbacks.
 
 import os
 import threading
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 # UI-only extraction: owner provides methods/state; this module stays stateless.
 def open_bug_report_dialog(
-    owner,
-    tk,
-    filedialog,
-    messagebox,
-    summary_prefill="",
-    details_prefill="",
-    include_diag_default=True,
-    crash_tail="",
-):
+    owner: Any,
+    tk: Any,
+    filedialog: Any,
+    messagebox: Any,
+    summary_prefill: Any="",
+    details_prefill: Any="",
+    include_diag_default: Any=True,
+    crash_tail: Any="",
+) -> Any:
     existing = getattr(owner, "_bug_report_dialog", None)
     if existing is not None:
         try:
@@ -27,7 +31,8 @@ def open_bug_report_dialog(
                 existing.lift()
                 existing.focus_force()
                 return
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
@@ -36,7 +41,8 @@ def open_bug_report_dialog(
     dlg = tk.Toplevel(owner.root)
     try:
         dlg.withdraw()
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         pass
     owner._bug_report_dialog = dlg
     dlg.title("Submit Bug Report")
@@ -181,7 +187,7 @@ def open_bug_report_dialog(
             return
         try:
             validated = owner._validate_bug_screenshot_file(file_path)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
+        except EXPECTED_ERRORS as exc:
             messagebox.showwarning("Bug Report", str(exc))
             return
         screenshot_var.set(validated)
@@ -293,7 +299,8 @@ def open_bug_report_dialog(
     if str(details_prefill or "").strip():
         try:
             details_text.insert("1.0", str(details_prefill))
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
 
     include_diag_var = tk.BooleanVar(value=bool(include_diag_default))
@@ -393,7 +400,7 @@ def open_bug_report_dialog(
     )
     cancel_btn.pack(side="right", padx=1, pady=1)
 
-    def submit_action():
+    def submit_action() -> Any:
         cooldown_remaining = owner._bug_report_submit_cooldown_remaining()
         if cooldown_remaining > 0:
             unit = "second" if cooldown_remaining == 1 else "seconds"
@@ -412,7 +419,7 @@ def open_bug_report_dialog(
         issue_title = f"[Bug] {summary}"[:120]
         owner._mark_bug_report_submit_now()
 
-        def worker():
+        def worker() -> Any:
             try:
                 owner._ui_call(status_var.set, "Submitting issue...", wait=False)
                 owner._ui_call(submit_btn.configure, state="disabled", wait=False)
@@ -432,7 +439,7 @@ def open_bug_report_dialog(
                                 "Screenshot selected locally, but token is unavailable. "
                                 "Attach image manually in browser issue form."
                             )
-                    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as upload_exc:
+                    except EXPECTED_ERRORS as upload_exc:
                         screenshot_note = str(upload_exc)
                 body = owner._build_bug_report_markdown(
                     summary=summary,
@@ -463,7 +470,8 @@ def open_bug_report_dialog(
                             discord_mirror_note = " Discord forum mirror sent."
                         elif mirror_result.get("reason") == "webhook_not_configured":
                             discord_mirror_note = " Discord forum mirror skipped (webhook not configured)."
-                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+                except EXPECTED_ERRORS as exc:
+                    _LOG.debug('expected_error', exc_info=exc)
                     # Discord forum mirror is optional and must not block bug submissions.
                     discord_mirror_note = " Discord forum mirror failed."
                 owner._set_status(f"Bug report submitted.{discord_mirror_note}")
@@ -475,7 +483,7 @@ def open_bug_report_dialog(
                     "BUG REPORT SUBMITTED",
                     wait=False,
                 )
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
+            except EXPECTED_ERRORS as exc:
                 owner._set_status("")
                 owner._ui_call(status_var.set, "Submit failed.", wait=False)
                 owner._ui_call(messagebox.showerror, "Bug Report", str(exc), wait=False)
@@ -497,20 +505,23 @@ def open_bug_report_dialog(
             owner._apply_windows_titlebar_theme(dlg)
             try:
                 close_badge.pack_forget()
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 pass
     else:
         owner._set_window_icon_for(dlg)
         owner._apply_windows_titlebar_theme(dlg)
         try:
             close_badge.pack_forget()
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
     try:
         dlg.deiconify()
         dlg.lift()
         dlg.focus_force()
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         pass
     owner._arm_bug_report_follow_root(dlg)
     dlg.bind("<Escape>", lambda _e: owner._close_bug_report_dialog())
@@ -518,7 +529,7 @@ def open_bug_report_dialog(
     summary_entry.focus_set()
     owner._start_bug_report_header_pulse()
 
-    def clear_ref(_evt=None):
+    def clear_ref(_evt: Any=None) -> Any:
         owner._stop_bug_report_header_pulse()
         owner._bug_report_card_frame = None
         owner._bug_report_header_frame = None

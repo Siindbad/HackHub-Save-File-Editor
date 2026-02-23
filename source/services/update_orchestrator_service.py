@@ -8,8 +8,10 @@ import sys
 import threading
 import time
 from tkinter import messagebox as _tk_messagebox
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
 
-def run_update_ui_demo(owner, auto=False, sleep_fn=time.sleep):
+def run_update_ui_demo(owner: Any, auto: Any=False, sleep_fn: Any=time.sleep) -> Any:
     try:
         owner._set_status("Preparing update...")
         owner._ui_call(
@@ -74,7 +76,7 @@ def run_update_ui_demo(owner, auto=False, sleep_fn=time.sleep):
             owner._set_status("")
 
 
-def check_for_updates(owner, auto=False, messagebox=None):
+def check_for_updates(owner: Any, auto: Any=False, messagebox: Any=None) -> Any:
     if messagebox is None:
         messagebox = _tk_messagebox
     if owner._update_ui_demo_enabled():
@@ -97,7 +99,7 @@ def check_for_updates(owner, auto=False, messagebox=None):
             )
         return
 
-    def worker():
+    def worker() -> Any:
         install_started = False
         try:
             owner._set_status("Checking for updates...")
@@ -187,7 +189,7 @@ def check_for_updates(owner, auto=False, messagebox=None):
                 stage="restarting",
                 wait=True,
             )
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
+        except EXPECTED_ERRORS as exc:
             owner._set_status("")
             pretty_error = owner._format_update_error(exc)
             owner._log_update_failure(exc, auto=auto, pretty_error=pretty_error)

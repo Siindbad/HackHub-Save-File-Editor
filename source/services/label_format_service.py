@@ -1,9 +1,11 @@
+from typing import Any
+
 def _is_variant_b(tree_style_variant):
     # Tree Variant-B suppresses numeric prefixes for cleaner labels.
     return str(tree_style_variant or "B").upper() == "B"
 
 
-def mail_account_label(idx, item, tree_style_variant):
+def mail_account_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         full_name = item.get("fullName")
@@ -21,7 +23,7 @@ def mail_account_label(idx, item, tree_style_variant):
     return f"[{idx}]"
 
 
-def mails_label(idx, item, tree_style_variant):
+def mails_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         from_value = item.get("from")
@@ -39,7 +41,7 @@ def mails_label(idx, item, tree_style_variant):
     return f"[{idx}]"
 
 
-def phone_messages_label(idx, item, tree_style_variant):
+def phone_messages_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         from_value = item.get("from")
@@ -57,7 +59,7 @@ def phone_messages_label(idx, item, tree_style_variant):
     return f"[{idx}]"
 
 
-def files_label(idx, item, tree_style_variant):
+def files_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         name = item.get("name")
@@ -75,7 +77,7 @@ def files_label(idx, item, tree_style_variant):
     return f"[{idx}]"
 
 
-def database_label(idx, item, tree_style_variant):
+def database_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         host = item.get("host")
@@ -93,7 +95,7 @@ def database_label(idx, item, tree_style_variant):
     return f"[{idx}]"
 
 
-def twotter_user_label(idx, item):
+def twotter_user_label(idx: Any, item: Any) -> Any:
     if isinstance(item, dict):
         name = item.get("name")
         if name:
@@ -101,7 +103,7 @@ def twotter_user_label(idx, item):
     return f"[{idx}]"
 
 
-def quests_label(idx, item, tree_style_variant):
+def quests_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         name = item.get("name")
@@ -116,7 +118,7 @@ def quests_label(idx, item, tree_style_variant):
     return f"[{idx}]"
 
 
-def kisscord_friend_label(idx, item):
+def kisscord_friend_label(idx: Any, item: Any) -> Any:
     if isinstance(item, dict):
         name = item.get("name")
         if name:
@@ -124,7 +126,7 @@ def kisscord_friend_label(idx, item):
     return f"[{idx}]"
 
 
-def website_templates_label(idx, item, tree_style_variant):
+def website_templates_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         template = item.get("template")
@@ -142,7 +144,7 @@ def website_templates_label(idx, item, tree_style_variant):
     return f"[{idx}]"
 
 
-def terminal_package_label(idx, item):
+def terminal_package_label(idx: Any, item: Any) -> Any:
     if isinstance(item, dict):
         pkg = item.get("pkg")
         if pkg:
@@ -150,7 +152,7 @@ def terminal_package_label(idx, item):
     return f"[{idx}]"
 
 
-def terminal_datalist_label(idx, item):
+def terminal_datalist_label(idx: Any, item: Any) -> Any:
     # Prefer command/name context over raw index for terminal data rows.
     if isinstance(item, dict):
         name = item.get("name") or item.get("command")
@@ -165,7 +167,7 @@ def terminal_datalist_label(idx, item):
     return f"[{idx}]"
 
 
-def bookmarks_label(idx, item, tree_style_variant):
+def bookmarks_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, str):
         raw = item.strip()
@@ -190,7 +192,7 @@ def bookmarks_label(idx, item, tree_style_variant):
     return "Bookmark" if is_variant_b else f"[{idx}]"
 
 
-def bcc_news_label(idx, item, tree_style_variant):
+def bcc_news_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         news_id = item.get("id")
@@ -202,7 +204,7 @@ def bcc_news_label(idx, item, tree_style_variant):
     return "News" if is_variant_b else f"[{idx}]"
 
 
-def process_label(idx, item, tree_style_variant):
+def process_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         name = item.get("name")
@@ -214,7 +216,7 @@ def process_label(idx, item, tree_style_variant):
     return "Process" if is_variant_b else f"[{idx}]"
 
 
-def typewriter_label(idx, item, tree_style_variant):
+def typewriter_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         type_value = item.get("type")
@@ -226,7 +228,7 @@ def typewriter_label(idx, item, tree_style_variant):
     return "Typewriter" if is_variant_b else f"[{idx}]"
 
 
-def bank_account_label(idx, item, tree_style_variant):
+def bank_account_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         account_name = item.get("accountName")
@@ -243,7 +245,7 @@ def bank_account_label(idx, item, tree_style_variant):
     return "Account" if is_variant_b else f"[{idx}]"
 
 
-def bank_transaction_label(idx, item, tree_style_variant):
+def bank_transaction_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, dict):
         name = item.get("name")
@@ -260,7 +262,7 @@ def bank_transaction_label(idx, item, tree_style_variant):
     return "Transaction" if is_variant_b else f"[{idx}]"
 
 
-def app_store_unlocked_item_label(idx, item, tree_style_variant):
+def app_store_unlocked_item_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     is_variant_b = _is_variant_b(tree_style_variant)
     if isinstance(item, str):
         value = item.strip()
@@ -273,7 +275,7 @@ def app_store_unlocked_item_label(idx, item, tree_style_variant):
     return "Item" if is_variant_b else f"[{idx}]"
 
 
-def find_first_dict_key_change(old_value, new_value, current_path=None):
+def find_first_dict_key_change(old_value: Any, new_value: Any, current_path: Any=None) -> Any:
     # Detect first structural key mismatch to block unsafe key rename/remove edits.
     if current_path is None:
         current_path = []

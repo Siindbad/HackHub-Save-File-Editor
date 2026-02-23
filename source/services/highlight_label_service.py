@@ -1,8 +1,12 @@
 import copy
 import difflib
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
-def is_network_list(path, value, network_types_set):
+def is_network_list(path: Any, value: Any, network_types_set: Any) -> Any:
     if path != ["Network"]:
         return False
     if not value:
@@ -13,7 +17,7 @@ def is_network_list(path, value, network_types_set):
     )
 
 
-def network_context(path, value_getter, network_types_set):
+def network_context(path: Any, value_getter: Any, network_types_set: Any) -> Any:
     if len(path) < 2:
         return None
     if path[0] != "Network":
@@ -23,7 +27,8 @@ def network_context(path, value_getter, network_types_set):
         return None
     try:
         node = value_getter(["Network", idx])
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return None
     if not isinstance(node, dict):
         return None
@@ -33,7 +38,7 @@ def network_context(path, value_getter, network_types_set):
     return None
 
 
-def edit_allowed_payload(path, current_value, new_value, find_first_dict_key_change, format_path_for_display):
+def edit_allowed_payload(path: Any, current_value: Any, new_value: Any, find_first_dict_key_change: Any, format_path_for_display: Any) -> Any:
     issue = find_first_dict_key_change(current_value, new_value, list(path or []))
     if not issue:
         return {"allowed": True}
@@ -436,7 +441,7 @@ def _policy_for_root_value(root_value):
     return None
 
 
-def lock_policy_for_path(path):
+def lock_policy_for_path(path: Any) -> Any:
     parts = list(path or [])
     if not parts:
         return None
@@ -471,14 +476,14 @@ def _locked_segment_for_parts(policy, parts):
     return None, None
 
 
-def is_locked_root_path(path):
+def is_locked_root_path(path: Any) -> Any:
     parts = list(path or [])
     if len(parts) != 1:
         return False
     return lock_policy_for_path(parts) is not None
 
 
-def is_locked_field_path(path):
+def is_locked_field_path(path: Any) -> Any:
     parts = list(path or [])
     if len(parts) < 2:
         return False
@@ -489,7 +494,7 @@ def is_locked_field_path(path):
     return canonical is not None
 
 
-def locked_highlight_fields_for_path(path):
+def locked_highlight_fields_for_path(path: Any) -> Any:
     parts = list(path or [])
     if not parts:
         return ()
@@ -505,7 +510,7 @@ def locked_highlight_fields_for_path(path):
     return ()
 
 
-def locked_highlight_value_rules_for_path(path):
+def locked_highlight_value_rules_for_path(path: Any) -> Any:
     parts = list(path or [])
     if not parts:
         return ()
@@ -547,7 +552,8 @@ def _find_policy_container(data, policy):
 def _copy_json_value(value):
     try:
         return copy.deepcopy(value)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return value
 
 
@@ -690,7 +696,7 @@ def _find_locked_change_for_policy(policy, path, current_value, new_value):
     return None
 
 
-def find_locked_json_change(path, current_value, new_value):
+def find_locked_json_change(path: Any, current_value: Any, new_value: Any) -> Any:
     for policy in _LOCK_POLICIES:
         issue = _find_locked_change_for_policy(policy, path, current_value, new_value)
         if issue:
@@ -743,7 +749,7 @@ def _restore_locked_fields_for_policy_dict(policy, current_obj, edited_obj):
     return changed, fixed
 
 
-def restore_locked_json_edit(path, current_value, new_value):
+def restore_locked_json_edit(path: Any, current_value: Any, new_value: Any) -> Any:
     parts = list(path or [])
     if parts:
         policy = lock_policy_for_path(parts)
@@ -773,7 +779,7 @@ def restore_locked_json_edit(path, current_value, new_value):
     return changed_any, fixed_root
 
 
-def locked_json_edit_payload(path, current_value, new_value, format_path_for_display):
+def locked_json_edit_payload(path: Any, current_value: Any, new_value: Any, format_path_for_display: Any) -> Any:
     issue = find_locked_json_change(path, current_value, new_value)
     if not issue:
         return {"allowed": True}
@@ -795,12 +801,12 @@ def locked_json_edit_payload(path, current_value, new_value, format_path_for_dis
 
 
 # Backwards-compatible wrappers for existing AppStore calls.
-def is_appstore_root_path(path):
+def is_appstore_root_path(path: Any) -> Any:
     policy = lock_policy_for_path(path)
     return bool(policy and policy.get("id") == "appstore_progression" and len(list(path or [])) == 1)
 
 
-def is_appstore_locked_path(path):
+def is_appstore_locked_path(path: Any) -> Any:
     parts = list(path or [])
     policy = lock_policy_for_path(parts)
     if not (policy and policy.get("id") == "appstore_progression"):
@@ -811,7 +817,7 @@ def is_appstore_locked_path(path):
     return canonical is not None
 
 
-def find_locked_appstore_change(path, current_value, new_value):
+def find_locked_appstore_change(path: Any, current_value: Any, new_value: Any) -> Any:
     policy = _policy_by_id("appstore_progression")
     issue = _find_locked_change_for_policy(policy, path, current_value, new_value)
     if not issue:

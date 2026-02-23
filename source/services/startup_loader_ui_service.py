@@ -1,8 +1,12 @@
 """Startup loader UI composition service."""
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 # Loader UI extraction keeps widget assembly outside the editor class.
-def show_startup_loader(owner, tk, time, startup_loader_core):
+def show_startup_loader(owner: Any, tk: Any, time: Any, startup_loader_core: Any) -> Any:
     if not bool(getattr(owner, "_startup_loader_enabled", False)):
         return
     root = getattr(owner, "root", None)
@@ -64,7 +68,8 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
         overlay.overrideredirect(True)
         try:
             overlay.attributes("-topmost", True)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
         overlay.configure(bg=overlay_bg, cursor="watch")
         owner._apply_centered_toplevel_geometry(
@@ -278,7 +283,8 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
         try:
             overlay.update_idletasks()
             overlay.update()
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
     root = getattr(owner, "root", None)
     if root is not None:
@@ -286,7 +292,8 @@ def show_startup_loader(owner, tk, time, startup_loader_core):
         if after_id:
             try:
                 root.after_cancel(after_id)
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 pass
         cycle_ms = max(2200, int(getattr(owner, "_startup_loader_title_cycle_ms", 4200) or 4200))
         owner._startup_loader_title_after_id = root.after(cycle_ms, owner._tick_startup_loader_title)

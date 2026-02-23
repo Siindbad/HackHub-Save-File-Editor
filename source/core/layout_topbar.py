@@ -1,26 +1,33 @@
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 def _to_float(value, default=0.0) -> float:
     try:
         return float(value)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return float(default)
 
 
 def _to_int(value, default=0) -> int:
     try:
         return int(value)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return int(default)
 
 
 def resolve_find_entry_base_width(style: str, search_spec_width: Optional[int] = None) -> int:
     style = str(style or "").upper()
-    if style == "B":
-        width = _to_int(search_spec_width, default=172)
-        return max(1, width)
-    return 156
+    match style:
+        case "B":
+            width = _to_int(search_spec_width, default=172)
+            return max(1, width)
+        case _:
+            return 156
 
 
 def compute_mode_spacing(
@@ -31,20 +38,17 @@ def compute_mode_spacing(
 ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
     mode_name = str(mode or "").lower()
     style_name = str(style or "").upper()
-    host_pad = tuple(default_host_padx)
-    btn_pad = tuple(default_btn_padx)
-    # In style-B maximize mode, collapse the explicit button-left pad so the
-    # search box and Find Next control stay visually joined.
-    if mode_name == "maximized" and style_name == "B":
-        # Slightly overlap frame padding so sprite edges visually touch.
-        host_pad = (1, 0)
-        btn_pad = (-1, 0)
-    return host_pad, btn_pad
+    match (mode_name, style_name):
+        case ("maximized", "B"):
+            # Pull these controls together only in max mode.
+            return (1, 0), (0, 0)
+        case _:
+            return tuple(default_host_padx), tuple(default_btn_padx)
 
 
 def compute_search_compaction_target(
-    toolbar_w,
-    logo_w,
+    toolbar_w: Any,
+    logo_w: Any,
     base_width: int,
     style: str,
 ) -> Optional[int]:
@@ -59,10 +63,11 @@ def compute_search_compaction_target(
     if overflow <= 0:
         return None
 
-    if style_name == "B":
-        min_width = max(120, int(round(base_width * 0.68)))
-    else:
-        min_width = max(96, int(round(base_width * 0.70)))
+    match style_name:
+        case "B":
+            min_width = max(120, int(round(base_width * 0.68)))
+        case _:
+            min_width = max(96, int(round(base_width * 0.70)))
 
     target = max(min_width, int(base_width - overflow))
     if target >= base_width:
@@ -71,11 +76,11 @@ def compute_search_compaction_target(
 
 
 def compute_centered_toolbar_position(
-    toolbar_w,
-    toolbar_h,
-    host_w,
-    host_h,
-    logo_center_rel=None,
+    toolbar_w: Any,
+    toolbar_h: Any,
+    host_w: Any,
+    host_h: Any,
+    logo_center_rel: Any=None,
 ) -> Optional[Tuple[int, int]]:
     toolbar_w = _to_int(toolbar_w, default=0)
     toolbar_h = _to_int(toolbar_h, default=0)

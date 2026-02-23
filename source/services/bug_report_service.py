@@ -4,28 +4,33 @@ import os
 import random
 import re
 from datetime import datetime, timezone
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+from core.exceptions import AppRuntimeError
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 def build_bug_report_markdown(
     *,
-    summary,
-    details,
-    now_text,
-    app_version,
-    theme_variant,
-    selected_path,
-    last_json_error,
-    last_highlight_note,
-    python_version,
-    platform_text,
-    include_diag=True,
-    diag_tail="",
-    crash_tail="",
-    discord_contact="",
-    screenshot_url="",
-    screenshot_filename="",
-    screenshot_note="",
-):
+    summary: Any,
+    details: Any,
+    now_text: Any,
+    app_version: Any,
+    theme_variant: Any,
+    selected_path: Any,
+    last_json_error: Any,
+    last_highlight_note: Any,
+    python_version: Any,
+    platform_text: Any,
+    include_diag: Any=True,
+    diag_tail: Any="",
+    crash_tail: Any="",
+    discord_contact: Any="",
+    screenshot_url: Any="",
+    screenshot_filename: Any="",
+    screenshot_note: Any="",
+) -> Any:
     # Assemble the final issue body used by API submission and browser fallback.
     crash_tail = str(crash_tail or "").strip()
     discord_contact = str(discord_contact or "").strip()
@@ -102,7 +107,7 @@ def build_bug_report_markdown(
     return "\n".join(parts).strip()
 
 
-def sanitize_bug_screenshot_slug(value):
+def sanitize_bug_screenshot_slug(value: Any) -> Any:
     # Keep screenshot path segments filesystem/URL safe.
     text = str(value or "").strip().lower()
     if not text:
@@ -114,7 +119,7 @@ def sanitize_bug_screenshot_slug(value):
     return text[:40]
 
 
-def build_bug_screenshot_repo_path(source_filename, summary="", uploads_dir="bug-uploads"):
+def build_bug_screenshot_repo_path(source_filename: Any, summary: Any="", uploads_dir: Any="bug-uploads") -> Any:
     # Build a collision-resistant repo path under bug-uploads/YYYY/MM/.
     base_name = os.path.basename(str(source_filename or "").strip())
     stem, ext = os.path.splitext(base_name)
@@ -132,12 +137,13 @@ def build_bug_screenshot_repo_path(source_filename, summary="", uploads_dir="bug
     return f"{use_uploads_dir}/{year}/{month}/{ts}_{short_id}_{slug}{ext}"
 
 
-def detect_bug_screenshot_magic_ext(source_path):
+def detect_bug_screenshot_magic_ext(source_path: Any) -> Any:
     # Validate file signature instead of trusting extension alone.
     try:
         with open(source_path, "rb") as fh:
             header = fh.read(16)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return ""
     if header.startswith(b"\x89PNG\r\n\x1a\n"):
         return ".png"
@@ -148,7 +154,7 @@ def detect_bug_screenshot_magic_ext(source_path):
     return ""
 
 
-def validate_bug_screenshot_dimensions(source_path, max_dimension=4096):
+def validate_bug_screenshot_dimensions(source_path: Any, max_dimension: Any=4096) -> Any:
     max_dim = int(max_dimension or 0)
     if max_dim <= 0:
         return
@@ -158,53 +164,53 @@ def validate_bug_screenshot_dimensions(source_path, max_dimension=4096):
         with Image.open(source_path) as img:
             width = int(img.width or 0)
             height = int(img.height or 0)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
-        raise RuntimeError("Unable to inspect screenshot dimensions.") from exc
+    except EXPECTED_ERRORS as exc:
+        raise AppRuntimeError("Unable to inspect screenshot dimensions.") from exc
     if width <= 0 or height <= 0:
-        raise RuntimeError("Selected screenshot has invalid image dimensions.")
+        raise AppRuntimeError("Selected screenshot has invalid image dimensions.")
     if width > max_dim or height > max_dim:
-        raise RuntimeError(
+        raise AppRuntimeError(
             f"Screenshot dimensions exceed limit ({max_dim}px max width/height)."
         )
 
 
 def validate_bug_screenshot_file(
-    path,
+    path: Any,
     *,
-    allowed_extensions=(".png", ".jpg", ".jpeg", ".webp"),
-    max_bytes=5 * 1024 * 1024,
-    max_dimension=4096,
-):
+    allowed_extensions: Any=(".png", ".jpg", ".jpeg", ".webp"),
+    max_bytes: Any=5 * 1024 * 1024,
+    max_dimension: Any=4096,
+) -> Any:
     # Enforce extension/signature/size/dimension guardrails before upload prep.
     src = str(path or "").strip()
     if not src:
         return ""
     if not os.path.isfile(src):
-        raise RuntimeError("Selected screenshot file does not exist.")
+        raise AppRuntimeError("Selected screenshot file does not exist.")
     ext = os.path.splitext(src)[1].lower()
     allowed = {str(item).lower() for item in allowed_extensions}
     if ext not in allowed:
-        raise RuntimeError(
+        raise AppRuntimeError(
             "Unsupported screenshot format. Allowed: " + ", ".join(sorted(allowed))
         )
     detected_ext = detect_bug_screenshot_magic_ext(src)
     if not detected_ext:
-        raise RuntimeError("Selected file is not a valid supported image.")
+        raise AppRuntimeError("Selected file is not a valid supported image.")
     jpeg_exts = {".jpg", ".jpeg"}
     ext_matches = (ext == detected_ext) or ({ext, detected_ext} <= jpeg_exts)
     if not ext_matches:
-        raise RuntimeError("Screenshot extension does not match actual file format.")
+        raise AppRuntimeError("Screenshot extension does not match actual file format.")
     use_max_bytes = int(max_bytes or 0)
     size_bytes = int(os.path.getsize(src))
     if use_max_bytes > 0 and size_bytes > use_max_bytes:
-        raise RuntimeError(
+        raise AppRuntimeError(
             f"Screenshot exceeds size limit ({use_max_bytes // (1024 * 1024)} MB max)."
         )
     validate_bug_screenshot_dimensions(src, max_dimension=max_dimension)
     return src
 
 
-def prepare_bug_screenshot_upload_bytes(source_path, detected_ext, max_bytes=5 * 1024 * 1024):
+def prepare_bug_screenshot_upload_bytes(source_path: Any, detected_ext: Any, max_bytes: Any=5 * 1024 * 1024) -> Any:
     # Re-encode image to strip metadata and normalize upload payload.
     from PIL import Image
 
@@ -232,17 +238,17 @@ def prepare_bug_screenshot_upload_bytes(source_path, detected_ext, max_bytes=5 *
         raw_bytes = out.getvalue()
     use_max_bytes = int(max_bytes or 0)
     if use_max_bytes > 0 and len(raw_bytes) > use_max_bytes:
-        raise RuntimeError(
+        raise AppRuntimeError(
             f"Processed screenshot exceeds size limit ({use_max_bytes // (1024 * 1024)} MB max)."
         )
     return raw_bytes, mime_type
 
 
-def build_bug_report_new_issue_url(owner, repo, labels, title, body_markdown, include_body=True):
+def build_bug_report_new_issue_url(owner: Any, repo: Any, labels: Any, title: Any, body_markdown: Any, include_body: Any=True) -> Any:
     use_owner = str(owner or "").strip()
     use_repo = str(repo or "").strip()
     if not use_owner or not use_repo:
-        raise RuntimeError("Bug report repo is not configured.")
+        raise AppRuntimeError("Bug report repo is not configured.")
     labels_csv = ",".join(str(label).strip() for label in labels if str(label).strip())
     from urllib import parse
 
@@ -257,7 +263,7 @@ def build_bug_report_new_issue_url(owner, repo, labels, title, body_markdown, in
     return f"https://github.com/{use_owner}/{use_repo}/issues/new?{query}"
 
 
-def bug_report_submit_cooldown_remaining(last_submit_monotonic, cooldown_seconds, now_monotonic):
+def bug_report_submit_cooldown_remaining(last_submit_monotonic: Any, cooldown_seconds: Any, now_monotonic: Any) -> Any:
     # Returns seconds remaining before another submit is allowed.
     cooldown = int(cooldown_seconds or 0)
     if cooldown <= 0:

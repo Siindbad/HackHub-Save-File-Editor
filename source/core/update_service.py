@@ -8,6 +8,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from typing import Any
+from core.exceptions import AppRuntimeError
 
 _LOG = logging.getLogger(__name__)
 _RETRY_AFTER_PARSE_ERRORS = (TypeError, ValueError, OverflowError)
@@ -20,7 +22,7 @@ _RETRYABLE_TRANSFER_EXCEPTIONS = (
 )
 
 
-def walk_exception_chain(exc, max_depth=8):
+def walk_exception_chain(exc: Any, max_depth: Any=8) -> Any:
     # Iterate causal/context exception chain without looping forever.
     seen = set()
     current = exc
@@ -35,7 +37,7 @@ def walk_exception_chain(exc, max_depth=8):
         depth += 1
 
 
-def format_update_error(exc):
+def format_update_error(exc: Any) -> Any:
     # Convert low-level network/file errors into user-readable update messages.
     base = "Update failed."
     for err in walk_exception_chain(exc):
@@ -58,15 +60,17 @@ def format_update_error(exc):
                 )
         if isinstance(err, urllib.error.HTTPError):
             code = int(getattr(err, "code", 0) or 0)
-            if code == 404:
-                return "Update failed: release file not found (HTTP 404)."
-            if code == 403:
-                return "Update failed: access denied by server (HTTP 403)."
-            if code == 429:
-                return "Update failed: rate-limited by server (HTTP 429). Please retry shortly."
-            if code in (500, 502, 503, 504):
-                return f"Update failed: server temporarily unavailable (HTTP {code})."
-            return f"Update failed: server responded with HTTP {code}."
+            match code:
+                case 404:
+                    return "Update failed: release file not found (HTTP 404)."
+                case 403:
+                    return "Update failed: access denied by server (HTTP 403)."
+                case 429:
+                    return "Update failed: rate-limited by server (HTTP 429). Please retry shortly."
+                case 500 | 502 | 503 | 504:
+                    return f"Update failed: server temporarily unavailable (HTTP {code})."
+                case _:
+                    return f"Update failed: server responded with HTTP {code}."
 
         if isinstance(err, urllib.error.URLError):
             reason = getattr(err, "reason", None)
@@ -113,7 +117,7 @@ def format_update_error(exc):
     return base
 
 
-def parse_retry_after_seconds(value):
+def parse_retry_after_seconds(value: Any) -> Any:
     # Parse Retry-After as either seconds or HTTP-date.
     raw = str(value or "").strip()
     if not raw:
@@ -135,7 +139,7 @@ def parse_retry_after_seconds(value):
     return None
 
 
-def is_retryable_download_error(exc):
+def is_retryable_download_error(exc: Any) -> Any:
     # Retry transient network/server/IO errors; fail fast on hard errors.
     if isinstance(exc, RuntimeError):
         return True
@@ -150,7 +154,7 @@ def is_retryable_download_error(exc):
     return False
 
 
-def download_backoff_delay(exc, attempt_index, base_delay=0.45, max_delay=12.0):
+def download_backoff_delay(exc: Any, attempt_index: Any, base_delay: Any=0.45, max_delay: Any=12.0) -> Any:
     # Exponential backoff with jitter and optional Retry-After honor.
     attempt = max(0, int(attempt_index))
     delay = min(float(max_delay), float(base_delay) * (2 ** attempt))
@@ -168,16 +172,16 @@ def download_backoff_delay(exc, attempt_index, base_delay=0.45, max_delay=12.0):
 
 
 def download_bytes_with_retries(
-    url,
-    headers,
-    attempts=3,
-    timeout=60,
-    request_factory=urllib.request.Request,
-    urlopen_fn=urllib.request.urlopen,
-    is_retryable_fn=is_retryable_download_error,
-    backoff_fn=download_backoff_delay,
-    sleep_fn=time.sleep,
-):
+    url: Any,
+    headers: Any,
+    attempts: Any=3,
+    timeout: Any=60,
+    request_factory: Any=urllib.request.Request,
+    urlopen_fn: Any=urllib.request.urlopen,
+    is_retryable_fn: Any=is_retryable_download_error,
+    backoff_fn: Any=download_backoff_delay,
+    sleep_fn: Any=time.sleep,
+) -> Any:
     # Download in-memory payload with retry/backoff policy.
     last_exc = None
     max_attempts = max(1, int(attempts))
@@ -193,22 +197,22 @@ def download_bytes_with_retries(
             if not is_retryable_fn(exc):
                 break
             sleep_fn(backoff_fn(exc, attempt))
-    raise RuntimeError("Download failed after retries.") from last_exc
+    raise AppRuntimeError("Download failed after retries.") from last_exc
 
 
 def download_to_file_with_retries(
-    url,
-    out_path,
-    headers,
-    attempts=3,
-    timeout=60,
-    chunk_size=1024 * 1024,
-    request_factory=urllib.request.Request,
-    urlopen_fn=urllib.request.urlopen,
-    is_retryable_fn=is_retryable_download_error,
-    backoff_fn=download_backoff_delay,
-    sleep_fn=time.sleep,
-):
+    url: Any,
+    out_path: Any,
+    headers: Any,
+    attempts: Any=3,
+    timeout: Any=60,
+    chunk_size: Any=1024 * 1024,
+    request_factory: Any=urllib.request.Request,
+    urlopen_fn: Any=urllib.request.urlopen,
+    is_retryable_fn: Any=is_retryable_download_error,
+    backoff_fn: Any=download_backoff_delay,
+    sleep_fn: Any=time.sleep,
+) -> Any:
     # Stream payload to disk with retry/backoff and partial-file cleanup.
     last_exc = None
     chunk_size = max(1024, int(chunk_size))
@@ -223,7 +227,7 @@ def download_to_file_with_retries(
                         break
                     handle.write(chunk)
             if os.path.getsize(out_path) <= 0:
-                raise RuntimeError("Downloaded file is empty.")
+                raise AppRuntimeError("Downloaded file is empty.")
             return
         except _RETRYABLE_TRANSFER_EXCEPTIONS as exc:
             last_exc = exc
@@ -237,4 +241,4 @@ def download_to_file_with_retries(
             if not is_retryable_fn(exc):
                 break
             sleep_fn(backoff_fn(exc, attempt))
-    raise RuntimeError("Download failed after retries.") from last_exc
+    raise AppRuntimeError("Download failed after retries.") from last_exc

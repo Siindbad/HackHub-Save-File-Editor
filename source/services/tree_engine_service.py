@@ -2,9 +2,13 @@
 
 from services import tree_policy_service
 from services import tree_view_service
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
-def populate_children(owner, item_id):
+def populate_children(owner: Any, item_id: Any) -> Any:
     path = owner.item_to_path.get(item_id)
     if isinstance(path, tuple) and path[0] == "__group__":
         return
@@ -78,29 +82,30 @@ def populate_children(owner, item_id):
                 if isinstance(item, dict):
                     if group in ("ROUTER", "DEVICE", "FIREWALL", "SPLITTER"):
                         ip = item.get("ip")
-                        if group == "SPLITTER":
-                            name = None
-                        elif group == "FIREWALL":
-                            name = None
-                            users = item.get("users")
-                            if isinstance(users, list) and users:
-                                user0 = users[0]
-                                if isinstance(user0, dict):
-                                    name = user0.get("id")
-                        else:
-                            name = item.get("name")
-                            if not name:
-                                domain = item.get("domain")
-                                if isinstance(domain, dict):
-                                    name = domain.get("name")
-                            if not name:
+                        match group:
+                            case "SPLITTER":
+                                name = None
+                            case "FIREWALL":
+                                name = None
                                 users = item.get("users")
                                 if isinstance(users, list) and users:
                                     user0 = users[0]
                                     if isinstance(user0, dict):
-                                        name = user0.get("firstName") or user0.get("name")
-                            if not name and group in ("ROUTER", "DEVICE"):
-                                name = item.get("type")
+                                        name = user0.get("id")
+                            case _:
+                                name = item.get("name")
+                                if not name:
+                                    domain = item.get("domain")
+                                    if isinstance(domain, dict):
+                                        name = domain.get("name")
+                        if not name:
+                            users = item.get("users")
+                            if isinstance(users, list) and users:
+                                user0 = users[0]
+                                if isinstance(user0, dict):
+                                    name = user0.get("firstName") or user0.get("name")
+                        if not name and group in ("ROUTER", "DEVICE"):
+                            name = item.get("type")
                         if ip is not None or name is not None:
                             ip_str = "" if ip is None else str(ip)
                             name_str = "" if name is None else str(name)
@@ -141,7 +146,7 @@ def populate_children(owner, item_id):
     refresh_tree_item_markers(owner)
 
 
-def refresh_tree_item_markers(owner):
+def refresh_tree_item_markers(owner: Any) -> Any:
     tree = getattr(owner, "tree", None)
     if tree is None:
         return
@@ -150,12 +155,14 @@ def refresh_tree_item_markers(owner):
             for item_id in owner.item_to_path.keys():
                 if tree.exists(item_id):
                     tree.item(item_id, image="")
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
         return
     try:
         selected = set(tree.selection())
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         selected = set()
     for item_id, path in owner.item_to_path.items():
         try:
@@ -186,11 +193,12 @@ def refresh_tree_item_markers(owner):
                     expanded=is_expanded,
                 )
             tree.item(item_id, image=icon if icon is not None else "")
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             continue
 
 
-def refresh_tree_marker_for_item(owner, item_id, selected=False):
+def refresh_tree_marker_for_item(owner: Any, item_id: Any, selected: Any=False) -> Any:
     tree = getattr(owner, "tree", None)
     if tree is None or not item_id:
         return
@@ -225,11 +233,12 @@ def refresh_tree_marker_for_item(owner, item_id, selected=False):
                 expanded=is_expanded,
             )
         tree.item(item_id, image=icon if icon is not None else "")
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return
 
 
-def tree_item_can_toggle(owner, item_id):
+def tree_item_can_toggle(owner: Any, item_id: Any) -> Any:
     if not item_id:
         return False
     if owner._is_input_tree_expand_blocked(item_id):
@@ -237,17 +246,19 @@ def tree_item_can_toggle(owner, item_id):
     try:
         if owner.tree.get_children(item_id):
             return True
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         pass
     path = owner.item_to_path.get(item_id)
     try:
         value = owner._get_value(path)
         return tree_view_service.tree_item_can_toggle_from_value(path, value)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return False
 
 
-def on_tree_click_toggle(owner, event):
+def on_tree_click_toggle(owner: Any, event: Any) -> Any:
     tree = owner.tree
     item_id = tree.identify_row(event.y)
     if not item_id:
@@ -257,7 +268,8 @@ def on_tree_click_toggle(owner, event):
     # Only intercept clicks in the tree/icon gutter (arrow+marker area).
     try:
         bbox = tree.bbox(item_id, "#0")
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         bbox = None
     if not bbox:
         return None
@@ -275,12 +287,13 @@ def on_tree_click_toggle(owner, event):
             # Ensure lazy tree children are materialized on first single-click expand.
             populate_children(owner, item_id)
         refresh_tree_item_markers(owner)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return None
     return "break"
 
 
-def on_tree_double_click_guard(owner, event):
+def on_tree_double_click_guard(owner: Any, event: Any) -> Any:
     tree = owner.tree
     item_id = tree.identify_row(event.y)
     if not item_id:
@@ -292,7 +305,8 @@ def on_tree_double_click_guard(owner, event):
         tree.selection_set(item_id)
         tree.item(item_id, open=False)
         owner.root.after_idle(lambda iid=item_id: owner.tree.item(iid, open=False))
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return "break"
     owner.set_status("INPUT mode: selected subcategory is locked.")
     return "break"

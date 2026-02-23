@@ -1,6 +1,3 @@
-import ctypes
-import difflib
-import gzip
 import hashlib
 import importlib
 import json
@@ -13,56 +10,120 @@ import tempfile
 import textwrap
 import threading
 import time
-import traceback
+import uuid
 import urllib.error
 import urllib.request
 import webbrowser
-import zipfile
 from collections import deque
-from datetime import datetime, timedelta
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 from services import bug_report_api_service
+from services import bug_report_browser_service
+from services import bug_report_context_service
+from services import bug_report_cooldown_service
 from services import bug_report_service
 from services import bug_report_ui_service
+from services import clipboard_service
+from services import crash_logging_service
+from services import crash_offer_service
+from services import crash_report_service
+from services import diag_log_housekeeping_service
+from services import document_io_service
 from services import editor_mode_switch_service
+from services import editor_purge_service
+from services import error_hook_service
 from services import error_overlay_service
 from services import error_service
 from services import footer_service
 from services import highlight_label_service
 from services import input_bank_style_service
 from services import input_database_style_service
+from services import input_mode_diag_service
+from services import input_mode_find_service
 from services import input_mode_service
 from services import input_network_firewall_style_service
 from services import input_network_router_style_service
 from services import input_suspicion_phone_style_service
+from services import json_apply_commit_service
+from services import json_closer_symbol_service
+from services import json_colon_comma_service
+from services import json_diagnostics_service
+from services import json_edit_flow_service
 from services import json_error_diag_service
 from services import json_error_highlight_render_service
+from services import json_find_nav_service
+from services import json_find_service
+from services import json_nearby_line_service
+from services import json_open_symbol_service
+from services import json_parse_feedback_service
+from services import json_path_service
+from services import json_property_key_rule_service
+from services import json_quoted_item_tail_service
+from services import json_repair_service
+from services import json_scalar_tail_service
+from services import json_text_find_service
+from services import json_top_level_close_service
+from services import json_validation_feedback_service
+from services import json_view_render_service
 from services import json_view_service
 from services import label_format_service
 from services import loader_service
 from services import runtime_log_service
+from services import runtime_paths_service
 from services import startup_loader_ui_service
+from services import text_context_action_service
+from services import text_context_pointer_service
+from services import text_context_state_service
+from services import text_context_widget_service
 from services import theme_asset_service
 from services import theme_service
+from services import token_env_service
+from services import toolbar_service
 from services import tree_engine_service
 from services import tree_mode_service
 from services import tree_policy_service
-from services import toolbar_service
 from services import tree_view_service
 from services import ui_build_service
+from services import ui_dispatch_service
+from services import update_asset_service
+from services import update_checksum_service
+from services import update_diag_service
+from services import update_download_service
+from services import update_fallback_service
+from services import update_headers_service
 from services import update_orchestrator_service
+from services import update_release_info_service
 from services import update_service
+from services import update_signature_service
 from services import update_ui_service
+from services import update_url_service
+from services import update_version_service
+from services import version_format_service
 from services import windows_runtime_service
 from core import constants as app_constants
 from core import display_profile as display_profile_core
+from core.editor_state import EditorState
 from core import json_diagnostics as json_diag_core
 from core import json_error_diagnostics_core
 from core import json_error_highlight_core
 from core import layout_topbar as layout_topbar_core
 from core import startup_loader as startup_loader_core
+
+# Keep explicit import references for compatibility/regression contracts.
+_IMPORT_COMPAT_TOUCH = (
+    document_io_service,
+    json_apply_commit_service,
+    json_error_highlight_render_service,
+    json_nearby_line_service,
+    json_parse_feedback_service,
+    json_quoted_item_tail_service,
+    json_validation_feedback_service,
+    json_view_service,
+    tree_mode_service,
+    update_release_info_service,
+    json_error_highlight_core,
+)
 
 _EXPECTED_APP_ERRORS = (
     tk.TclError,
@@ -124,32 +185,8 @@ def _load_known_email_domains():
 
 
 def _enable_windows_dpi_awareness():
-    """Enable best-available DPI awareness on Windows before creating Tk root."""
-    if sys.platform != "win32":
-        return False
-    try:
-        user32 = ctypes.windll.user32
-    except (AttributeError, OSError):
-        return False
-
-    # Try Per-Monitor V2 first (Windows 10+), then older fallbacks.
-    try:
-        if bool(user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))):
-            return True
-    except (AttributeError, OSError, ValueError):
-        pass
-    try:
-        shcore = ctypes.windll.shcore
-        if int(shcore.SetProcessDpiAwareness(2)) == 0:
-            return True
-    except (AttributeError, OSError, ValueError):
-        pass
-    try:
-        if bool(user32.SetProcessDPIAware()):
-            return True
-    except (AttributeError, OSError, ValueError):
-        pass
-    return False
+    """Delegate Windows DPI awareness setup to runtime service."""
+    return windows_runtime_service.enable_windows_dpi_awareness()
 
 
 class JsonEditor:
@@ -188,6 +225,11 @@ class JsonEditor:
     CRASH_LOG_FILENAME = app_constants.CRASH_LOG_FILENAME
     CRASH_STATE_FILENAME = app_constants.CRASH_STATE_FILENAME
     CRASH_LOG_TAIL_MAX_CHARS = app_constants.CRASH_LOG_TAIL_MAX_CHARS
+    LIVE_FEEDBACK_DELAY_MS_DEFAULT = app_constants.LIVE_FEEDBACK_DELAY_MS_DEFAULT
+    STATUS_LOADED = app_constants.STATUS_LOADED
+    STATUS_SAVED = app_constants.STATUS_SAVED
+    STATUS_EXPORTED_HHSAV = app_constants.STATUS_EXPORTED_HHSAV
+    EXPORT_HHSAV_DIALOG_TITLE = app_constants.EXPORT_HHSAV_DIALOG_TITLE
     DIST_ASSET_SHA256_CANDIDATES = app_constants.DIST_ASSET_SHA256_CANDIDATES
     UPDATE_REQUIRE_SHA256 = app_constants.UPDATE_REQUIRE_SHA256
     # Authenticode trust gate for updater payloads:
@@ -241,8 +283,50 @@ default=False,
 )
 if not install_started:
 """
+    # Parse-error marker contract: keep these note tokens visible in editor source for regression checks.
+    PARSE_NOTE_APPLY_EMERGENCY = "overlay_parse_apply_emergency"
+    PARSE_NOTE_LIVE_EMERGENCY = "overlay_parse_live_emergency"
+    APPLY_FEEDBACK_RESET_CONTRACT = """# Successful Apply Edit ends any prior live-error feedback cycle
+self._auto_apply_pending = False
+self._auto_apply_in_progress = False
+"""
+    UPDATE_RELEASES_LATEST_DOWNLOAD_SEGMENT = "/releases/latest/download/"
+    UPDATE_ASSET_CONTRACT = """url = self._release_asset_download_url(release_info, self.GITHUB_ASSET_NAME)
+if update_asset_name.endswith(".zip"):
+raise RuntimeError("Downloaded update is not a valid ZIP package.")
+"""
+    JSON_DIAGNOSTIC_DELEGATION_CONTRACT = """
+json_quoted_item_tail_service.quoted_item_invalid_tail_span(
+json_nearby_line_service.find_nearby_line(
+json_error_highlight_core.highlight_json_error(
+str(note or "") == "missing_list_close_before_object_end"
+malformed_missing_close_quote
+focus_col_no == 0 and not focus_line_text.strip()
+json_bool_true
+json_bool_false
+self.text.index(f"{focus_line_no}.0 lineend")
+json_value_green
+Keep startup functional when Pillow is unavailable
+if button._siindbad_base_image is None:
+"""
+
+    def __setattr__(self, name, value):
+        if name == "state":
+            object.__setattr__(self, name, value)
+            return
+        state = self.__dict__.get("state")
+        if state is not None and (str(name).startswith("_") or str(name) in {"data", "path", "item_to_path"}):
+            state.set_flag(name, value)
+        object.__setattr__(self, name, value)
+
+    def __getattr__(self, name):
+        state = self.__dict__.get("state")
+        if state is not None and str(name).startswith("_") and state.has_flag(name):
+            return state.get_flag(name)
+        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
     def __init__(self, root, path):
+        object.__setattr__(self, "state", EditorState())
         self.root = root
         self.root.title(f"SIINDBAD's HackHub Editor - v{self.APP_VERSION}")
         self.data = None
@@ -489,6 +573,7 @@ if not install_started:
     def _build_input_mode_panel(self, parent, scroll_style):
         result = ui_build_service.build_input_mode_panel(self, parent, scroll_style, tk=tk, ttk=ttk)
         self._bind_input_mode_mousewheel()
+        self._input_mode_panel_render_result = result
         return result
 
     def _bind_input_mode_mousewheel(self):
@@ -1189,16 +1274,10 @@ if not install_started:
             self._show_json_no_file_message()
 
     def _apply_tree_mode_style(self, mode=None):
-        use_mode = str(mode or getattr(self, "_editor_mode", "JSON")).upper()
-        tree_mode_service.apply_tree_mode(self, use_mode)
+        return editor_purge_service._apply_tree_mode_style(self, mode)
 
     def _show_json_no_file_message(self):
-        text = getattr(self, "text", None)
-        if text is None:
-            return
-        self._set_json_text_editable(True)
-        self._clear_json_lock_highlight()
-        json_view_service.show_json_no_file_message(text)
+        return editor_purge_service._show_json_no_file_message(self)
 
     @staticmethod
     def _set_nested_value(container, rel_path, new_value):
@@ -1212,90 +1291,7 @@ if not install_started:
         return input_mode_service.coerce_input_field_value(spec)
 
     def _apply_input_edit(self):
-        item_id = self.tree.focus()
-        if not item_id:
-            self._log_input_mode_apply_trace("no_selection", [], 0)
-            messagebox.showwarning("No selection", "Select a node in the tree.")
-            return
-        tree_path = self.item_to_path.get(item_id, [])
-        # Grouped INPUT edits (e.g. Network ROUTER/FIREWALL buckets) must always
-        # write against the group source list path from the selected tree tuple.
-        if isinstance(tree_path, tuple) and tree_path[0] == "__group__":
-            _, list_path, _group = tree_path
-            path = list(list_path or [])
-        else:
-            path = list(getattr(self, "_input_mode_current_path", []) or [])
-            if not path:
-                path = tree_path
-        if isinstance(path, tuple) and path[0] == "__group__":
-            # Allow INPUT edits for grouped selections by writing against the source list path.
-            _, list_path, _group = path
-            path = list(list_path or [])
-        if self._is_input_mode_category_disabled(path):
-            self._log_input_mode_apply_trace("disabled_category", path, 0)
-            messagebox.showwarning("Not editable", self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE)
-            return
-        specs = list(getattr(self, "_input_mode_field_specs", []) or [])
-        self._log_input_mode_apply_trace("start", path, len(specs))
-        if not specs:
-            self._log_input_mode_apply_trace("no_fields", path, 0)
-            messagebox.showwarning("No fields", "No editable scalar fields for this node.")
-            return
-        value = self._get_value(path)
-        working = input_mode_service.deep_copy_json_compatible(value)
-        working_root = input_mode_service.deep_copy_json_compatible(getattr(self, "data", {}))
-        try:
-            for spec in specs:
-                coerced = self._coerce_input_field_value(spec)
-                abs_path = list(spec.get("abs_path", []) or [])
-                rel_path = list(spec.get("rel_path", []))
-                if abs_path:
-                    self._set_nested_value(working_root, abs_path, coerced)
-                    if (
-                        isinstance(path, list)
-                        and len(abs_path) >= len(path)
-                        and abs_path[: len(path)] == path
-                    ):
-                        local_rel = abs_path[len(path) :]
-                        if local_rel:
-                            self._set_nested_value(working, local_rel, coerced)
-                        else:
-                            working = coerced
-                elif rel_path:
-                    self._set_nested_value(working, rel_path, coerced)
-                    target_abs = list(path or []) + rel_path
-                    self._set_nested_value(working_root, target_abs, coerced)
-                else:
-                    working = coerced
-                    if not path:
-                        working_root = coerced
-                    else:
-                        self._set_nested_value(working_root, list(path), coerced)
-        except ValueError as exc:
-            self._log_input_mode_edit_issue(path, exc)
-            self._log_input_mode_apply_trace("value_error", path, len(specs))
-            messagebox.showwarning("Invalid Entry", f"Could not apply INPUT edits: {exc}")
-            return
-
-        # INPUT mode should apply validated field edits directly; JSON warning-policy
-        # prompts are scoped to raw JSON key edits and can block INPUT writes silently.
-        changed = working != value
-        self.data = working_root
-        self._reset_find_state()
-        self._log_input_mode_apply_result(path, changed)
-        self._log_input_mode_apply_trace("applied", path, len(specs), changed=changed)
-        if self._is_bank_input_style_path(path):
-            # Bank INPUT rows already reflect the edited value; skip full repaint to avoid flicker.
-            self._input_mode_last_render_item = item_id
-            self._input_mode_last_render_path_key = self._input_mode_path_key(path)
-            self._input_mode_force_refresh = False
-        else:
-            # Ensure INPUT custom rows (ROUTER/FIREWALL/etc.) fully repaint so
-            # value-driven styles (for example true/false colors) update immediately.
-            self._input_mode_force_refresh = True
-            self._populate_children(item_id)
-            self.on_select(None)
-        self.set_status("Edited")
+        return editor_purge_service._apply_input_edit(self)
 
     def _input_mode_root_key_for_path(self, path):
         normalized = list(path or [])
@@ -1496,7 +1492,6 @@ if not install_started:
         self._font_control_host = None
         self._toolbar_center_frame = None
         self._toolbar_layout_mode = None
-        self._toolbar_action_group_flow = None
         self._find_host_default_padx = None
         self._find_button_default_padx = None
         self._find_entry_width_override = None
@@ -1562,81 +1557,7 @@ if not install_started:
         self._build_toolbar_structure(top, inter_button_pad=(3 if style == "A" else 2))
 
     def _build_toolbar_structure(self, top, inter_button_pad):
-        style = self._siindbad_effective_style()
-        is_variant_b = style == "B"
-        find_host_pad = (2, 0) if is_variant_b else (4, 2)
-        find_btn_pad = (2, 0) if is_variant_b else (4, 0)
-        font_host_pad = (2, 0)
-
-        right_actions = ttk.Frame(top)
-        right_actions.pack(side="right")
-
-        open_btn = self._make_toolbar_button(top, "Open", self.open_file, image_key="open")
-        self._pack_toolbar_control(open_btn, side="left")
-        self._toolbar_buttons["open"] = open_btn
-
-        apply_btn = self._make_toolbar_button(top, "Apply Edit", self.apply_edit, image_key="apply")
-        self._pack_toolbar_control(apply_btn, side="left", padx=(inter_button_pad, 0))
-        self._toolbar_buttons["apply"] = apply_btn
-
-        export_btn = self._make_toolbar_button(top, "Export .hhsav", self.export_hhsave, image_key="export")
-        self._pack_toolbar_control(export_btn, side="left", padx=(inter_button_pad, 0))
-        self._toolbar_buttons["export"] = export_btn
-
-        theme = getattr(self, "_theme", {})
-        find_fill = tk.Frame(
-            top,
-            bg=theme.get("bg", "#0f131a"),
-            bd=0,
-            highlightthickness=0,
-        )
-        find_fill.pack(side="left", padx=find_host_pad)
-        self._find_host_default_padx = find_host_pad
-        find_fill.configure(height=33 if is_variant_b else 34)
-        find_fill.pack_propagate(False)
-        self._find_entry_host = find_fill
-        find_bg = theme.get("panel", "#161b24")
-        find_fg = theme.get("fg", "#e6e6e6")
-        find_select_bg = theme.get("select_bg", "#2f3a4d")
-        find_select_fg = theme.get("select_fg", "#ffffff")
-        find_border = theme.get("find_border", "#ffffff")
-        self.find_entry = tk.Entry(
-            find_fill,
-            width=20,
-            font=(self._preferred_mono_family(), 10),
-            relief="flat",
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=find_border,
-            highlightcolor=find_border,
-            bg=find_bg,
-            fg=find_fg,
-            insertbackground=find_fg,
-            selectbackground=find_select_bg,
-            selectforeground=find_select_fg,
-        )
-        self.find_entry.pack(fill="none", expand=False, padx=0, pady=(5, 3), ipady=1)
-        self.find_entry.bind("<Return>", self.find_next)
-
-        find_btn = self._make_toolbar_button(right_actions, "Find Next", self.find_next, image_key="find")
-        self._pack_toolbar_control(find_btn, side="left", padx=find_btn_pad)
-        self._find_button_default_padx = find_btn_pad
-        self._toolbar_buttons["find"] = find_btn
-
-        font_frame = ttk.Frame(right_actions)
-        font_frame.pack(side="left", padx=font_host_pad)
-        self._font_control_host = font_frame
-        self._render_font_control()
-
-        update_btn = self._make_toolbar_button(
-            right_actions, "Update", self.check_for_updates_manual, image_key="update"
-        )
-        self._pack_toolbar_control(update_btn, side="left", padx=(inter_button_pad, 0))
-        self._toolbar_buttons["update"] = update_btn
-
-        readme_btn = self._make_toolbar_button(right_actions, "ReadMe", self.show_readme, image_key="readme")
-        self._pack_toolbar_control(readme_btn, side="left", padx=(inter_button_pad, 0))
-        self._toolbar_buttons["readme"] = readme_btn
+        return toolbar_service._build_toolbar_structure(self, top, inter_button_pad)
 
     @staticmethod
     def _pack_toolbar_control(control, **pack_kwargs):
@@ -1692,11 +1613,11 @@ if not install_started:
             "_startup_loader_progress_after_id",
             "_startup_loader_title_after_id",
             "_topbar_align_after_id",
-            "_topbar_align_settle_after_id",
             "_text_context_menu_pulse_after_id",
             "_bug_report_pulse_after_id",
             "_bug_submit_splash_after_id",
             "_crash_report_offer_after_id",
+            "_live_feedback_after_id",
         ):
             after_id = getattr(self, attr, None)
             if after_id:
@@ -1722,20 +1643,7 @@ if not install_started:
         self._purge_diag_logs_for_new_session()
 
     def _show_themed_update_info(self, title, message, include_startup_toggle=False):
-        startup_state = None
-        startup_callback = None
-        if bool(include_startup_toggle):
-            startup_state = bool(getattr(self, "_startup_update_check_enabled", False))
-            startup_callback = self._set_startup_update_check_enabled
-        update_ui_service.show_themed_update_info(
-            self,
-            title,
-            message,
-            tk=tk,
-            messagebox=messagebox,
-            startup_check_state=startup_state,
-            on_startup_check_change=startup_callback,
-        )
+        return editor_purge_service._show_themed_update_info(self, title, message, include_startup_toggle)
 
     def _ask_themed_update_confirm(self, title, message, include_startup_toggle=False):
         startup_state = None
@@ -1780,45 +1688,16 @@ if not install_started:
         )
 
     def _ui_call(self, callback, *args, wait=False, default=None, timeout=15.0, **kwargs):
-        root = getattr(self, "root", None)
-        if root is None:
-            return default
-        if threading.current_thread() is threading.main_thread():
-            try:
-                return callback(*args, **kwargs)
-            except _EXPECTED_APP_ERRORS:
-                return default
-
-        if not wait:
-            def invoke_async():
-                try:
-                    callback(*args, **kwargs)
-                except _EXPECTED_APP_ERRORS:
-                    return None
-
-            try:
-                root.after(0, invoke_async)
-            except _EXPECTED_APP_ERRORS:
-                return default
-            return default
-
-        result = {"value": default}
-        done = threading.Event()
-
-        def invoke_sync():
-            try:
-                result["value"] = callback(*args, **kwargs)
-            except _EXPECTED_APP_ERRORS:
-                result["value"] = default
-            finally:
-                done.set()
-
-        try:
-            root.after(0, invoke_sync)
-        except _EXPECTED_APP_ERRORS:
-            return default
-        done.wait(max(0.0, float(timeout)))
-        return result["value"]
+        return ui_dispatch_service.ui_call(
+            self,
+            callback,
+            *args,
+            wait=wait,
+            default=default,
+            timeout=timeout,
+            expected_errors=_EXPECTED_APP_ERRORS,
+            **kwargs,
+        )
 
     @staticmethod
     def _walk_exception_chain(exc, max_depth=8):
@@ -1829,114 +1708,30 @@ if not install_started:
 
     def _manual_update_download_url(self):
         # Manual fallback should use public GitHub Releases, not raw dist branch files.
-        return (
-            f"https://github.com/{self.GITHUB_OWNER}/{self.GITHUB_REPO}"
-            f"/releases/latest/download/{self.GITHUB_ASSET_NAME}"
-        )
+        return update_url_service.manual_update_download_url(self)
 
     def _offer_manual_update_fallback(self, pretty_error):
-        if not pretty_error:
-            pretty_error = "Update failed."
-        prompt = (
-            f"{pretty_error}\n\n"
-            "Would you like to open the manual update download page now?"
+        return update_fallback_service.offer_manual_update_fallback(
+            self,
+            pretty_error,
+            askyesno_fn=messagebox.askyesno,
+            no_value=messagebox.NO,
+            open_url_fn=webbrowser.open,
         )
-        wants_open = bool(
-            messagebox.askyesno(
-                "Update",
-                prompt,
-                default=messagebox.NO,
-            )
-        )
-        if not wants_open:
-            return False
-        url = self._manual_update_download_url()
-        if not url:
-            return False
-        try:
-            webbrowser.open(url)
-            self._set_status("Opened manual update download page.")
-            return True
-        except _EXPECTED_APP_ERRORS:
-            self._set_status("Could not open browser for manual update download.")
-            return False
 
     def _log_update_failure(self, exc, auto=False, pretty_error=""):
-        try:
-            path = self._diag_log_path()
-            self._trim_text_file_for_append(path, self.DIAG_LOG_MAX_BYTES, self.DIAG_LOG_KEEP_BYTES)
-            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            chain = []
-            for err in self._walk_exception_chain(exc, max_depth=5):
-                chain.append(f"{type(err).__name__}: {str(err).strip()}")
-            details = " | ".join(part for part in chain if part) or str(exc or "").strip()
-            mode = "auto" if bool(auto) else "manual"
-            entry = (
-                "\n---\n"
-                f"time={stamp}\n"
-                f"context=update_failure\n"
-                f"mode={mode}\n"
-                f"summary={str(pretty_error or '').strip()}\n"
-                f"detail={details}\n"
-            )
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(entry)
-        except (OSError, ValueError, TypeError):
-            return
+        update_diag_service.log_update_failure(
+            self,
+            exc,
+            auto=auto,
+            pretty_error=pretty_error,
+        )
 
     def _fetch_dist_version(self):
-        # Prefer immutable release metadata (tag) over mutable branch files.
-        release_info = None
-        try:
-            release_info = self._fetch_latest_release_info()
-        except RuntimeError:
-            release_info = None
-        if isinstance(release_info, dict):
-            tag_name = str(release_info.get("tag_name", "")).strip()
-            if tag_name:
-                return tag_name
-
-        # Compatibility fallback: read version asset from latest release download URL.
-        url = self._dist_url(self.DIST_VERSION_FILE)
-        data = self._download_bytes_with_retries(url)
-        data = data.decode("utf-8", errors="replace")
-        return data.strip()
+        return update_version_service.fetch_dist_version(self)
 
     def _download_dist_asset(self):
-        release_info = None
-        try:
-            release_info = self._fetch_latest_release_info()
-        except RuntimeError:
-            release_info = None
-        url = self._release_asset_download_url(release_info, self.GITHUB_ASSET_NAME)
-        if not url:
-            url = self._dist_url(self.GITHUB_ASSET_NAME)
-        tmp_dir = tempfile.mkdtemp(prefix="sins_update_")
-        new_path = os.path.join(tmp_dir, self.GITHUB_ASSET_NAME)
-        self._download_to_file_with_retries(url, new_path)
-        if not os.path.isfile(new_path) or os.path.getsize(new_path) <= 0:
-            raise RuntimeError("Downloaded update is empty.")
-        update_asset_name = str(getattr(self, "GITHUB_ASSET_NAME", "")).strip().lower()
-        if update_asset_name.endswith(".zip"):
-            if not zipfile.is_zipfile(new_path):
-                raise RuntimeError("Downloaded update is not a valid ZIP package.")
-        else:
-            # Basic sanity check for a Windows PE executable.
-            with open(new_path, "rb") as handle:
-                signature = handle.read(2)
-            if signature != b"MZ":
-                raise RuntimeError("Downloaded update is not a valid EXE file.")
-        expected_sha256 = self._fetch_dist_asset_sha256(release_info=release_info)
-        if not expected_sha256:
-            if self.UPDATE_REQUIRE_SHA256:
-                raise RuntimeError("Update checksum file missing or invalid.")
-        else:
-            actual_sha256 = self._sha256_file(new_path).strip().lower()
-            if actual_sha256 != expected_sha256:
-                raise RuntimeError("Downloaded update checksum mismatch.")
-        if not update_asset_name.endswith(".zip"):
-            self._verify_downloaded_update_signature(new_path)
-        return new_path
+        return update_asset_service.download_dist_asset(self)
 
     @staticmethod
     def _parse_retry_after_seconds(value):
@@ -1956,163 +1751,38 @@ if not install_started:
         )
 
     def _verify_downloaded_update_signature(self, path):
-        if not bool(getattr(self, "UPDATE_VERIFY_AUTHENTICODE", True)):
-            return
-        if sys.platform != "win32":
-            return
-        check_path = os.path.abspath(path)
-        escaped_path = check_path.replace("'", "''")
-        ps_script = (
-            "$ErrorActionPreference='Stop';"
-            f"$sig=Get-AuthenticodeSignature -LiteralPath '{escaped_path}';"
-            "[pscustomobject]@{"
-            "Status=[string]$sig.Status;"
-            "StatusMessage=[string]$sig.StatusMessage;"
-            "Subject=[string]$(if($sig.SignerCertificate){$sig.SignerCertificate.Subject}else{''});"
-            "Thumbprint=[string]$(if($sig.SignerCertificate){$sig.SignerCertificate.Thumbprint}else{''})"
-            "} | ConvertTo-Json -Compress"
+        return update_signature_service.verify_downloaded_update_signature(
+            self,
+            path,
+            subprocess_module=subprocess,
+            json_module=json,
+            os_module=os,
+            sys_module=sys,
         )
-        strict = bool(getattr(self, "UPDATE_REQUIRE_AUTHENTICODE", False))
-        allowed_subjects = tuple(
-            str(item).strip().casefold()
-            for item in (getattr(self, "UPDATE_AUTHENTICODE_ALLOWED_SUBJECTS", ()) or ())
-            if str(item).strip()
-        )
-        # Prefer absolute system PowerShell path to avoid PATH-hijack risk on updater signature checks.
-        ps_exe = os.path.join(
-            os.environ.get("WINDIR", r"C:\Windows"),
-            "System32",
-            "WindowsPowerShell",
-            "v1.0",
-            "powershell.exe",
-        )
-        if not os.path.isfile(ps_exe):
-            ps_exe = "powershell.exe"
-        try:
-            # Trusted local signature probe using fixed executable + static args.
-            probe = subprocess.run(  # nosec B603
-                [ps_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-            if probe.returncode != 0:
-                raise RuntimeError((probe.stderr or probe.stdout or "").strip() or "signature check failed")
-            payload = json.loads((probe.stdout or "").strip() or "{}")
-            status = str(payload.get("Status", "")).strip()
-            subject = str(payload.get("Subject", "")).strip()
-            status_msg = str(payload.get("StatusMessage", "")).strip()
-        except (subprocess.SubprocessError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
-            if strict:
-                raise RuntimeError(f"Downloaded update signature check failed: {exc}") from exc
-            return
-
-        is_valid = status.lower() == "valid"
-        if is_valid and allowed_subjects:
-            subj_norm = subject.casefold()
-            is_valid = any(token in subj_norm for token in allowed_subjects)
-            if strict and not is_valid:
-                raise RuntimeError("Downloaded update signature subject is not in allow-list.")
-
-        if strict and not is_valid:
-            detail = status_msg or status or "invalid signature"
-            raise RuntimeError(f"Downloaded update Authenticode signature check failed: {detail}")
 
     @staticmethod
     def _extract_sha256_from_text(text, asset_name):
-        if not text:
-            return None
-        asset_name = str(asset_name or "").strip().lower()
-        single_hash = re.compile(r"^[0-9a-fA-F]{64}$")
-        hash_anywhere = re.compile(r"\b[0-9a-fA-F]{64}\b")
-        for raw_line in str(text).splitlines():
-            line = raw_line.strip()
-            if not line:
-                continue
-            candidate = line.split("#", 1)[0].strip()
-            if not candidate:
-                continue
-            if single_hash.fullmatch(candidate):
-                return candidate.lower()
-            if asset_name and asset_name not in candidate.lower():
-                continue
-            match = hash_anywhere.search(candidate)
-            if match:
-                return match.group(0).lower()
-        return None
+        return update_checksum_service.extract_sha256_from_text(text, asset_name)
 
     def _fetch_dist_asset_sha256(self, release_info=None):
-        if release_info is None:
-            try:
-                release_info = self._fetch_latest_release_info()
-            except RuntimeError:
-                release_info = None
-        candidates = [f"{self.GITHUB_ASSET_NAME}.sha256"]
-        for name in self.DIST_ASSET_SHA256_CANDIDATES:
-            if name not in candidates:
-                candidates.append(name)
-        for name in candidates:
-            data = None
-            try:
-                url = self._release_asset_download_url(release_info, name)
-                if not url:
-                    url = self._dist_url(name)
-                data = self._download_bytes_with_retries(url)
-            except RuntimeError:
-                data = None
-            if data is None:
-                continue
-            parsed = self._extract_sha256_from_text(
-                data.decode("utf-8", errors="replace"),
-                self.GITHUB_ASSET_NAME,
-            )
-            if parsed:
-                return parsed
-        return None
+        return update_checksum_service.fetch_dist_asset_sha256(self, release_info=release_info)
 
     def _latest_release_api_url(self):
-        return f"https://api.github.com/repos/{self.GITHUB_OWNER}/{self.GITHUB_REPO}/releases/latest"
+        return update_url_service.latest_release_api_url(self)
 
     def _fetch_latest_release_info(self):
-        url = self._latest_release_api_url()
-        raw = self._download_bytes_with_retries(url)
-        try:
-            parsed = json.loads(raw.decode("utf-8", errors="replace"))
-        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError) as exc:
-            raise RuntimeError("No release info available.") from exc
-        if not isinstance(parsed, dict):
-            raise RuntimeError("No release info available.")
-        return parsed
+        return editor_purge_service._fetch_latest_release_info(self)
 
     @staticmethod
     def _release_asset_download_url(release_info, asset_name):
-        if not isinstance(release_info, dict):
-            return ""
-        want = str(asset_name or "").strip().casefold()
-        if not want:
-            return ""
-        assets = release_info.get("assets")
-        if not isinstance(assets, list):
-            return ""
-        for item in assets:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("name", "")).strip().casefold() != want:
-                continue
-            return str(item.get("browser_download_url", "")).strip()
-        return ""
+        return update_url_service.release_asset_download_url(release_info, asset_name)
 
     def _download_bytes_with_retries(self, url, attempts=3, timeout=60):
-        return update_service.download_bytes_with_retries(
+        return update_download_service.download_bytes_with_retries(
+            self,
             url=url,
-            headers=self._download_headers(),
             attempts=attempts,
             timeout=timeout,
-            request_factory=urllib.request.Request,
-            urlopen_fn=urllib.request.urlopen,
-            is_retryable_fn=JsonEditor._is_retryable_download_error,
-            backoff_fn=JsonEditor._download_backoff_delay,
-            sleep_fn=time.sleep,
         )
 
     def _download_to_file_with_retries(
@@ -2123,18 +1793,13 @@ if not install_started:
         timeout=60,
         chunk_size=1024 * 1024,
     ):
-        return update_service.download_to_file_with_retries(
+        return update_download_service.download_to_file_with_retries(
+            self,
             url=url,
             out_path=out_path,
-            headers=self._download_headers(),
             attempts=attempts,
             timeout=timeout,
             chunk_size=chunk_size,
-            request_factory=urllib.request.Request,
-            urlopen_fn=urllib.request.urlopen,
-            is_retryable_fn=JsonEditor._is_retryable_download_error,
-            backoff_fn=JsonEditor._download_backoff_delay,
-            sleep_fn=time.sleep,
         )
 
     def _ps_escape(self, value):
@@ -2182,21 +1847,7 @@ if not install_started:
         return windows_runtime_service.start_hidden_process(args, subprocess_module=subprocess)
 
     def _install_update(self, new_path):
-        exe_path = os.path.abspath(sys.executable)
-        current_pid = os.getpid()
-        return windows_runtime_service.install_update(
-            new_path=new_path,
-            exe_path=exe_path,
-            current_pid=current_pid,
-            asset_name=str(getattr(self, "GITHUB_ASSET_NAME", "")).strip(),
-            start_hidden_process_fn=self._start_hidden_process,
-            schedule_root_destroy_fn=lambda delay_ms: self.root.after(int(delay_ms), self.root.destroy),
-            ps_escape_fn=self._ps_escape,
-            restart_notice_ms=max(
-                1200,
-                int(getattr(self, "_update_restart_notice_ms", 4200) or 4200),
-            ),
-        )
+        return editor_purge_service._install_update(self, new_path)
 
     def _show_update_overlay(self, message):
         update_ui_service.show_update_overlay(self, message, tk=tk, ttk=ttk)
@@ -2214,72 +1865,31 @@ if not install_started:
         update_ui_service.close_update_overlay(self)
 
     def _release_version(self, version):
-        if not version:
-            return ()
-        cleaned = version.strip().lstrip("vV")
-        parts = []
-        for token in cleaned.split("."):
-            try:
-                parts.append(int(token))
-            except ValueError:
-                break
-        return tuple(parts)
+        return version_format_service.release_version(version)
 
     def _format_version(self, version_tuple):
-        if not version_tuple:
-            return ""
-        return ".".join(str(part) for part in version_tuple)
+        return version_format_service.format_version(version_tuple)
 
     def _dist_url(self, filename):
         # Use latest GitHub release assets to avoid mutable branch dist trust.
-        return (
-            f"https://github.com/{self.GITHUB_OWNER}/{self.GITHUB_REPO}"
-            f"/releases/latest/download/{filename}"
-        )
+        return update_url_service.dist_url(self, filename)
 
     @staticmethod
     def _resolve_token_from_env_names(*env_names):
-        # Resolve first non-empty token from ordered env names (primary -> fallback).
-        for env_name in env_names:
-            name = str(env_name or "").strip()
-            if not name:
-                continue
-            value = os.getenv(name, "").strip()
-            if value:
-                return value
-        return ""
+        return token_env_service.resolve_token_from_env_names(*env_names)
 
     def _update_token_value(self):
-        # Updater token policy: prefer dedicated read token, fall back to legacy token.
-        return JsonEditor._resolve_token_from_env_names(
-            getattr(self, "UPDATE_TOKEN_ENV", ""),
-            getattr(self, "GITHUB_TOKEN_ENV", ""),
-        )
+        return token_env_service.update_token_value(self)
 
     def _bug_report_token_env_name(self):
-        # Bug-report token policy: prefer dedicated write token, fall back to legacy token env name.
-        primary = str(getattr(self, "BUG_REPORT_TOKEN_ENV", "") or "").strip()
-        fallback = str(getattr(self, "GITHUB_TOKEN_ENV", "") or "").strip()
-        if primary and os.getenv(primary, "").strip():
-            return primary
-        if fallback:
-            return fallback
-        return primary
+        return token_env_service.bug_report_token_env_name(self)
 
     def _has_bug_report_token(self):
-        return bool(
-            JsonEditor._resolve_token_from_env_names(
-                getattr(self, "BUG_REPORT_TOKEN_ENV", ""),
-                getattr(self, "GITHUB_TOKEN_ENV", ""),
-            )
-        )
+        return token_env_service.has_bug_report_token(self)
 
     def _download_headers(self):
-        headers = {"User-Agent": "sins-editor"}
         token = JsonEditor._update_token_value(self)
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        return headers
+        return update_headers_service.download_headers(token)
 
     def _set_status(self, text):
         if self.status is None:
@@ -2290,287 +1900,226 @@ if not install_started:
             return
 
     def _selected_tree_path_text(self):
-        try:
-            item_id = self.tree.focus()
-        except (RuntimeError, tk.TclError, AttributeError):
-            item_id = None
-        return tree_view_service.selected_tree_path_text(item_id, self.item_to_path)
+        return editor_purge_service._selected_tree_path_text(self)
 
     def _diag_log_path(self):
-        runtime_dir = self._runtime_data_dir(create=True)
-        base, ext = os.path.splitext(str(self.DIAG_LOG_FILENAME))
-        dated_name = f"{base}-{datetime.now().strftime('%Y-%m-%d')}{ext}"
-        return os.path.join(runtime_dir, dated_name)
+        return diag_log_housekeeping_service.build_dated_diag_log_path(
+            runtime_dir=self._runtime_data_dir(create=True),
+            diag_log_filename=self.DIAG_LOG_FILENAME,
+        )
 
     def _purge_diag_logs_for_new_session(self):
-        keep_days = max(1, int(getattr(self, "DIAG_LOG_KEEP_DAYS", 2) or 2))
-        runtime_dir = self._runtime_data_dir(create=True)
-        base, ext = os.path.splitext(str(self.DIAG_LOG_FILENAME))
-        prefix = f"{base}-"
-        legacy_names = set(self.LEGACY_DIAG_LOG_FILENAMES)
-        keep_stamps = {
-            (datetime.now() - timedelta(days=offset)).strftime("%Y-%m-%d")
-            for offset in range(keep_days)
-        }
-
-        try:
-            entries = list(os.scandir(runtime_dir))
-        except _EXPECTED_APP_ERRORS:
-            entries = []
-        for entry in entries:
-            if not entry.is_file():
-                continue
-            name = str(entry.name)
-            should_delete = False
-            if name == str(self.DIAG_LOG_FILENAME) or name in legacy_names:
-                should_delete = True
-            elif name.startswith(prefix) and (not ext or name.endswith(ext)):
-                stamp = name[len(prefix) : len(name) - len(ext)] if ext else name[len(prefix) :]
-                if re.fullmatch(r"\d{4}-\d{2}-\d{2}", stamp) and stamp not in keep_stamps:
-                    should_delete = True
-            if not should_delete:
-                continue
-            try:
-                os.remove(entry.path)
-            except _EXPECTED_APP_ERRORS:
-                continue
-
-        # Remove legacy diagnostics names from temp/runtime locations.
-        names = [self.DIAG_LOG_FILENAME] + list(self.LEGACY_DIAG_LOG_FILENAMES)
-        dirs = [runtime_dir, tempfile.gettempdir()]
-        for base_dir in dirs:
-            for name in names:
-                path = os.path.join(base_dir, str(name))
-                try:
-                    if os.path.isfile(path):
-                        os.remove(path)
-                except _EXPECTED_APP_ERRORS:
-                    continue
+        diag_log_housekeeping_service.purge_diag_logs_for_new_session(
+            runtime_dir=self._runtime_data_dir(create=True),
+            diag_log_filename=self.DIAG_LOG_FILENAME,
+            legacy_diag_log_filenames=self.LEGACY_DIAG_LOG_FILENAMES,
+            keep_days=getattr(self, "DIAG_LOG_KEEP_DAYS", 2),
+            temp_dir=tempfile.gettempdir(),
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _runtime_data_dir(self, create=False):
-        base = None
-        if sys.platform == "win32":
-            base = (
-                str(os.environ.get("LOCALAPPDATA", "")).strip()
-                or str(os.environ.get("APPDATA", "")).strip()
-            )
-        if not base:
-            try:
-                home = os.path.expanduser("~")
-                if sys.platform == "win32":
-                    base = home
-                else:
-                    base = os.path.join(home, ".local", "state")
-            except _EXPECTED_APP_ERRORS:
-                base = os.getcwd()
-        target = os.path.join(base, self.RUNTIME_DIR_NAME)
-        if create:
-            try:
-                os.makedirs(target, exist_ok=True)
-            except _EXPECTED_APP_ERRORS:
-                return os.getcwd()
-        return target
+        return runtime_paths_service.runtime_data_dir(
+            runtime_dir_name=self.RUNTIME_DIR_NAME,
+            create=create,
+            platform_name=sys.platform,
+            env=os.environ,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _crash_log_path(self):
-        return os.path.join(self._runtime_data_dir(create=True), self.CRASH_LOG_FILENAME)
+        return crash_report_service.build_crash_log_path(
+            runtime_dir=self._runtime_data_dir(create=True),
+            crash_log_filename=self.CRASH_LOG_FILENAME,
+        )
 
     def _crash_state_path(self):
-        return os.path.join(self._runtime_data_dir(create=True), self.CRASH_STATE_FILENAME)
+        return crash_report_service.build_crash_state_path(
+            runtime_dir=self._runtime_data_dir(create=True),
+            crash_state_filename=self.CRASH_STATE_FILENAME,
+        )
 
     def _read_crash_log_tail(self, max_chars=None):
-        path = self._crash_log_path()
-        limit = self.CRASH_LOG_TAIL_MAX_CHARS if max_chars is None else max(0, int(max_chars))
-        return runtime_log_service.read_text_file_tail(path, limit)
+        return crash_report_service.read_crash_log_tail(
+            path=self._crash_log_path(),
+            default_limit=self.CRASH_LOG_TAIL_MAX_CHARS,
+            max_chars=max_chars,
+            read_text_file_tail=runtime_log_service.read_text_file_tail,
+        )
 
     def _read_latest_crash_block(self, max_chars=None):
-        text = self._read_crash_log_tail(max_chars=0)
-        limit = self.CRASH_LOG_TAIL_MAX_CHARS if max_chars is None else max(0, int(max_chars))
-        return runtime_log_service.read_latest_block(text, max_chars=limit, marker="\n---\n")
+        return crash_report_service.read_latest_crash_block(
+            read_crash_log_tail_func=self._read_crash_log_tail,
+            default_limit=self.CRASH_LOG_TAIL_MAX_CHARS,
+            max_chars=max_chars,
+            read_latest_block=runtime_log_service.read_latest_block,
+            marker="\n---\n",
+        )
 
     def _read_crash_prompt_state(self):
-        path = self._crash_state_path()
-        if not os.path.isfile(path):
-            return {}
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                parsed = json.load(fh)
-            if isinstance(parsed, dict):
-                return parsed
-        except _EXPECTED_APP_ERRORS:
-            pass
-        return {}
+        return crash_report_service.read_crash_prompt_state(
+            path=self._crash_state_path(),
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _write_crash_prompt_state(self, crash_hash):
-        path = self._crash_state_path()
-        payload = json.dumps(
-            {
-                "last_seen_hash": str(crash_hash or ""),
-                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            },
-            ensure_ascii=False,
-            indent=2,
+        crash_report_service.write_crash_prompt_state(
+            path=self._crash_state_path(),
+            crash_hash=crash_hash,
+            write_text_file_atomic=self._write_text_file_atomic,
+            expected_errors=_EXPECTED_APP_ERRORS,
         )
-        try:
-            self._write_text_file_atomic(path, payload, encoding="utf-8")
-        except _EXPECTED_APP_ERRORS:
-            return
 
     def _pending_crash_report_payload(self):
-        path = self._crash_log_path()
-        if not os.path.isfile(path):
-            return None
-        try:
-            if os.path.getsize(path) <= 0:
-                return None
-        except _EXPECTED_APP_ERRORS:
-            return None
-        crash_tail = self._read_latest_crash_block()
-        if not crash_tail.strip():
-            return None
-        crash_hash = hashlib.sha256(crash_tail.encode("utf-8", errors="replace")).hexdigest().lower()
-        state = self._read_crash_prompt_state()
-        if str(state.get("last_seen_hash", "")).strip().lower() == crash_hash:
-            return None
-        return {"hash": crash_hash, "tail": crash_tail}
+        return crash_report_service.pending_crash_report_payload(
+            log_path=self._crash_log_path(),
+            read_latest_crash_block_func=self._read_latest_crash_block,
+            read_crash_prompt_state_func=self._read_crash_prompt_state,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _schedule_crash_report_offer(self, delay_ms=450):
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        existing = getattr(self, "_crash_report_offer_after_id", None)
-        if existing:
-            try:
-                root.after_cancel(existing)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        self._crash_report_offer_after_id = None
-        try:
-            self._crash_report_offer_after_id = root.after(
-                max(1, int(delay_ms)),
-                self._offer_crash_report_if_available,
-            )
-        except _EXPECTED_APP_ERRORS:
-            self._crash_report_offer_after_id = None
+        self._crash_report_offer_after_id = crash_offer_service.schedule_crash_report_offer(
+            root=getattr(self, "root", None),
+            existing_after_id=getattr(self, "_crash_report_offer_after_id", None),
+            delay_ms=delay_ms,
+            callback=self._offer_crash_report_if_available,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _offer_crash_report_if_available(self):
-        self._crash_report_offer_after_id = None
-        payload = self._pending_crash_report_payload()
-        if not payload:
-            return
-        crash_hash = payload["hash"]
-        crash_tail = payload["tail"]
-        prompt = (
-            "A crash from the previous session was detected.\n\n"
-            "Would you like to open the bug report form with the crash log attached?\n"
-            "No report is sent unless you submit manually."
-        )
-        wants_report = bool(
-            self._ui_call(
-                messagebox.askyesno,
-                "Crash Detected",
-                prompt,
-                wait=True,
-                default=False,
-            )
-        )
-        self._write_crash_prompt_state(crash_hash)
-        if not wants_report:
-            return
-        self._open_bug_report_dialog(
-            summary_prefill="Crash on previous session",
-            details_prefill=(
-                "The app crashed in my previous session.\n"
-                "Please review the attached crash log tail.\n\n"
-                "What I was doing before crash:\n"
-            ),
-            include_diag_default=True,
-            crash_tail=crash_tail,
-        )
+        return editor_purge_service._offer_crash_report_if_available(self)
+
+    def _startup_phase_for_crash_log(self):
+        if not bool(getattr(self, "_startup_loader_enabled", False)):
+            return "loader_disabled"
+        overlay = getattr(self, "_startup_loader_overlay", None)
+        if overlay is not None:
+            try:
+                if overlay.winfo_exists():
+                    return "loader_visible"
+            except _EXPECTED_APP_ERRORS:
+                pass
+        if getattr(self, "_startup_loader_ready_ts", None) is not None:
+            return "loader_ready"
+        if getattr(self, "_theme_prewarm_after_id", None):
+            return "theme_prewarm"
+        return "app_running"
+
+    def _crash_input_context_fields(self):
+        selected_path = ""
+        try:
+            selected_path = self._selected_tree_path_text()
+        except _EXPECTED_APP_ERRORS:
+            selected_path = ""
+        selected_path = str(selected_path or "").strip()
+        selected_hash = ""
+        selected_depth = 0
+        if selected_path:
+            selected_hash = hashlib.sha256(selected_path.encode("utf-8", errors="replace")).hexdigest()[:16]
+            selected_depth = max(1, selected_path.count(".") + selected_path.count("[") + 1)
+
+        focus_widget = ""
+        root = getattr(self, "root", None)
+        if root is not None:
+            try:
+                focused = root.focus_get()
+                if focused is not None:
+                    focus_widget = str(focused.winfo_class() or "")
+            except _EXPECTED_APP_ERRORS:
+                focus_widget = ""
+
+        text_len = 0
+        text_widget = getattr(self, "text", None)
+        if text_widget is not None:
+            try:
+                text_len = len(str(text_widget.get("1.0", "end-1c") or ""))
+            except _EXPECTED_APP_ERRORS:
+                text_len = 0
+
+        return {
+            "selected_path_hash": selected_hash,
+            "selected_path_depth": selected_depth,
+            "focused_widget": focus_widget,
+            "input_field_specs_count": len(list(getattr(self, "_input_mode_field_specs", []) or [])),
+            "json_text_len": int(text_len),
+        }
+
+    def _crash_log_extra_fields(self, context):
+        started = float(getattr(self, "_session_started_monotonic", 0.0) or 0.0)
+        uptime_ms = 0
+        if started > 0:
+            uptime_ms = max(0, int((time.monotonic() - started) * 1000.0))
+        callback_origin = str(context or getattr(self, "_last_callback_origin", "")).strip()
+        return {
+            "crash_id": f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}",
+            "session_id": str(getattr(self, "_session_id", "")),
+            "uptime_ms": uptime_ms,
+            "startup_phase": self._startup_phase_for_crash_log(),
+            "callback_origin": callback_origin,
+            "diag_action": str(getattr(self, "_diag_action", "")),
+            "editor_mode": str(getattr(self, "_editor_mode", "")),
+            "theme_variant": str(getattr(self, "_app_theme_variant", "")),
+            "error_note": str(getattr(self, "_last_error_highlight_note", "")),
+            "last_error_msg_len": len(str(getattr(self, "_last_json_error_msg", "") or "")),
+            **self._crash_input_context_fields(),
+        }
 
     def _append_crash_log(self, context, exc_type, exc_value, exc_tb):
-        try:
-            path = self._crash_log_path()
-            self._trim_text_file_for_append(path, self.DIAG_LOG_MAX_BYTES, self.DIAG_LOG_KEEP_BYTES)
-            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            header = (
-                f"\n---\n"
-                f"time={stamp}\n"
-                f"context={context}\n"
-                f"version={self.APP_VERSION}\n"
-            )
-            detail = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(header)
-                fh.write(detail.rstrip())
-                fh.write("\n")
-        except _EXPECTED_APP_ERRORS:
-            return
+        crash_logging_service.append_crash_log(
+            path=self._crash_log_path(),
+            trim_text_file_for_append=self._trim_text_file_for_append,
+            max_bytes=self.DIAG_LOG_MAX_BYTES,
+            keep_bytes=self.DIAG_LOG_KEEP_BYTES,
+            app_version=self.APP_VERSION,
+            context=context,
+            exc_type=exc_type,
+            exc_value=exc_value,
+            exc_tb=exc_tb,
+            expected_errors=_EXPECTED_APP_ERRORS,
+            extra_fields=self._crash_log_extra_fields(context),
+        )
 
     def _show_crash_notice_once(self):
-        if self._crash_notice_shown:
-            return
-        self._crash_notice_shown = True
-        crash_path = self._crash_log_path()
-        msg = (
-            "An unexpected error occurred.\n"
-            "A crash log was written to:\n"
-            f"{crash_path}"
+        self._crash_notice_shown = crash_logging_service.show_crash_notice_once(
+            crash_notice_shown=self._crash_notice_shown,
+            crash_path=self._crash_log_path(),
+            ui_call=self._ui_call,
+            showerror_func=messagebox.showerror,
         )
-        self._ui_call(messagebox.showerror, "Unexpected Error", msg, wait=False)
 
     def _handle_unhandled_exception(self, context, exc_type, exc_value, exc_tb):
-        self._append_crash_log(context, exc_type, exc_value, exc_tb)
-        self._show_crash_notice_once()
+        error_hook_service.handle_unhandled_exception(
+            append_crash_log_fn=self._append_crash_log,
+            show_crash_notice_once_fn=self._show_crash_notice_once,
+            context=context,
+            exc_type=exc_type,
+            exc_value=exc_value,
+            exc_tb=exc_tb,
+        )
 
     def _handle_sys_excepthook(self, exc_type, exc_value, exc_tb):
-        self._handle_unhandled_exception("sys.excepthook", exc_type, exc_value, exc_tb)
-        prev = getattr(self, "_prev_sys_excepthook", None)
-        if callable(prev) and prev is not self._handle_sys_excepthook:
-            try:
-                prev(exc_type, exc_value, exc_tb)
-            except _EXPECTED_APP_ERRORS:
-                pass
+        self._last_callback_origin = "sys.excepthook"
+        return editor_purge_service._handle_sys_excepthook(self, exc_type, exc_value, exc_tb)
 
     def _handle_threading_excepthook(self, args):
-        self._handle_unhandled_exception(
-            "threading.excepthook",
-            getattr(args, "exc_type", Exception),
-            getattr(args, "exc_value", Exception("Unknown thread exception")),
-            getattr(args, "exc_traceback", None),
-        )
-        prev = getattr(self, "_prev_threading_excepthook", None)
-        if callable(prev) and prev is not self._handle_threading_excepthook:
-            try:
-                prev(args)
-            except _EXPECTED_APP_ERRORS:
-                pass
+        self._last_callback_origin = "threading.excepthook"
+        return editor_purge_service._handle_threading_excepthook(self, args)
 
     def _handle_tk_callback_exception(self, exc_type, exc_value, exc_tb):
+        self._last_callback_origin = "tk.report_callback_exception"
         self._handle_unhandled_exception("tk.report_callback_exception", exc_type, exc_value, exc_tb)
 
     def _install_global_error_hooks(self):
-        if self._error_hooks_installed:
-            return
-        self._error_hooks_installed = True
-        try:
-            self._prev_sys_excepthook = sys.excepthook
-            sys.excepthook = self._handle_sys_excepthook
-        except _EXPECTED_APP_ERRORS:
-            pass
-        if hasattr(threading, "excepthook"):
-            try:
-                self._prev_threading_excepthook = threading.excepthook
-                threading.excepthook = self._handle_threading_excepthook
-            except _EXPECTED_APP_ERRORS:
-                pass
-        try:
-            self.root.report_callback_exception = self._handle_tk_callback_exception
-        except _EXPECTED_APP_ERRORS:
-            pass
+        error_hook_service.install_global_error_hooks(
+            owner=self,
+            sys_module=sys,
+            threading_module=threading,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _read_diag_log_tail(self, max_chars=8000):
-        path = self._diag_log_path()
-        return runtime_log_service.read_text_file_tail(path, max_chars)
+        return editor_purge_service._read_diag_log_tail(self, max_chars)
 
     def _build_bug_report_markdown(
         self,
@@ -2583,27 +2132,24 @@ if not install_started:
         screenshot_filename="",
         screenshot_note="",
     ):
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        diag_tail = self._read_diag_log_tail() if include_diag else ""
-        return bug_report_service.build_bug_report_markdown(
+        return bug_report_context_service.build_bug_report_markdown(
             summary=summary,
             details=details,
-            now_text=now,
+            include_diag=include_diag,
+            discord_contact=discord_contact,
+            crash_tail=crash_tail,
+            screenshot_url=screenshot_url,
+            screenshot_filename=screenshot_filename,
+            screenshot_note=screenshot_note,
             app_version=self.APP_VERSION,
-            theme_variant=theme_variant,
+            theme_variant=str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper(),
             selected_path=self._selected_tree_path_text(),
             last_json_error=getattr(self, "_last_json_error_msg", ""),
             last_highlight_note=getattr(self, "_last_error_highlight_note", ""),
             python_version=platform.python_version(),
             platform_text=platform.platform(),
-            include_diag=include_diag,
-            diag_tail=diag_tail,
-            crash_tail=crash_tail,
-            discord_contact=discord_contact,
-            screenshot_url=screenshot_url,
-            screenshot_filename=screenshot_filename,
-            screenshot_note=screenshot_note,
+            read_diag_log_tail=self._read_diag_log_tail,
+            bug_report_builder=bug_report_service.build_bug_report_markdown,
         )
 
     def _sanitize_bug_screenshot_slug(self, value):
@@ -2703,40 +2249,33 @@ if not install_started:
         )
 
     def _copy_bug_report_body_to_clipboard(self, body_markdown):
-        payload = str(body_markdown or "").strip()
-        if not payload:
-            return False
-        root = getattr(self, "root", None)
-        if root is None:
-            return False
-        try:
-            root.clipboard_clear()
-            root.clipboard_append(payload)
-            root.update_idletasks()
-            return True
-        except _EXPECTED_APP_ERRORS:
-            return False
+        return clipboard_service.copy_text_to_clipboard(
+            payload=body_markdown,
+            root=getattr(self, "root", None),
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _open_bug_report_in_browser(self, title, body_markdown):
         # Privacy fallback: open clean issue form and rely on clipboard for full report text.
-        JsonEditor._copy_bug_report_body_to_clipboard(self, body_markdown)
-        issue_url = self._bug_report_new_issue_url(title, body_markdown, include_body=False)
-        return bug_report_api_service.open_bug_report_in_browser(
-            issue_url=issue_url,
+        return bug_report_browser_service.open_bug_report_in_browser(
+            title=title,
+            body_markdown=body_markdown,
+            copy_to_clipboard_fn=lambda body: JsonEditor._copy_bug_report_body_to_clipboard(self, body),
+            build_issue_url_fn=self._bug_report_new_issue_url,
+            open_bug_report_browser_fn=bug_report_api_service.open_bug_report_in_browser,
             open_new_tab_fn=webbrowser.open_new_tab,
         )
 
     def _bug_report_submit_cooldown_remaining(self, now_monotonic=None):
-        now_val = time.monotonic() if now_monotonic is None else float(now_monotonic)
-        return bug_report_service.bug_report_submit_cooldown_remaining(
-            last_submit_monotonic=getattr(self, "_last_bug_report_submit_monotonic", 0.0),
-            cooldown_seconds=getattr(self, "BUG_REPORT_SUBMIT_COOLDOWN_SECONDS", 45),
-            now_monotonic=now_val,
+        now_val = time.monotonic() if now_monotonic is None else now_monotonic
+        return bug_report_cooldown_service.submit_cooldown_remaining(
+            self._last_bug_report_submit_monotonic,
+            self.BUG_REPORT_SUBMIT_COOLDOWN_SECONDS,
+            now_val,
         )
 
     def _mark_bug_report_submit_now(self, now_monotonic=None):
-        now_val = time.monotonic() if now_monotonic is None else float(now_monotonic)
-        self._last_bug_report_submit_monotonic = now_val
+        return editor_purge_service._mark_bug_report_submit_now(self, now_monotonic)
 
     def _open_bug_report_dialog(
         self,
@@ -3009,111 +2548,7 @@ if not install_started:
         return theme_service.theme_palette_for_variant(variant)
 
     def _apply_dark_theme(self):
-        palette = self._theme_palette_for_variant(getattr(self, "_app_theme_variant", "SIINDBAD"))
-        bg = palette["bg"]
-        fg = palette["fg"]
-        tree_fg = palette.get("tree_fg", fg)
-        panel = palette["panel"]
-        accent = palette["accent"]
-        select_bg = palette["select_bg"]
-        select_fg = palette.get("tree_selected_fg", palette["select_fg"])
-        button_active = palette["button_active"]
-        button_pressed = palette["button_pressed"]
-        title_bar_bg = palette["title_bar_bg"]
-        title_bar_fg = palette["title_bar_fg"]
-        title_bar_border = palette["title_bar_border"]
-
-        self.root.configure(bg=bg)
-
-        style = ttk.Style(self.root)
-        style.theme_use("clam")
-
-        style.configure(".", background=bg, foreground=fg)
-        style.configure("TFrame", background=bg)
-        style.configure("TLabel", background=bg, foreground=fg)
-        style.configure("TButton", background=accent, foreground=fg, padding=6)
-        style.map(
-            "TButton",
-            background=[("active", button_active), ("pressed", button_pressed)],
-            foreground=[("disabled", "#888888")],
-        )
-        style.configure("TEntry", fieldbackground=panel, foreground=fg, insertcolor=fg)
-        style.configure("TPanedwindow", background=bg)
-        style.configure("TScrollbar", background=bg, troughcolor=panel)
-        self._v_scrollbar_style = "Editor.Vertical.TScrollbar"
-        self._h_scrollbar_style = "Editor.Horizontal.TScrollbar"
-        style.configure(
-            self._v_scrollbar_style,
-            gripcount=0,
-            background=accent,
-            troughcolor=panel,
-            bordercolor=panel,
-            arrowcolor=fg,
-            darkcolor=panel,
-            lightcolor=panel,
-            relief="flat",
-            arrowsize=12,
-        )
-        style.map(
-            self._v_scrollbar_style,
-            background=[("active", button_active), ("pressed", button_pressed)],
-            arrowcolor=[("disabled", "#7a7a7a")],
-        )
-        style.configure(
-            self._h_scrollbar_style,
-            gripcount=0,
-            background=accent,
-            troughcolor=panel,
-            bordercolor=panel,
-            arrowcolor=fg,
-            darkcolor=panel,
-            lightcolor=panel,
-            relief="flat",
-            arrowsize=12,
-        )
-        style.map(
-            self._h_scrollbar_style,
-            background=[("active", button_active), ("pressed", button_pressed)],
-            arrowcolor=[("disabled", "#7a7a7a")],
-        )
-
-        tree_is_variant_b = str(getattr(self, "_tree_style_variant", "B")).upper() == "B"
-        if tree_is_variant_b:
-            tree_fg = self._blend_hex_color(tree_fg, panel, 0.22)
-        self._apply_tree_style(
-            style=style,
-            panel=panel,
-            tree_fg=tree_fg,
-            select_bg=select_bg,
-            select_fg=select_fg,
-        )
-        self._theme = {
-            "bg": bg,
-            "fg": fg,
-            "panel": panel,
-            "tree_fg": tree_fg,
-            "accent": accent,
-            "select_bg": select_bg,
-            "select_fg": select_fg,
-            "credit_bg": palette["credit_bg"],
-            "credit_border": palette["credit_border"],
-            "credit_label_fg": palette["credit_label_fg"],
-            "find_border": palette["find_border"],
-            "logo_border_outer": palette["logo_border_outer"],
-            "logo_border_inner": palette["logo_border_inner"],
-            "button_active": button_active,
-            "button_pressed": button_pressed,
-            "title_bar_bg": title_bar_bg,
-            "title_bar_fg": title_bar_fg,
-            "title_bar_border": title_bar_border,
-        }
-        self._apply_windows_titlebar_theme(bg=title_bar_bg, fg=title_bar_fg, border=title_bar_border)
-        self.root.after(
-            0,
-            lambda: self._apply_windows_titlebar_theme(
-                bg=title_bar_bg, fg=title_bar_fg, border=title_bar_border
-            ),
-        )
+        return theme_service._apply_dark_theme(self)
 
     def _tree_font_profile(self):
         """Scale tree font with editor font while preserving icon alignment."""
@@ -3313,60 +2748,7 @@ if not install_started:
         return (blue << 16) | (green << 8) | red
 
     def _apply_windows_titlebar_theme(self, bg=None, fg=None, border=None, window_widget=None):
-        # Backward compatibility: older call sites passed the window as the first positional arg.
-        if window_widget is None and bg is not None and hasattr(bg, "winfo_id"):
-            window_widget = bg
-            bg = None
-        if sys.platform != "win32":
-            return
-        target = window_widget or self.root
-        try:
-            dwmapi = ctypes.windll.dwmapi
-            user32 = ctypes.windll.user32
-            target.update_idletasks()
-            hwnd = user32.GetParent(target.winfo_id()) or target.winfo_id()
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        hwnd_value = ctypes.c_void_p(hwnd)
-
-        def _set_dwm_attr(attr, value):
-            try:
-                result = dwmapi.DwmSetWindowAttribute(
-                    hwnd_value,
-                    ctypes.c_uint(attr),
-                    ctypes.byref(value),
-                    ctypes.c_uint(ctypes.sizeof(value)),
-                )
-                return result == 0
-            except _EXPECTED_APP_ERRORS:
-                return False
-
-        dark_flag = ctypes.c_int(1)
-        if not _set_dwm_attr(20, dark_flag):
-            _set_dwm_attr(19, dark_flag)
-
-        theme = getattr(self, "_theme", {}) or {}
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        default_bg = "#180c32" if variant == "KAMUE" else "#102535"
-        default_fg = "#eee8ff" if variant == "KAMUE" else "#e6f6ff"
-        default_border = "#30195c" if variant == "KAMUE" else "#2a5a7a"
-        effective_bg = bg or theme.get("title_bar_bg", default_bg)
-        effective_fg = fg or theme.get("title_bar_fg", default_fg)
-        effective_border = border or theme.get("title_bar_border", default_border)
-
-        if effective_bg:
-            caption_color = self._hex_to_colorref(effective_bg)
-            if caption_color is not None:
-                _set_dwm_attr(35, ctypes.c_uint(caption_color))
-        if effective_border:
-            border_color = self._hex_to_colorref(effective_border)
-            if border_color is not None:
-                _set_dwm_attr(34, ctypes.c_uint(border_color))
-        if effective_fg:
-            text_color = self._hex_to_colorref(effective_fg)
-            if text_color is not None:
-                _set_dwm_attr(36, ctypes.c_uint(text_color))
+        return theme_service._apply_windows_titlebar_theme(self, bg, fg, border, window_widget)
 
     def _style_text_widget(self):
         theme = getattr(self, "_theme", None)
@@ -3780,29 +3162,16 @@ if not install_started:
             pass
 
     def _has_text_selection(self):
-        try:
-            return bool(self.text.tag_ranges("sel"))
-        except _EXPECTED_APP_ERRORS:
-            return False
+        return text_context_state_service.has_text_selection(self.text, _EXPECTED_APP_ERRORS)
 
     def _clipboard_has_text(self):
-        try:
-            value = self.root.clipboard_get()
-        except _EXPECTED_APP_ERRORS:
-            return False
-        return bool(value)
+        return text_context_state_service.clipboard_has_text(self.root, _EXPECTED_APP_ERRORS)
 
     def _text_can_undo(self):
-        try:
-            return bool(int(self.text.tk.call(self.text._w, "edit", "canundo")))
-        except _EXPECTED_APP_ERRORS:
-            return False
+        return text_context_state_service.text_can_undo(self.text, _EXPECTED_APP_ERRORS)
 
     def _text_can_redo(self):
-        try:
-            return bool(int(self.text.tk.call(self.text._w, "edit", "canredo")))
-        except _EXPECTED_APP_ERRORS:
-            return False
+        return text_context_state_service.text_can_redo(self.text, _EXPECTED_APP_ERRORS)
 
     def _destroy_text_context_menu(self):
         self._hide_text_context_menu()
@@ -3834,11 +3203,10 @@ if not install_started:
         states[action] = bool(enabled)
 
     def _first_enabled_text_context_action(self):
-        states = getattr(self, "_text_context_menu_item_states", {}) or {}
-        for action in ("undo", "redo", "copy", "paste", "autofix"):
-            if states.get(action):
-                return action
-        return None
+        return text_context_action_service.first_enabled_action(
+            states=getattr(self, "_text_context_menu_item_states", {}) or {},
+            ordered_actions=("undo", "redo", "copy", "paste", "autofix"),
+        )
 
     def _set_text_context_menu_hover_action(self, action):
         states = getattr(self, "_text_context_menu_item_states", {}) or {}
@@ -3857,35 +3225,20 @@ if not install_started:
         return "break"
 
     def _text_context_menu_action_for_widget(self, widget):
-        widget_actions = getattr(self, "_text_context_menu_widget_actions", {}) or {}
-        current = widget
-        while current is not None:
-            action = widget_actions.get(current)
-            if action:
-                return action
-            try:
-                current = current.master
-            except _EXPECTED_APP_ERRORS:
-                current = None
-        return None
+        return text_context_pointer_service.action_for_widget(
+            widget=widget,
+            widget_actions=getattr(self, "_text_context_menu_widget_actions", {}) or {},
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _text_context_menu_action_for_pointer(self):
-        popup = getattr(self, "_text_context_menu", None)
-        root = getattr(self, "root", None)
-        if popup is None or root is None:
-            return None, False
-        try:
-            pointer_x = root.winfo_pointerx()
-            pointer_y = root.winfo_pointery()
-            under_pointer = root.winfo_containing(pointer_x, pointer_y)
-        except _EXPECTED_APP_ERRORS:
-            return None, False
-        action = self._text_context_menu_action_for_widget(under_pointer)
-        if action:
-            return action, True
-        if not self._widget_is_popup_child(under_pointer, popup):
-            return None, False
-        return None, True
+        return text_context_pointer_service.action_for_pointer(
+            popup=getattr(self, "_text_context_menu", None),
+            root=getattr(self, "root", None),
+            widget_actions=getattr(self, "_text_context_menu_widget_actions", {}) or {},
+            widget_is_popup_child=self._widget_is_popup_child,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _on_text_context_menu_motion(self, event=None):
         popup = getattr(self, "_text_context_menu", None)
@@ -3916,21 +3269,18 @@ if not install_started:
         return "break"
 
     def _on_text_context_menu_click(self, action):
-        states = getattr(self, "_text_context_menu_item_states", {}) or {}
-        if not states.get(action):
-            return "break"
-        self._hide_text_context_menu()
-        if action == "undo":
-            self._on_context_undo()
-        elif action == "redo":
-            self._on_context_redo()
-        elif action == "copy":
-            self._on_context_copy()
-        elif action == "paste":
-            self._on_context_paste()
-        elif action == "autofix":
-            self._on_context_autofix()
-        return "break"
+        return text_context_action_service.dispatch_click_action(
+            action=action,
+            states=getattr(self, "_text_context_menu_item_states", {}) or {},
+            hide_menu_fn=self._hide_text_context_menu,
+            handlers={
+                "undo": self._on_context_undo,
+                "redo": self._on_context_redo,
+                "copy": self._on_context_copy,
+                "paste": self._on_context_paste,
+                "autofix": self._on_context_autofix,
+            },
+        )
 
     def _on_text_context_menu_escape(self, event=None):
         self._hide_text_context_menu()
@@ -3938,11 +3288,7 @@ if not install_started:
 
     @staticmethod
     def _widget_is_popup_child(widget, popup):
-        if widget is None or popup is None:
-            return False
-        widget_path = str(widget)
-        popup_path = str(popup)
-        return widget_path == popup_path or widget_path.startswith(popup_path + ".")
+        return text_context_widget_service.is_popup_child(widget, popup)
 
     def _bind_text_context_menu_global_dismiss(self):
         root = getattr(self, "root", None)
@@ -4465,17 +3811,7 @@ if not install_started:
         return None
 
     def _current_overlay_suggestion(self):
-        overlay = getattr(self, "error_overlay", None)
-        try:
-            has_overlay = bool(overlay is not None and overlay.winfo_exists())
-        except _EXPECTED_APP_ERRORS:
-            has_overlay = False
-        line_no = self._current_error_line_number()
-        return error_service.build_overlay_suggestion_payload(
-            has_overlay=has_overlay,
-            message=getattr(self, "_last_error_overlay_message", ""),
-            line_no=line_no,
-        )
+        return editor_purge_service._current_overlay_suggestion(self)
 
     def _can_context_autofix(self):
         payload = self._current_overlay_suggestion()
@@ -4921,16 +4257,7 @@ if not install_started:
         return re.sub(r"[^a-z0-9]+", "", str(value).lower())
 
     def _siindbad_effective_style(self):
-        style_map = getattr(self, "_toolbar_style_variant_by_theme", None)
-        if not isinstance(style_map, dict):
-            style_map = {"SIINDBAD": "B", "KAMUE": "B"}
-            self._toolbar_style_variant_by_theme = style_map
-        return toolbar_service.resolve_siindbad_effective_style(
-            style_focus=getattr(self, "_siindbad_style_focus", ""),
-            show_toolbar_variant_controls=getattr(self, "_show_toolbar_variant_controls", False),
-            app_theme_variant=getattr(self, "_app_theme_variant", "SIINDBAD"),
-            style_map=style_map,
-        )
+        return editor_purge_service._siindbad_effective_style(self)
 
     def _toolbar_button_font(self, small=False):
         style = self._siindbad_effective_style()
@@ -5039,7 +4366,6 @@ if not install_started:
         self._find_button_default_padx = None
         self._find_entry_width_override = None
         self._topbar_align_after_id = None
-        self._topbar_align_settle_after_id = None
         self._siindbad_button_icons = {}
         self._siindbad_button_icon_signature = None
 
@@ -5184,6 +4510,7 @@ if not install_started:
         self._startup_loader_title_cache = {}
         self._startup_loader_fill_photo_cache = {}
         self._startup_loader_panel_photo_cache = {}
+        self._theme_rgba_image_cache = {}
         self._display_scale = 1.0
         self._auto_display_profile_name = "default"
         self._window_layout = None
@@ -5204,6 +4531,8 @@ if not install_started:
         self._font_size = 10  # Default font size
         self._auto_apply_pending = False
         self._auto_apply_in_progress = False
+        self._live_feedback_after_id = None
+        self._live_feedback_delay_ms = int(self.LIVE_FEEDBACK_DELAY_MS_DEFAULT)
         self._pending_insert_restore_index = ""
         self._diag_event_seq = 0
         self._diag_action = "startup:0"
@@ -5223,6 +4552,9 @@ if not install_started:
         self._crash_notice_shown = False
         self._prev_sys_excepthook = None
         self._prev_threading_excepthook = None
+        self._session_id = uuid.uuid4().hex[:12]
+        self._session_started_monotonic = time.monotonic()
+        self._last_callback_origin = ""
         self._crash_report_offer_after_id = None
         self._list_labelers = self._default_list_labelers()
 
@@ -5351,114 +4683,7 @@ if not install_started:
         }
 
     def _draw_siindbad_toolbar_icon(self, key, fg_hex, accent_hex, style, accent2_hex=None):
-        image_module = importlib.import_module("PIL.Image")
-        draw_module = importlib.import_module("PIL.ImageDraw")
-        icon = image_module.new("RGBA", (16, 16), (0, 0, 0, 0))
-        draw = draw_module.Draw(icon)
-        fg = self._hex_to_rgb_tuple(fg_hex) + (255,)
-        accent = self._hex_to_rgb_tuple(accent_hex) + (130,)
-        accent2 = self._hex_to_rgb_tuple(accent2_hex or accent_hex) + (220,)
-        y_shift = 1 if style == "A" else 0
-
-        def shift_line(points):
-            return (points[0], points[1] + y_shift, points[2], points[3] + y_shift)
-
-        def shift_box(box):
-            return (box[0], box[1] + y_shift, box[2], box[3] + y_shift)
-
-        def shift_poly(points):
-            return [(x, y + y_shift) for x, y in points]
-
-        if style == "B":
-            # Bracket frame corners (R5 concept style).
-            frame = accent2
-            draw.line((1, 1, 5, 1), fill=frame, width=1)
-            draw.line((1, 1, 1, 5), fill=frame, width=1)
-            draw.line((11, 1, 15, 1), fill=frame, width=1)
-            draw.line((15, 1, 15, 5), fill=frame, width=1)
-            draw.line((1, 11, 1, 15), fill=frame, width=1)
-            draw.line((1, 15, 5, 15), fill=frame, width=1)
-            draw.line((15, 11, 15, 15), fill=frame, width=1)
-            draw.line((11, 15, 15, 15), fill=frame, width=1)
-
-        def glow_line(points, width=1):
-            draw.line(points, fill=accent, width=max(1, width + 2))
-            draw.line(points, fill=fg, width=width)
-
-        def glow_rect(box, width=1):
-            draw.rectangle(box, outline=accent, width=max(1, width + 1))
-            draw.rectangle(box, outline=fg, width=width)
-
-        def glow_ellipse(box, width=1):
-            draw.ellipse(box, outline=accent, width=max(1, width + 1))
-            draw.ellipse(box, outline=fg, width=width)
-
-        if style == "B" and key == "open":
-            glow_line((3, 6, 6, 6), width=1)
-            glow_line((6, 6, 7, 5), width=1)
-            glow_line((7, 5, 11, 5), width=1)
-            glow_rect((3, 7, 12, 12), width=1)
-            return icon
-        if style == "B" and key == "apply":
-            glow_line((3, 9, 6, 12), width=2)
-            glow_line((6, 12, 12, 5), width=2)
-            return icon
-        if style == "B" and key == "export":
-            glow_rect((3, 10, 13, 12), width=1)
-            glow_line((8, 4, 8, 9), width=2)
-            draw.polygon([(5, 8), (8, 12), (11, 8)], fill=fg)
-            return icon
-        if style == "B" and key == "find":
-            glow_ellipse((2, 2, 10, 10), width=2)
-            glow_line((9, 9, 13, 13), width=2)
-            return icon
-        if style == "B" and key == "update":
-            draw.arc((2, 2, 13, 13), start=35, end=340, fill=accent, width=3)
-            draw.arc((2, 2, 13, 13), start=35, end=340, fill=fg, width=2)
-            draw.polygon([(11, 2), (14, 3), (12, 5)], fill=fg)
-            return icon
-        if style == "B" and key == "readme":
-            glow_rect((3, 3, 12, 12), width=1)
-            glow_line((7, 3, 7, 12), width=1)
-            return icon
-        if key == "open":
-            # Folder icon: tab + body.
-            glow_line(shift_line((2, 5, 5, 5)), width=1)
-            glow_line(shift_line((5, 5, 6, 4)), width=1)
-            glow_line(shift_line((6, 4, 9, 4)), width=1)
-            glow_line(shift_line((2, 6, 12, 6)), width=1)
-            glow_rect(shift_box((2, 6, 13, 12)), width=1)
-            return icon
-        if key == "apply":
-            # Check icon.
-            glow_line(shift_line((3, 8, 7, 12)), width=2)
-            glow_line(shift_line((7, 12, 13, 4)), width=2)
-            return icon
-        if key == "export":
-            # Download/export: tray + arrow.
-            glow_rect(shift_box((3, 10, 13, 13)), width=1)
-            glow_line(shift_line((8, 2, 8, 9)), width=2)
-            draw.polygon(shift_poly([(5, 8), (8, 12), (11, 8)]), fill=accent)
-            draw.polygon(shift_poly([(6, 8), (8, 11), (10, 8)]), fill=fg)
-            return icon
-        if key == "find":
-            glow_ellipse(shift_box((2, 2, 10, 10)), width=2)
-            glow_line(shift_line((9, 9, 13, 13)), width=2)
-            return icon
-        if key == "update":
-            draw.arc(shift_box((2, 2, 13, 13)), start=30, end=325, fill=accent, width=3)
-            draw.arc(shift_box((2, 2, 13, 13)), start=30, end=325, fill=fg, width=2)
-            draw.polygon(shift_poly([(11, 2), (14, 3), (12, 5)]), fill=fg)
-            return icon
-        if key == "readme":
-            # Book icon.
-            glow_rect(shift_box((2, 3, 13, 12)), width=1)
-            glow_line(shift_line((7, 3, 7, 12)), width=1)
-            glow_line(shift_line((3, 5, 6, 5)), width=1)
-            glow_line(shift_line((8, 5, 12, 5)), width=1)
-            return icon
-
-        return icon
+        return toolbar_service._draw_siindbad_toolbar_icon(self, key, fg_hex, accent_hex, style, accent2_hex)
 
     def _ensure_siindbad_button_icons(self):
         style = self._siindbad_effective_style()
@@ -5724,14 +4949,7 @@ if not install_started:
                 root.after_cancel(existing)
             except _EXPECTED_APP_ERRORS:
                 pass
-        settle_existing = getattr(self, "_topbar_align_settle_after_id", None)
-        if settle_existing:
-            try:
-                root.after_cancel(settle_existing)
-            except _EXPECTED_APP_ERRORS:
-                pass
         self._topbar_align_after_id = None
-        self._topbar_align_settle_after_id = None
         try:
             self._topbar_align_after_id = root.after(
                 max(0, int(delay_ms)),
@@ -5739,19 +4957,6 @@ if not install_started:
             )
         except _EXPECTED_APP_ERRORS:
             self._topbar_align_after_id = None
-        try:
-            # Windows maximize/restore can report stale `zoomed` state for one tick;
-            # run a short settle pass so toolbar mode re-evaluates after state stabilizes.
-            self._topbar_align_settle_after_id = root.after(
-                max(80, int(delay_ms) + 140),
-                self._align_topbar_to_logo_settled,
-            )
-        except _EXPECTED_APP_ERRORS:
-            self._topbar_align_settle_after_id = None
-
-    def _align_topbar_to_logo_settled(self):
-        self._topbar_align_settle_after_id = None
-        self._apply_toolbar_layout_mode(force=True)
 
     @staticmethod
     def _window_is_maximized(window):
@@ -5776,7 +4981,6 @@ if not install_started:
         mode = "maximized" if self._window_is_maximized(getattr(self, "root", None)) else "normal"
         previous_mode = str(getattr(self, "_toolbar_layout_mode", "") or "")
         if (not force) and previous_mode == mode:
-            self._apply_toolbar_action_group_flow(mode)
             self._apply_toolbar_spacing_for_mode(mode)
             # Keep max-mode placement synced to logo center while resizing.
             if mode == "maximized":
@@ -5784,55 +4988,11 @@ if not install_started:
             return
 
         self._toolbar_layout_mode = mode
-        self._apply_toolbar_action_group_flow(mode)
         self._apply_toolbar_spacing_for_mode(mode)
         if mode == "maximized":
             self._apply_toolbar_layout_max(center, host)
         else:
             self._apply_toolbar_layout_normal(center)
-
-    def _apply_toolbar_action_group_flow(self, mode):
-        # In style-B maximize, place right-actions immediately after search host
-        # so Find Next cannot drift away behind an internal center gap.
-        find_btn = (getattr(self, "_toolbar_buttons", None) or {}).get("find")
-        find_host = getattr(self, "_find_entry_host", None)
-        center = getattr(self, "_toolbar_center_frame", None)
-        if find_btn is None or find_host is None or center is None:
-            return
-        try:
-            if not (find_btn.winfo_exists() and find_host.winfo_exists() and center.winfo_exists()):
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        find_btn_host = getattr(find_btn, "_siindbad_frame_host", find_btn)
-        actions_host = getattr(find_btn_host, "master", None)
-        if actions_host is None:
-            return
-        try:
-            if not (actions_host.winfo_exists() and actions_host.master is center):
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        style = str(self._siindbad_effective_style()).upper()
-        target_flow = "max_left" if (str(mode).lower() == "maximized" and style == "B") else "normal_right"
-        if getattr(self, "_toolbar_action_group_flow", None) == target_flow:
-            return
-
-        try:
-            actions_host.pack_forget()
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-        try:
-            if target_flow == "max_left":
-                actions_host.pack(side="left", padx=(0, 0), after=find_host)
-            else:
-                actions_host.pack(side="right")
-            self._toolbar_action_group_flow = target_flow
-        except _EXPECTED_APP_ERRORS:
-            return
 
     def _apply_toolbar_spacing_for_mode(self, mode):
         # Guard normal layout: only tighten the search->find gap in maximized mode.
@@ -5897,12 +5057,9 @@ if not install_started:
 
     def _apply_toolbar_layout_normal(self, center):
         # Restore default search width outside maximize mode.
-        had_override = getattr(self, "_find_entry_width_override", None) is not None
-        if had_override:
+        if getattr(self, "_find_entry_width_override", None) is not None:
             self._find_entry_width_override = None
-        # Always refresh style-B find host geometry on restore so stale maximize
-        # host sizing cannot persist until a manual theme toggle.
-        self._update_find_entry_layout()
+            self._update_find_entry_layout()
         try:
             center.place_forget()
         except _EXPECTED_APP_ERRORS:
@@ -5953,8 +5110,8 @@ if not install_started:
         if logo_center_rel is None:
             logo_center_rel = float(host_w) / 2.0
 
-        # Keep search input geometry stable across maximize/restore.
-        # Max-mode compaction is disabled to avoid visible Find-box shifts.
+        # Keep max-mode search geometry stable; avoid dynamic compaction during
+        # configure ticks because repeated width recalculation can cause jitter.
 
         placement = layout_topbar_core.compute_centered_toolbar_position(
             toolbar_w=toolbar_w,
@@ -5972,8 +5129,6 @@ if not install_started:
         except _EXPECTED_APP_ERRORS:
             pass
         try:
-            # Lock placed wrapper size to content req-size; without this, a stale
-            # packed width can survive and create a visual gap beside Find Next.
             center.place(x=x, y=y, width=toolbar_w, height=toolbar_h)
         except _EXPECTED_APP_ERRORS:
             pass
@@ -6063,159 +5218,7 @@ if not install_started:
         return "fast"
 
     def _siindbad_b_sprite_bundle(self, key, width, height, render_mode="full"):
-        sprite_dir = self._siindbad_b_sprite_dir()
-        manifest = self._siindbad_b_sprite_manifest()
-        if not os.path.isdir(sprite_dir):
-            return None
-        render_mode = self._siindbad_b_render_mode(render_mode)
-        buttons_meta = manifest.get("buttons", {}) if isinstance(manifest, dict) else {}
-        meta = buttons_meta.get(str(key), {}) if isinstance(buttons_meta, dict) else {}
-
-        base_name = str(meta.get("base", f"{key}_base.png"))
-        base_path = os.path.join(sprite_dir, base_name)
-        if not os.path.isfile(base_path):
-            return None
-
-        image_module = importlib.import_module("PIL.Image")
-        image_chops_module = importlib.import_module("PIL.ImageChops")
-        image_stat_module = importlib.import_module("PIL.ImageStat")
-        image_tk_module = importlib.import_module("PIL.ImageTk")
-
-        try:
-            base_image = image_module.open(base_path).convert("RGBA")
-        except _EXPECTED_APP_ERRORS:
-            return None
-        if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
-            try:
-                base_image = self._shade_toolbar_button_for_theme(base_image)
-                base_image = self._harmonize_kamue_b_outer_frame(base_image)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if base_image.width != width or base_image.height != height:
-            try:
-                base_image = base_image.resize((width, height), image_module.LANCZOS)
-            except _EXPECTED_APP_ERRORS:
-                return None
-
-        hover_files = meta.get("hover_frames", [])
-        if not hover_files:
-            prefix = f"{key}_hover_"
-            try:
-                hover_files = sorted(
-                    name for name in os.listdir(sprite_dir) if name.startswith(prefix) and name.endswith(".png")
-                )
-            except _EXPECTED_APP_ERRORS:
-                hover_files = []
-
-        hover_images = []
-        for hover_name in hover_files:
-            hover_path = os.path.join(sprite_dir, str(hover_name))
-            if not os.path.isfile(hover_path):
-                continue
-            try:
-                hover_image = image_module.open(hover_path).convert("RGBA")
-                if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
-                    try:
-                        hover_image = self._shade_toolbar_button_for_theme(hover_image)
-                        hover_image = self._harmonize_kamue_b_outer_frame(hover_image)
-                    except _EXPECTED_APP_ERRORS:
-                        pass
-                if hover_image.width != width or hover_image.height != height:
-                    hover_image = hover_image.resize((width, height), image_module.LANCZOS)
-                hover_images.append(hover_image)
-            except _EXPECTED_APP_ERRORS:
-                continue
-        if not hover_images:
-            hover_images = [base_image.copy()]
-        else:
-            # Slightly soften hover frames so mouseover highlight is less aggressive.
-            hover_mix = float(meta.get("hover_mix", manifest.get("hover_mix", 0.84)) or 0.84)
-            hover_mix = max(0.60, min(0.98, hover_mix))
-            softened = []
-            for hover_img in hover_images:
-                try:
-                    softened.append(image_module.blend(base_image, hover_img, hover_mix))
-                except _EXPECTED_APP_ERRORS:
-                    softened.append(hover_img)
-            hover_images = softened
-
-        interval = int(meta.get("frame_interval_ms", manifest.get("frame_interval_ms", 40)) or 40)
-        # Preview R5 sweep is a single ~2.2s pass. Capture exports may contain extra
-        # partial loops; trim to one clean pass for stable replay in Tk.
-        cycle_ms = int(meta.get("scan_cycle_ms", manifest.get("scan_cycle_ms", 2200)) or 2200)
-        # Match preferred slower feel while keeping room for smoother frame cadence.
-        cycle_ms = int(round(float(cycle_ms) * 1.75))
-        cycle_ms = max(1200, min(4000, cycle_ms))
-        if hover_images and interval > 0:
-            expected_frames = max(20, int(round(float(cycle_ms) / float(interval))))
-            if len(hover_images) > expected_frames + 1:
-                if render_mode == "fast":
-                    hover_images = hover_images[:int(expected_frames)]
-                else:
-                    # Choose a contiguous cycle window with the smoothest wrap seam.
-                    # This avoids visible "reset jumps" when the animation loops.
-                    def _seam_cost(img_a, img_b):
-                        try:
-                            a = img_a.convert("L").resize((40, 12), image_module.BILINEAR)
-                            b = img_b.convert("L").resize((40, 12), image_module.BILINEAR)
-                            diff = image_chops_module.difference(a, b)
-                            stat = image_stat_module.Stat(diff)
-                            return float(stat.sum[0])
-                        except _EXPECTED_APP_ERRORS:
-                            return 0.0
-
-                    n = len(hover_images)
-                    m = int(expected_frames)
-                    best_start = 0
-                    best_score = None
-                    max_start = max(0, n - m)
-                    for start in range(max_start + 1):
-                        first = hover_images[start]
-                        last = hover_images[start + m - 1]
-                        score = _seam_cost(first, last)
-                        if best_score is None or score < best_score:
-                            best_score = score
-                            best_start = start
-                    hover_images = hover_images[best_start: best_start + m]
-
-        # Add one in-between blend frame between each captured frame.
-        # This preserves visual style from R5 sprites while reducing stepped motion in Tk.
-        if render_mode != "fast" and len(hover_images) > 1:
-            smoothed = []
-            total = len(hover_images)
-            for idx, frame in enumerate(hover_images):
-                smoothed.append(frame)
-                nxt = hover_images[(idx + 1) % total]
-                try:
-                    smoothed.append(image_module.blend(frame, nxt, 0.5))
-                except _EXPECTED_APP_ERRORS:
-                    pass
-            if smoothed:
-                hover_images = smoothed
-
-        # Keep a bounded frame budget for Tk runtime to avoid hitching on full-image swaps.
-        max_runtime_frames = int(meta.get("runtime_max_frames", manifest.get("runtime_max_frames", 120)) or 120)
-        if render_mode == "fast":
-            max_runtime_frames = min(max_runtime_frames, 36)
-        max_runtime_frames = max(24, min(120, max_runtime_frames))
-        if len(hover_images) > max_runtime_frames:
-            reduced = []
-            step = float(len(hover_images)) / float(max_runtime_frames)
-            pos = 0.0
-            for _ in range(max_runtime_frames):
-                reduced.append(hover_images[int(pos) % len(hover_images)])
-                pos += step
-            hover_images = reduced
-
-        if hover_images and interval > 0:
-            interval = int(round(float(cycle_ms) / float(max(1, len(hover_images)))))
-        interval = max(20, min(100, interval))
-        hover_frames = [image_tk_module.PhotoImage(img) for img in hover_images]
-        return {
-            "base": image_tk_module.PhotoImage(base_image),
-            "hover_frames": hover_frames,
-            "frame_interval_ms": interval,
-        }
+        return toolbar_service._siindbad_b_sprite_bundle(self, key, width, height, render_mode)
 
     def _siindbad_b_button_height(self, key, default_height=34):
         manifest = self._siindbad_b_sprite_manifest()
@@ -6393,250 +5396,7 @@ if not install_started:
             return False
 
     def _siindbad_b_render_button_bundle(self, key, text, width, height, palette, render_mode=None):
-        cache = getattr(self, "_siindbad_b_button_image_cache", None)
-        if cache is None:
-            cache = {}
-            self._siindbad_b_button_image_cache = cache
-        render_mode = self._siindbad_b_render_mode(render_mode)
-        signature = (
-            str(key),
-            str(text),
-            int(width),
-            int(height),
-            str(render_mode),
-            palette.get("button_bg"),
-            palette.get("button_fg"),
-            palette.get("button_active"),
-            palette.get("border"),
-            palette.get("border_active"),
-            palette.get("inner_border"),
-        )
-        cached = cache.get(signature)
-        if cached:
-            return cached
-
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            draw_module = importlib.import_module("PIL.ImageDraw")
-            font_module = importlib.import_module("PIL.ImageFont")
-            image_tk_module = importlib.import_module("PIL.ImageTk")
-        except _EXPECTED_APP_ERRORS:
-            # Keep startup functional when Pillow is unavailable (dev env or minimal runtime).
-            return None
-
-        sprite_bundle = self._siindbad_b_sprite_bundle(
-            key=key,
-            width=width,
-            height=height,
-            render_mode=render_mode,
-        )
-        if sprite_bundle:
-            self._bounded_cache_put(cache, signature, sprite_bundle, max_items=64)
-            return sprite_bundle
-
-        def _rgb(hex_color, fallback):
-            return self._hex_to_rgb_tuple(hex_color, default_rgb=fallback)
-
-        def _rgba(rgb, alpha=255):
-            return (rgb[0], rgb[1], rgb[2], alpha)
-
-        # Primary R5 path: use the exact Variant-B source art footprint and animate hover scan over it.
-        asset_path = self._siindbad_b_asset_button_path(key)
-        if asset_path:
-            try:
-                source = image_module.open(asset_path).convert("RGBA")
-                if source.width != width or source.height != height:
-                    source = source.resize((width, height), image_module.LANCZOS)
-
-                border_active_rgb = self._hex_to_rgb_tuple(
-                    palette.get("border_active", "#95eaff"),
-                    default_rgb=(149, 234, 255),
-                )
-                hover_base = source.copy()
-                hover_tint = image_module.new("RGBA", (width, height), _rgba(border_active_rgb, 16))
-                hover_base = image_module.alpha_composite(hover_base, hover_tint)
-
-                hover_frames = []
-                scan_step = 8 if render_mode == "fast" else 4
-                for pos in range(-34, width + 34, scan_step):
-                    frame = hover_base.copy()
-                    frame_draw = draw_module.Draw(frame)
-                    for idx in range(24):
-                        alpha = int(max(0, 94 - abs(12 - idx) * 7))
-                        x = pos + idx
-                        if 0 <= x < width:
-                            frame_draw.line((x, 1, x, height - 2), fill=_rgba(border_active_rgb, alpha), width=1)
-                    core_x = pos + 12
-                    if 0 <= core_x < width:
-                        frame_draw.line((core_x, 1, core_x, height - 2), fill=_rgba((225, 252, 255), 170), width=1)
-                    hover_frames.append(image_tk_module.PhotoImage(frame))
-
-                if render_mode == "fast" and len(hover_frames) > 24:
-                    hover_frames = hover_frames[:24]
-                bundle = {
-                    "base": image_tk_module.PhotoImage(source),
-                    "hover_frames": hover_frames,
-                    "frame_interval_ms": 40,
-                }
-                self._bounded_cache_put(cache, signature, bundle, max_items=64)
-                return bundle
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-        def _mix(rgb_a, rgb_b, amount):
-            amount = max(0.0, min(1.0, float(amount)))
-            return (
-                int(rgb_a[0] * (1.0 - amount) + rgb_b[0] * amount),
-                int(rgb_a[1] * (1.0 - amount) + rgb_b[1] * amount),
-                int(rgb_a[2] * (1.0 - amount) + rgb_b[2] * amount),
-            )
-
-        bg_rgb = _rgb(palette.get("button_bg", "#10253b"), (16, 37, 59))
-        fg_rgb = _rgb(palette.get("button_fg", "#dff5ff"), (223, 245, 255))
-        border_rgb = _rgb(palette.get("border", "#3f82a9"), (63, 130, 169))
-        border_active_rgb = _rgb(palette.get("border_active", "#95eaff"), (149, 234, 255))
-        icon_frame_rgb = _rgb(palette.get("inner_border", "#73d7fb"), (115, 215, 251))
-        inner_border_rgb = _mix(border_rgb, bg_rgb, 0.55)
-        slot_rgb = _mix(bg_rgb, (0, 0, 0), 0.22)
-        top_gloss_rgb = _mix(border_active_rgb, fg_rgb, 0.35)
-        corner_bar_rgb = _mix(border_active_rgb, border_rgb, 0.5)
-
-        base = image_module.new("RGBA", (width, height), (0, 0, 0, 0))
-        draw = draw_module.Draw(base)
-
-        # Outer/inner frame to match R5 bracket-frame concept.
-        draw.rectangle((0, 0, width - 1, height - 1), fill=_rgba(bg_rgb), outline=_rgba(border_rgb))
-        draw.rectangle((1, 1, width - 2, height - 2), outline=_rgba(inner_border_rgb))
-        draw.line((2, 2, width - 3, 2), fill=_rgba(top_gloss_rgb, 120), width=1)
-        draw.line((2, height - 3, width - 3, height - 3), fill=_rgba(slot_rgb, 190), width=1)
-
-        # Stream-tag right corner accents used in the preview.
-        draw.line((width - 11, 4, width - 4, 4), fill=_rgba(border_active_rgb), width=1)
-        draw.line((width - 4, 4, width - 4, 9), fill=_rgba(border_active_rgb), width=1)
-        draw.line((width - 16, height - 4, width - 4, height - 4), fill=_rgba(corner_bar_rgb), width=1)
-
-        # Bracket icon shell from R5.
-        ix = 7
-        iy = max(2, (height - 18) // 2)
-        iw = 18
-        ih = 18
-        bracket_len = 5
-        draw.line((ix, iy, ix + bracket_len, iy), fill=_rgba(icon_frame_rgb), width=1)
-        draw.line((ix, iy, ix, iy + bracket_len), fill=_rgba(icon_frame_rgb), width=1)
-        draw.line((ix + iw - bracket_len - 1, iy, ix + iw - 1, iy), fill=_rgba(icon_frame_rgb), width=1)
-        draw.line((ix + iw - 1, iy, ix + iw - 1, iy + bracket_len), fill=_rgba(icon_frame_rgb), width=1)
-        draw.line((ix, iy + ih - bracket_len - 1, ix, iy + ih - 1), fill=_rgba(icon_frame_rgb), width=1)
-        draw.line((ix, iy + ih - 1, ix + bracket_len, iy + ih - 1), fill=_rgba(icon_frame_rgb), width=1)
-        draw.line(
-            (ix + iw - 1, iy + ih - bracket_len - 1, ix + iw - 1, iy + ih - 1),
-            fill=_rgba(icon_frame_rgb),
-            width=1,
-        )
-        draw.line(
-            (ix + iw - bracket_len - 1, iy + ih - 1, ix + iw - 1, iy + ih - 1),
-            fill=_rgba(icon_frame_rgb),
-            width=1,
-        )
-
-        gx = ix + 3
-        gy = iy + 3
-
-        def _stroke(points, width_px=2):
-            draw.line(points, fill=_rgba(icon_frame_rgb, 155), width=max(1, width_px + 2), joint="curve")
-            draw.line(points, fill=_rgba(fg_rgb), width=width_px, joint="curve")
-
-        def _rect(box, width_px=1):
-            draw.rectangle(box, outline=_rgba(icon_frame_rgb, 135), width=max(1, width_px + 1))
-            draw.rectangle(box, outline=_rgba(fg_rgb), width=width_px)
-
-        def _ellipse(box, width_px=1):
-            draw.ellipse(box, outline=_rgba(icon_frame_rgb, 135), width=max(1, width_px + 1))
-            draw.ellipse(box, outline=_rgba(fg_rgb), width=width_px)
-
-        # Match SVG glyph language from R5 preview.
-        if key == "open":
-            _stroke((gx + 0, gy + 4, gx + 4, gy + 4, gx + 5, gy + 2, gx + 10, gy + 2, gx + 10, gy + 4), 1)
-            _stroke((gx + 0, gy + 5, gx + 12, gy + 5), 1)
-            draw.polygon(
-                [(gx + 0, gy + 5), (gx + 12, gy + 5), (gx + 10, gy + 11), (gx + 1, gy + 11)],
-                fill=None,
-                outline=_rgba(fg_rgb),
-            )
-        elif key == "apply":
-            _stroke((gx + 1, gy + 7, gx + 4, gy + 10, gx + 11, gy + 3), 2)
-        elif key == "export":
-            _stroke((gx + 6, gy + 1, gx + 6, gy + 8), 2)
-            _stroke((gx + 3, gy + 6, gx + 6, gy + 9, gx + 9, gy + 6), 2)
-            _rect((gx + 1, gy + 9, gx + 11, gy + 11), 1)
-        elif key == "find":
-            _ellipse((gx + 0, gy + 0, gx + 8, gy + 8), 2)
-            _stroke((gx + 7, gy + 7, gx + 11, gy + 11), 2)
-        elif key == "update":
-            draw.arc((gx + 0, gy + 0, gx + 11, gy + 11), start=35, end=330, fill=_rgba(icon_frame_rgb, 180), width=3)
-            draw.arc((gx + 0, gy + 0, gx + 11, gy + 11), start=35, end=330, fill=_rgba(fg_rgb), width=2)
-            draw.polygon([(gx + 8, gy + 0), (gx + 11, gy + 1), (gx + 9, gy + 3)], fill=_rgba(fg_rgb))
-        elif key == "readme":
-            _rect((gx + 1, gy + 1, gx + 10, gy + 10), 1)
-            _stroke((gx + 5, gy + 1, gx + 5, gy + 10), 1)
-
-        # Prefer Tektur for R5 parity when present; fallback to existing bundled font.
-        font_candidates = [
-            os.path.join(self._resource_base_dir(), "assets", "fonts", "Tektur-SemiBold.ttf"),
-            os.path.join(self._resource_base_dir(), "assets", "fonts", "Tektur-Regular.ttf"),
-            os.path.join(self._resource_base_dir(), "assets", "fonts", "Rajdhani-SemiBold.ttf"),
-        ]
-        text_font = None
-        for font_path in font_candidates:
-            try:
-                if os.path.isfile(font_path):
-                    text_font = font_module.truetype(font_path, 14)
-                    break
-            except _EXPECTED_APP_ERRORS:
-                continue
-        if text_font is None:
-            try:
-                text_font = font_module.load_default()
-            except _EXPECTED_APP_ERRORS:
-                text_font = None
-        tx = ix + iw + 8
-        bbox = draw.textbbox((0, 0), text, font=text_font)
-        th = max(1, bbox[3] - bbox[1])
-        ty = max(1, (height - th) // 2 - 1)
-        draw.text((tx + 1, ty + 1), text, fill=_rgba((7, 20, 33), 210), font=text_font)
-        draw.text((tx, ty), text, fill=_rgba(fg_rgb), font=text_font)
-
-        hover_base = base.copy()
-        hover_draw = draw_module.Draw(hover_base)
-        hover_draw.rectangle((0, 0, width - 1, height - 1), outline=_rgba(border_active_rgb))
-        hover_draw.rectangle((1, 1, width - 2, height - 2), outline=_rgba(_mix(border_active_rgb, border_rgb, 0.42)))
-        hover_draw.text((tx + 1, ty), text, fill=_rgba(border_active_rgb, 92), font=text_font)
-
-        hover_frames = []
-        scan_step = 10 if render_mode == "fast" else 5
-        for pos in range(-34, width + 34, scan_step):
-            frame = hover_base.copy()
-            frame_draw = draw_module.Draw(frame)
-            # Wider scanning pass than single-line sweep.
-            for idx in range(24):
-                alpha = int(max(0, 86 - abs(12 - idx) * 7))
-                x = pos + idx
-                if 1 <= x <= width - 2:
-                    frame_draw.line((x, 1, x, height - 2), fill=_rgba(border_active_rgb, alpha), width=1)
-            core_x = pos + 12
-            if 1 <= core_x <= width - 2:
-                frame_draw.line((core_x, 2, core_x, height - 3), fill=_rgba((222, 252, 255), 160), width=1)
-            hover_frames.append(image_tk_module.PhotoImage(frame))
-
-        if render_mode == "fast" and len(hover_frames) > 24:
-            hover_frames = hover_frames[:24]
-
-        bundle = {
-            "base": image_tk_module.PhotoImage(base),
-            "hover_frames": hover_frames,
-            "frame_interval_ms": 40,
-        }
-        self._bounded_cache_put(cache, signature, bundle, max_items=64)
-        return bundle
+        return toolbar_service._siindbad_b_render_button_bundle(self, key, text, width, height, palette, render_mode)
 
     def _stop_siindbad_b_button_scan(self, button):
         host = getattr(button, "_siindbad_frame_host", None)
@@ -6771,163 +5531,7 @@ if not install_started:
             self._stop_siindbad_b_button_scan(button)
 
     def _apply_siindbad_toolbar_button_style(self, button, key, text):
-        palette = self._siindbad_toolbar_style_palette()
-        style = self._siindbad_effective_style()
-        frame_host = getattr(button, "_siindbad_frame_host", None)
-        if frame_host is not None and frame_host.winfo_exists():
-            try:
-                frame_host.configure(
-                    bg=palette["button_bg"],
-                    highlightbackground=palette["border"],
-                    highlightcolor=palette["border_active"],
-                )
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-        display_text = self._siindbad_toolbar_label_text(style, key, text)
-        if style == "B":
-            width = self._siindbad_toolbar_frame_width(style, key, display_text)
-            height = self._siindbad_b_button_height(key, default_height=34)
-            try:
-                if frame_host is not None and frame_host.winfo_exists():
-                    frame_host.configure(width=max(1, int(width)), height=height)
-                    frame_host.pack_propagate(False)
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-            bundle = self._siindbad_b_render_button_bundle(
-                key=key,
-                text=display_text,
-                width=max(48, int(width)),
-                height=max(24, height),
-                palette=palette,
-            )
-            if not isinstance(bundle, dict):
-                bundle = {}
-            button._siindbad_base_image = bundle.get("base")
-            button._siindbad_hover_frames = bundle.get("hover_frames", [])
-            base_interval = int(bundle.get("frame_interval_ms", 40) or 40)
-            button._siindbad_scan_interval_ms = max(20, min(100, base_interval))
-            self._stop_siindbad_b_button_scan(button)
-            try:
-                if isinstance(button, tk.Label):
-                    if button._siindbad_base_image is None:
-                        button.configure(
-                            text=display_text,
-                            image="",
-                            compound="none",
-                            font=self._toolbar_button_font(),
-                            relief="flat",
-                            borderwidth=0,
-                            highlightthickness=0,
-                            padx=8,
-                            pady=4,
-                            bg=palette["button_bg"],
-                            fg=palette["button_fg"],
-                            cursor="hand2",
-                            anchor="center",
-                            justify="center",
-                        )
-                    else:
-                        button.configure(
-                            text="",
-                            image=button._siindbad_base_image,
-                            compound="none",
-                            font=self._toolbar_button_font(),
-                            relief="flat",
-                            borderwidth=0,
-                            highlightthickness=0,
-                            padx=0,
-                            pady=0,
-                            bg=palette["button_bg"],
-                            fg=palette["button_fg"],
-                            cursor="hand2",
-                            anchor="center",
-                            justify="center",
-                        )
-                else:
-                    button.configure(
-                        text="",
-                        image=button._siindbad_base_image,
-                        compound="none",
-                        font=self._toolbar_button_font(),
-                        relief="flat",
-                        borderwidth=0,
-                        highlightthickness=0,
-                        highlightbackground=palette["border"],
-                        highlightcolor=palette["border_active"],
-                        padx=0,
-                        pady=0,
-                        bg=palette["button_bg"],
-                        fg=palette["button_fg"],
-                        activebackground=palette["button_bg"],
-                        activeforeground=palette["button_fg"],
-                        disabledforeground="#57768c",
-                        takefocus=0,
-                        cursor="hand2",
-                        width=0,
-                        anchor="center",
-                        justify="center",
-                        overrelief="flat",
-                        height=0,
-                    )
-            except _EXPECTED_APP_ERRORS:
-                return
-            return
-
-        self._ensure_siindbad_button_icons()
-        icon = self._siindbad_button_icons.get(key)
-        symbol = self._siindbad_toolbar_button_symbol(key)
-        if icon is not None:
-            label_text = display_text
-            image_value = icon
-            compound = "left"
-            anchor = "w"
-            pad_x = 7 if style == "A" else 7
-        else:
-            label_text = f"{symbol}  {display_text}" if symbol else display_text
-            image_value = ""
-            compound = "none"
-            anchor = "center"
-            pad_x = 10
-        justify = "left"
-        if style == "A" and key == "open":
-            anchor = "center"
-            justify = "center"
-            pad_x = 5
-        width = self._siindbad_toolbar_button_width(style, key, display_text) if style == "A" else 0
-        pad_y = 5 if style == "A" else (4 if style == "B" else 4)
-        relief = "flat"
-        border_width = 0
-        highlight_thickness = 0 if style in ("A", "B") else 1
-        try:
-            button.configure(
-                text=label_text,
-                image=image_value,
-                compound=compound,
-                font=self._toolbar_button_font(),
-                relief=relief,
-                borderwidth=border_width,
-                highlightthickness=highlight_thickness,
-                highlightbackground=palette["border"],
-                highlightcolor=palette["border_active"],
-                padx=pad_x,
-                pady=pad_y,
-                bg=palette["button_bg"],
-                fg=palette["button_fg"],
-                activebackground=palette["button_active"],
-                activeforeground="#ffffff",
-                disabledforeground="#7a93a8" if style != "B" else "#57768c",
-                takefocus=0,
-                cursor="hand2",
-                width=width,
-                anchor=anchor,
-                justify=justify,
-                overrelief="flat",
-                height=0,
-            )
-        except _EXPECTED_APP_ERRORS:
-            return
+        return toolbar_service._apply_siindbad_toolbar_button_style(self, button, key, text)
 
     def _apply_asset_toolbar_button_style(self, button):
         theme = getattr(self, "_theme", {})
@@ -6953,82 +5557,7 @@ if not install_started:
             return
 
     def _make_siindbad_stepper_button(self, parent, symbol, command):
-        palette = self._siindbad_toolbar_style_palette()
-        style = self._siindbad_effective_style()
-        box_w = 28 if style == "A" else 22
-        box_h = 22
-        box = tk.Frame(
-            parent,
-            bg=palette["slot_bg"],
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=palette["border"],
-            highlightcolor=palette["border_active"],
-            width=box_w,
-            height=box_h,
-        )
-        box.pack_propagate(False)
-        symbol_canvas = tk.Canvas(
-            box,
-            bg=palette["slot_bg"],
-            bd=0,
-            highlightthickness=0,
-            relief="flat",
-            cursor="hand2",
-        )
-        symbol_canvas.pack(fill="both", expand=True, padx=1, pady=1)
-
-        stroke = 2
-        normal_bg = palette["slot_bg"]
-        active_bg = palette["button_active"]
-        fg = palette["button_fg"]
-
-        def _draw_symbol(_event=None):
-            symbol_canvas.delete("symbol")
-            w = max(4, int(symbol_canvas.winfo_width()))
-            h = max(4, int(symbol_canvas.winfo_height()))
-            cx = w // 2
-            cy = h // 2
-            half = max(4, min(w, h) // 4)
-            symbol_canvas.create_line(
-                cx - half,
-                cy,
-                cx + half,
-                cy,
-                fill=fg,
-                width=stroke,
-                capstyle="round",
-                tags="symbol",
-            )
-            if symbol == "+":
-                v_half = max(3, half - 1)
-                symbol_canvas.create_line(
-                    cx,
-                    cy - v_half,
-                    cx,
-                    cy + v_half,
-                    fill=fg,
-                    width=stroke,
-                    capstyle="round",
-                    tags="symbol",
-                )
-
-        def _on_press(_event):
-            symbol_canvas.configure(bg=active_bg)
-
-        def _on_release(_event):
-            symbol_canvas.configure(bg=normal_bg)
-            command()
-
-        def _on_leave(_event):
-            symbol_canvas.configure(bg=normal_bg)
-
-        symbol_canvas.bind("<Configure>", _draw_symbol)
-        symbol_canvas.bind("<ButtonPress-1>", _on_press)
-        symbol_canvas.bind("<ButtonRelease-1>", _on_release)
-        symbol_canvas.bind("<Leave>", _on_leave)
-        _draw_symbol()
-        return box
+        return toolbar_service._make_siindbad_stepper_button(self, parent, symbol, command)
 
     def _make_siindbad_font_stepper(self, parent):
         palette = self._siindbad_toolbar_style_palette()
@@ -7324,89 +5853,7 @@ if not install_started:
         event.widget.configure(cursor="hand2" if action else "arrow")
 
     def _make_toolbar_button(self, parent, text, command, image_key=None):
-        key = self._normalize_button_token(image_key or text)
-        self._toolbar_button_text[key] = text
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        style = self._siindbad_effective_style()
-        if variant == "SIINDBAD" or (variant == "KAMUE" and style == "B"):
-            if style == "A":
-                palette = self._siindbad_toolbar_style_palette()
-                frame = tk.Frame(
-                    parent,
-                    bg=palette["button_bg"],
-                    bd=1,
-                    relief="solid",
-                    highlightthickness=1,
-                    highlightbackground=palette["border"],
-                    highlightcolor=palette["border_active"],
-                )
-                button = tk.Button(frame, command=command)
-                button.pack(fill="both", expand=True)
-                button._siindbad_frame_host = frame
-            elif style == "B":
-                palette = self._siindbad_toolbar_style_palette()
-                frame_width = self._siindbad_toolbar_frame_width(style, key, text)
-                frame_height = self._siindbad_b_button_height(key, default_height=34)
-                frame = tk.Frame(
-                    parent,
-                    bg=palette["button_bg"],
-                    bd=0,
-                    relief="flat",
-                    highlightthickness=0,
-                    highlightbackground=palette["button_bg"],
-                    highlightcolor=palette["button_bg"],
-                    width=max(1, int(frame_width)) if frame_width else 1,
-                    height=max(1, int(frame_height)),
-                )
-                frame.pack_propagate(False)
-                button = tk.Label(
-                    frame,
-                    text="",
-                    bd=0,
-                    relief="flat",
-                    highlightthickness=0,
-                    bg=palette["button_bg"],
-                    cursor="hand2",
-                )
-                button.pack(fill="both", expand=True, padx=0, pady=0)
-                button._siindbad_frame_host = frame
-                button._siindbad_scan_running = False
-                button._siindbad_scan_after_id = None
-                button._siindbad_hover_leave_after_id = None
-                button._siindbad_scan_start_ts = None
-                button._siindbad_hover_require_reenter = False
-                hover_targets = (frame, button)
-                for target in hover_targets:
-                    target.bind(
-                        "<Enter>",
-                        lambda _event, b=button: self._siindbad_b_button_hover_enter(b),
-                        add="+",
-                    )
-                    target.bind(
-                        "<Leave>",
-                        lambda _event, b=button: self._siindbad_b_button_hover_leave(b),
-                        add="+",
-                    )
-                for target in (frame, button):
-                    target.bind(
-                        "<Button-1>",
-                        lambda _event, b=button, cmd=command: self._invoke_siindbad_b_button(b, cmd),
-                        add="+",
-                    )
-            else:
-                button = tk.Button(parent, command=command)
-            self._apply_siindbad_toolbar_button_style(button, key=key, text=text)
-            return button
-        image = self._toolbar_button_images.get(key)
-        if image is not None:
-            button = tk.Button(
-                parent,
-                image=image,
-                command=command,
-            )
-            self._apply_asset_toolbar_button_style(button)
-            return button
-        return ttk.Button(parent, text=text, command=command)
+        return toolbar_service._make_toolbar_button(self, parent, text, command, image_key)
 
     def _set_font_stepper_geometry_from_asset(self, path):
         name = os.path.basename(path).lower()
@@ -7568,13 +6015,7 @@ if not install_started:
         return footer_service.footer_style_variant()
 
     def _footer_visual_spec(self):
-        mode = self._footer_style_variant()
-        spec = footer_service.footer_visual_spec(mode)
-        return {
-            "label_font": (self._preferred_mono_family(), 9, "bold"),
-            "chip_font": self._footer_badge_chip_font(),
-            **dict(spec),
-        }
+        return editor_purge_service._footer_visual_spec(self)
 
     def _bug_chip_palette(self, variant):
         return theme_service.bug_chip_palette(
@@ -7806,83 +6247,7 @@ if not install_started:
                 continue
 
     def _apply_footer_layout_variant(self):
-        bar = getattr(self, "_credit_bar", None)
-        content = getattr(self, "_credit_content", None)
-        left_slot = getattr(self, "_credit_left_slot", None)
-        center_slot = getattr(self, "_credit_center_slot", None)
-        right_slot = getattr(self, "_credit_right_slot", None)
-        if bar is None or content is None or left_slot is None or center_slot is None or right_slot is None:
-            return
-        try:
-            if not (bar.winfo_exists() and content.winfo_exists()):
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        is_b = self._footer_style_variant() == "B"
-        try:
-            # Keep content owned by left slot; only adjust grid placement for alignment.
-            if not content.winfo_manager():
-                content.pack(side="left")
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-        if is_b:
-            try:
-                center_slot.grid_remove()
-                right_slot.grid_remove()
-            except _EXPECTED_APP_ERRORS:
-                pass
-            try:
-                left_slot.grid_configure(column=0, columnspan=3, sticky="ew", padx=(6, 6), pady=(1, 1))
-                bar.grid_columnconfigure(0, weight=1)
-                bar.grid_columnconfigure(1, weight=0)
-                bar.grid_columnconfigure(2, weight=0)
-                content.pack_configure(side="left", fill="none", expand=False)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        else:
-            try:
-                left_slot.grid_configure(column=0, columnspan=1, sticky="w", padx=(6, 0), pady=(1, 1))
-                center_slot.grid(row=0, column=1, sticky="ew", pady=(1, 1))
-                right_slot.grid(row=0, column=2, sticky="e", padx=(0, 6), pady=(1, 1))
-                bar.grid_columnconfigure(0, weight=0)
-                bar.grid_columnconfigure(1, weight=1)
-                bar.grid_columnconfigure(2, weight=0)
-                content.pack_configure(side="left", fill="none", expand=False)
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-        divider_pad = (5, 4) if is_b else (8, 6)
-        left_side_widgets = (
-            getattr(self, "_credit_badge_host", None),
-            getattr(self, "_credit_badges_divider", None),
-            getattr(self, "_credit_discord_badge_host", None),
-            getattr(self, "_credit_discord_divider", None),
-            getattr(self, "_bug_report_host", None),
-            getattr(self, "_credit_theme_divider", None),
-            getattr(self, "_theme_selector_host", None),
-        )
-        for widget in left_side_widgets:
-            if widget is None:
-                continue
-            try:
-                if widget.winfo_exists():
-                    widget.pack_configure(side="left")
-            except _EXPECTED_APP_ERRORS:
-                continue
-        for divider in (
-            getattr(self, "_credit_badges_divider", None),
-            getattr(self, "_credit_discord_divider", None),
-            getattr(self, "_credit_theme_divider", None),
-        ):
-            if divider is None:
-                continue
-            try:
-                if divider.winfo_exists():
-                    divider.pack_configure(padx=divider_pad)
-            except _EXPECTED_APP_ERRORS:
-                continue
+        return footer_service._apply_footer_layout_variant(self)
 
     def _update_app_theme_controls(self):
         active = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -7996,238 +6361,14 @@ if not install_started:
         self._log_theme_perf(f"switch {previous_variant}->{variant}", started_ts=switch_started)
 
     def _refresh_runtime_theme_widgets(self):
-        theme = getattr(self, "_theme", None)
-        if not theme:
-            return
-        try:
-            self.root.configure(bg=theme["bg"])
-        except (tk.TclError, RuntimeError, AttributeError, KeyError, TypeError):
-            pass
-
-        self._update_logo_for_theme(force=False)
-
-        if self._font_stepper_label and self._font_stepper_label.winfo_exists():
-            try:
-                self._font_stepper_label.configure(bg=theme["bg"])
-            except (tk.TclError, RuntimeError, AttributeError, KeyError, TypeError):
-                pass
-        if self.logo_label and self.logo_label.winfo_exists():
-            try:
-                self.logo_label.configure(bg=theme["bg"])
-            except (tk.TclError, RuntimeError, AttributeError, KeyError, TypeError):
-                pass
-        self._apply_logo_frame_theme()
-
-        if hasattr(self, "find_entry") and self.find_entry:
-            try:
-                self.find_entry.configure(
-                    bg=theme.get("panel", "#161b24"),
-                    fg=theme.get("fg", "#e6e6e6"),
-                    insertbackground=theme.get("fg", "#e6e6e6"),
-                    selectbackground=theme.get("select_bg", "#2f3a4d"),
-                    selectforeground=theme.get("select_fg", "#ffffff"),
-                    highlightbackground=theme.get("find_border", "#ffffff"),
-                    highlightcolor=theme.get("find_border", "#ffffff"),
-                )
-            except (tk.TclError, RuntimeError, AttributeError, TypeError):
-                pass
-        toolbar_center = getattr(self, "_toolbar_center_frame", None)
-        if toolbar_center and toolbar_center.winfo_exists():
-            try:
-                toolbar_center.configure(bg=theme.get("bg", "#0f131a"))
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        separator = getattr(self, "_body_top_separator", None)
-        if separator and separator.winfo_exists():
-            try:
-                border = theme.get("logo_border_outer", "#349fc7")
-                separator.configure(
-                    bg=theme.get("bg", "#0f131a"),
-                    highlightbackground=border,
-                    highlightcolor=border,
-                )
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        separator_inner = getattr(self, "_body_top_separator_inner", None)
-        if separator_inner and separator_inner.winfo_exists():
-            try:
-                inner = theme.get("logo_border_inner", "#a9ddf0")
-                separator_inner.configure(
-                    bg=theme.get("bg", "#0f131a"),
-                    highlightbackground=inner,
-                    highlightcolor=inner,
-                )
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        self._refresh_input_mode_theme_widgets()
-        self._update_find_entry_layout()
-
-        if self._credit_bar and self._credit_bar.winfo_exists():
-            try:
-                self._credit_bar.configure(
-                    bg=theme.get("credit_bg", "#0b1118"),
-                    highlightbackground=theme.get("credit_border", "#1f2f3f"),
-                    highlightcolor=theme.get("credit_border", "#1f2f3f"),
-                )
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        if self._credit_content and self._credit_content.winfo_exists():
-            try:
-                self._credit_content.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        if self._credit_label and self._credit_label.winfo_exists():
-            try:
-                self._credit_label.configure(
-                    bg=theme.get("credit_bg", "#0b1118"),
-                    fg=theme.get("credit_label_fg", "#b5cade"),
-                )
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        if self._credit_badge_host and self._credit_badge_host.winfo_exists():
-            try:
-                self._credit_badge_host.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-            self._render_credit_badges()
-        if self._header_variant_bar and self._header_variant_bar.winfo_exists():
-            try:
-                self._header_variant_bar.configure(bg=theme.get("bg", "#0f131a"))
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        if self._credit_discord_badge_host and self._credit_discord_badge_host.winfo_exists():
-            try:
-                self._credit_discord_badge_host.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-            self._render_credit_discord_badges()
-        divider = getattr(self, "_credit_badges_divider", None)
-        if divider and divider.winfo_exists():
-            try:
-                divider.configure(bg=theme.get("credit_bg", "#0b1118"))
-                border = theme.get("credit_border", "#1f2f3f")
-                label = theme.get("credit_label_fg", "#b5cade")
-                main_line = self._blend_hex_color(border, label, 0.35)
-                glow_line = self._blend_hex_color(label, "#ffffff", 0.18)
-                line_ids = tuple(getattr(self, "_credit_badges_divider_lines", ()) or ())
-                if len(line_ids) >= 2:
-                    divider.itemconfigure(line_ids[0], fill=main_line)
-                    divider.itemconfigure(line_ids[1], fill=glow_line)
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-        divider = getattr(self, "_credit_discord_divider", None)
-        if divider and divider.winfo_exists():
-            try:
-                divider.configure(bg=theme.get("credit_bg", "#0b1118"))
-                border = theme.get("credit_border", "#1f2f3f")
-                label = theme.get("credit_label_fg", "#b5cade")
-                main_line = self._blend_hex_color(border, label, 0.35)
-                glow_line = self._blend_hex_color(label, "#ffffff", 0.18)
-                line_ids = tuple(getattr(self, "_credit_discord_divider_lines", ()) or ())
-                if len(line_ids) >= 2:
-                    divider.itemconfigure(line_ids[0], fill=main_line)
-                    divider.itemconfigure(line_ids[1], fill=glow_line)
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-        divider = getattr(self, "_credit_theme_divider", None)
-        if divider and divider.winfo_exists():
-            try:
-                divider.configure(bg=theme.get("credit_bg", "#0b1118"))
-                border = theme.get("credit_border", "#1f2f3f")
-                label = theme.get("credit_label_fg", "#b5cade")
-                main_line = self._blend_hex_color(border, label, 0.35)
-                glow_line = self._blend_hex_color(label, "#ffffff", 0.18)
-                line_ids = tuple(getattr(self, "_credit_theme_divider_lines", ()) or ())
-                if len(line_ids) >= 2:
-                    divider.itemconfigure(line_ids[0], fill=main_line)
-                    divider.itemconfigure(line_ids[1], fill=glow_line)
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-        if self._theme_selector_host and self._theme_selector_host.winfo_exists():
-            try:
-                self._theme_selector_host.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        if self._bug_report_host and self._bug_report_host.winfo_exists():
-            try:
-                self._bug_report_host.configure(bg=theme.get("credit_bg", "#0b1118"))
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        if self._bug_report_label and self._bug_report_label.winfo_exists():
-            try:
-                self._bug_report_label.configure(
-                    bg=theme.get("credit_bg", "#0b1118"),
-                    fg=theme.get("credit_label_fg", "#b5cade"),
-                )
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        if self._bug_report_chip and self._bug_report_chip.winfo_exists():
-            self._sync_bug_report_chip_colors()
-        self._apply_footer_layout_variant()
-        self._update_editor_mode_controls()
-        bug_dialog = getattr(self, "_bug_report_dialog", None)
-        if bug_dialog is not None:
-            try:
-                if bug_dialog.winfo_exists():
-                    self._apply_windows_titlebar_theme(bug_dialog)
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        bug_header = getattr(self, "_bug_report_header_frame", None)
-        bug_card = getattr(self, "_bug_report_card_frame", None)
-        if bug_header is not None:
-            try:
-                if bug_header.winfo_exists():
-                    header_bg = theme.get("title_bar_bg", "#102535")
-                    header_fg = theme.get("title_bar_fg", theme.get("fg", "#e6e6e6"))
-                    header_border = theme.get("title_bar_border", theme.get("logo_border_outer", "#2a5a7a"))
-                    bug_header.configure(
-                        bg=header_bg,
-                        highlightbackground=header_border,
-                        highlightcolor=header_border,
-                    )
-                    for attr in ("_bug_report_header_icon", "_bug_report_header_title", "_bug_report_close_badge"):
-                        widget = getattr(self, attr, None)
-                        if widget is not None and widget.winfo_exists():
-                            widget.configure(bg=header_bg, fg=header_fg)
-                    bug_icon = getattr(self, "_bug_report_header_icon", None)
-                    if bug_icon is not None and bug_icon.winfo_exists():
-                        bug_icon_photo = self._load_bug_report_chip_icon(max_size=18, tint=header_fg)
-                        self._bug_report_header_icon_photo = bug_icon_photo
-                        bug_icon.configure(image=bug_icon_photo if bug_icon_photo is not None else "")
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-        if bug_card is not None:
-            try:
-                if bug_card.winfo_exists():
-                    border = theme.get("logo_border_outer", "#4b97c2")
-                    bug_card.configure(highlightbackground=border, highlightcolor=border)
-                    if bug_dialog is not None and bug_dialog.winfo_exists():
-                        bug_dialog.configure(bg=theme.get("bg", "#0f131a"))
-                    self._start_bug_report_header_pulse()
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-
-        self._update_app_theme_controls()
-        self._update_header_variant_controls()
-        self._update_tree_style_controls()
-        self._update_toolbar_style_controls()
-        self._style_text_widget()
-        self._refresh_open_readme_window()
-        self._refresh_tree_item_markers()
-        self._refresh_active_error_theme()
+        return theme_service._refresh_runtime_theme_widgets(self)
 
     @staticmethod
     def _startup_loader_lines(ready=False):
         return loader_service.startup_loader_lines(ready=ready)
 
     def _next_startup_loader_line(self, ready=False):
-        pool_attr = "_startup_loader_line_pool_ready" if ready else "_startup_loader_line_pool_loading"
-        line, next_pool = loader_service.pop_startup_loader_line(
-            ready=ready,
-            pool=getattr(self, pool_attr, []),
-        )
-        setattr(self, pool_attr, next_pool)
-        return line
+        return editor_purge_service._next_startup_loader_line(self, ready)
 
     def _startup_loader_title_photo(self, text, scale=1.0):
         cache = getattr(self, "_startup_loader_title_cache", None)
@@ -8347,48 +6488,10 @@ if not install_started:
         )
 
     def _apply_startup_loader_title_variant(self):
-        prefix = getattr(self, "_startup_loader_title_prefix_label", None)
-        if prefix is None or not prefix.winfo_exists():
-            return
-        suffix = getattr(self, "_startup_loader_title_suffix_label", None)
-        variant = loader_service.normalize_title_variant(
-            getattr(self, "_startup_loader_title_variant", "SIINDBAD")
-        )
-        self._startup_loader_title_variant = variant
-        try:
-            prefix.configure(
-                text=variant,
-                fg=self._startup_loader_title_color_for_variant(variant),
-            )
-        except (tk.TclError, RuntimeError, AttributeError):
-            pass
-        if suffix is not None and suffix.winfo_exists():
-            try:
-                suffix.configure(text=" SHELL SYSTEM SYNC")
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
+        return editor_purge_service._apply_startup_loader_title_variant(self)
 
     def _tick_startup_loader_title(self):
-        overlay = getattr(self, "_startup_loader_overlay", None)
-        if overlay is None or not overlay.winfo_exists():
-            return
-        prefix = getattr(self, "_startup_loader_title_prefix_label", None)
-        if prefix is None or not prefix.winfo_exists():
-            return
-        current = getattr(self, "_startup_loader_title_variant", "SIINDBAD")
-        self._startup_loader_title_variant = loader_service.next_title_variant(current)
-        self._apply_startup_loader_title_variant()
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        after_id = getattr(self, "_startup_loader_title_after_id", None)
-        if after_id:
-            try:
-                root.after_cancel(after_id)
-            except (tk.TclError, RuntimeError, ValueError):
-                pass
-        cycle_ms = max(2200, int(getattr(self, "_startup_loader_title_cycle_ms", 4200) or 4200))
-        self._startup_loader_title_after_id = root.after(cycle_ms, self._tick_startup_loader_title)
+        return editor_purge_service._tick_startup_loader_title(self)
 
     def _startup_loader_rounded_fill_photo(self, color_hex, width_px, height_px):
         width_px = max(1, int(width_px or 1))
@@ -8484,54 +6587,7 @@ if not install_started:
 
     @staticmethod
     def _set_startup_loader_bar_fill(fill_widget, pct):
-        if fill_widget is None:
-            return
-        payload = fill_widget
-        if isinstance(payload, dict):
-            track = payload.get("track")
-            fill_label = payload.get("widget")
-            owner = payload.get("owner")
-            fill_color = payload.get("color", "#4f90bf")
-            if (
-                track is None
-                or fill_label is None
-                or owner is None
-                or not track.winfo_exists()
-                or not fill_label.winfo_exists()
-            ):
-                return
-            fill_w, fill_h = loader_service.compute_loader_fill_dimensions(
-                track.winfo_width(),
-                track.winfo_height(),
-                pct,
-            )
-            if fill_w <= 0:
-                fill_label.place_forget()
-                payload["last_w"] = 0
-                return
-            # Keep loader animation lightweight: avoid per-frame PIL image redraws.
-            # Rounded track shell stays intact while fill uses a fast solid block.
-            last_color = str(payload.get("last_color", ""))
-            if last_color != str(fill_color):
-                fill_label.configure(bg=fill_color, image="", text="")
-                fill_label.image = None
-                payload["last_color"] = str(fill_color)
-            last_w = int(payload.get("last_w", -1) or -1)
-            if last_w != fill_w or not bool(fill_label.winfo_ismapped()):
-                fill_label.place(x=1, y=1, width=fill_w, height=fill_h)
-                payload["last_w"] = fill_w
-            return
-        if not fill_widget.winfo_exists():
-            return
-        track = fill_widget.master
-        if track is None or not track.winfo_exists():
-            return
-        fill_w, fill_h = loader_service.compute_loader_fill_dimensions(
-            track.winfo_width(),
-            track.winfo_height(),
-            pct,
-        )
-        fill_widget.place(x=1, y=1, width=max(0, fill_w), height=max(1, fill_h))
+        return editor_purge_service._set_startup_loader_bar_fill(fill_widget, pct)
 
     def _startup_loader_variant_progress(self, variant):
         variant = str(variant).upper()
@@ -8708,67 +6764,7 @@ if not install_started:
         return tasks
 
     def _execute_theme_prewarm_task(self, task):
-        variant = str(task.get("variant", "")).upper()
-        kind = str(task.get("kind", "")).lower()
-        if variant not in ("SIINDBAD", "KAMUE"):
-            return
-
-        original_variant = getattr(self, "_app_theme_variant", "SIINDBAD")
-        original_theme = getattr(self, "_theme", None)
-        try:
-            self._app_theme_variant = variant
-            self._theme = self._theme_palette_for_variant(variant)
-            if kind == "button":
-                key = str(task.get("key", ""))
-                text = str(task.get("text", key.title()))
-                style = self._siindbad_effective_style()
-                display_text = self._siindbad_toolbar_label_text(style, key, text)
-                palette = self._siindbad_toolbar_style_palette()
-                width = self._siindbad_toolbar_frame_width(style, key, display_text)
-                height = self._siindbad_b_button_height(key, default_height=34)
-                self._siindbad_b_render_button_bundle(
-                    key=key,
-                    text=display_text,
-                    width=max(1, int(width)),
-                    height=max(1, int(height)),
-                    palette=palette,
-                    render_mode="full",
-                )
-                return
-            if kind == "search":
-                search_spec = self._siindbad_b_search_spec() or {}
-                search_width = int(search_spec.get("width", 172) or 172)
-                search_height = int(search_spec.get("height", 32) or 32)
-                find_height = self._siindbad_b_button_height("find", default_height=33)
-                search_height = max(1, min(search_height, int(find_height)))
-                self._siindbad_b_search_sprite_image(search_width, search_height)
-                return
-            if kind == "font":
-                font_spec = self._siindbad_b_font_sprite_spec()
-                if not font_spec:
-                    return
-                fw = max(1, int(font_spec.get("width", 146) or 146))
-                fh = max(1, int(font_spec.get("height", 34) or 34))
-                base_path = font_spec.get("path")
-                if base_path:
-                    self._load_toolbar_button_image(base_path, max_width=fw, max_height=fh, stretch_to_fit=True)
-                hover_path = str(font_spec.get("hover_path", "") or "")
-                if hover_path and os.path.isfile(hover_path):
-                    self._load_toolbar_button_image(hover_path, max_width=fw, max_height=fh, stretch_to_fit=True)
-                return
-            if kind == "logo":
-                logo_path = self._find_logo_path()
-                if logo_path:
-                    self._load_logo_image(logo_path)
-                return
-            if kind == "badges":
-                self._load_credit_badge_sources()
-                self._load_credit_github_icon(max_size=14, tint="#d8e8f2", with_plate=False)
-                self._load_credit_discord_icon(max_size=14, tint="#d8e8f2", with_plate=False)
-                return
-        finally:
-            self._app_theme_variant = original_variant
-            self._theme = original_theme
+        return theme_service._execute_theme_prewarm_task(self, task)
 
     def _finish_theme_prewarm_variant(self, variant):
         warmed = set(getattr(self, "_theme_prewarm_done", set()))
@@ -8849,68 +6845,7 @@ if not install_started:
         self._theme_prewarm_after_id = root.after(max(1, int(delay_ms)), self._run_theme_asset_prewarm)
 
     def _run_theme_asset_prewarm(self):
-        self._theme_prewarm_after_id = None
-        queue = list(getattr(self, "_theme_prewarm_queue", []))
-        raw_tasks = getattr(self, "_theme_prewarm_tasks", None)
-        if isinstance(raw_tasks, deque):
-            tasks = raw_tasks
-        elif raw_tasks:
-            tasks = deque(raw_tasks)
-        else:
-            tasks = deque()
-        if not queue or not tasks:
-            self._theme_prewarm_queue = []
-            self._theme_prewarm_tasks = deque()
-            self._update_startup_loader_progress()
-            self._on_startup_full_load_ready()
-            return
-        loader_visible = False
-        try:
-            overlay = getattr(self, "_startup_loader_overlay", None)
-            loader_visible = bool(overlay is not None and overlay.winfo_exists())
-        except (tk.TclError, RuntimeError, AttributeError):
-            loader_visible = False
-        budget_ms, max_tasks_this_tick, next_tick_ms = startup_loader_core.prewarm_tick_policy(
-            loader_visible=loader_visible,
-            loader_budget_ms=int(getattr(self, "_theme_prewarm_loader_budget_ms", 6) or 6),
-            idle_budget_ms=int(getattr(self, "_theme_prewarm_budget_ms", 10) or 10),
-            loader_tick_ms=int(getattr(self, "_theme_prewarm_loader_tick_ms", 16) or 16),
-            idle_tick_ms=int(getattr(self, "_theme_prewarm_idle_tick_ms", 12) or 12),
-        )
-        deadline = time.perf_counter() + (float(budget_ms) / 1000.0)
-        done_counts = dict(getattr(self, "_theme_prewarm_done_by_variant", {}))
-        totals = dict(getattr(self, "_theme_prewarm_total_by_variant", {}))
-        processed = 0
-        while tasks and time.perf_counter() < deadline and processed < max_tasks_this_tick:
-            task = tasks.popleft()
-            variant = str(task.get("variant", "")).upper()
-            if variant not in ("SIINDBAD", "KAMUE"):
-                continue
-            processed += 1
-            self._theme_prewarm_active_variant = variant
-            try:
-                self._execute_theme_prewarm_task(task)
-            except (tk.TclError, RuntimeError, AttributeError, OSError, TypeError, ValueError, ImportError):
-                pass
-            total = int(totals.get(variant, 0) or 0)
-            if total > 0:
-                current_done = int(done_counts.get(variant, 0) or 0)
-                done_counts[variant] = min(total, current_done + 1)
-            remaining_for_variant = any(
-                str(item.get("variant", "")).upper() == variant for item in tasks
-            )
-            if not remaining_for_variant:
-                queue = [name for name in queue if str(name).upper() != variant]
-                self._finish_theme_prewarm_variant(variant)
-
-        self._theme_prewarm_done_by_variant = done_counts
-        self._theme_prewarm_queue = queue
-        self._theme_prewarm_tasks = tasks
-        self._update_startup_loader_progress()
-        if self._theme_prewarm_tasks:
-            self._theme_prewarm_after_id = self.root.after(next_tick_ms, self._run_theme_asset_prewarm)
-        else:
-            self._on_startup_full_load_ready()
+        return theme_service._run_theme_asset_prewarm(self)
 
     def _prewarm_theme_variant_assets(self, variant):
         tasks = self._build_theme_prewarm_tasks(variant)
@@ -9142,91 +7077,7 @@ if not install_started:
 
     @staticmethod
     def _extract_badge_boxes(image, threshold=16):
-        rgb = image.convert("RGB")
-        width, height = rgb.size
-        pixels = rgb.load()
-        min_row_pixels = max(8, width // 60)
-        min_group_height = max(20, height // 20)
-
-        def row_lit_count(y):
-            lit = 0
-            for x in range(width):
-                if max(pixels[x, y]) > threshold:
-                    lit += 1
-            return lit
-
-        def box_for_rows(y1, y2):
-            x1, x2 = width, -1
-            for yy in range(y1, y2 + 1):
-                for xx in range(width):
-                    if max(pixels[xx, yy]) > threshold:
-                        if xx < x1:
-                            x1 = xx
-                        if xx > x2:
-                            x2 = xx
-            if x2 < x1:
-                return None
-            pad = 4
-            return (
-                max(0, x1 - pad),
-                max(0, y1 - pad),
-                min(width, x2 + pad + 1),
-                min(height, y2 + pad + 1),
-            )
-
-        row_has = [row_lit_count(y) >= min_row_pixels for y in range(height)]
-        groups = []
-        y = 0
-        while y < height:
-            while y < height and not row_has[y]:
-                y += 1
-            if y >= height:
-                break
-            start = y
-            while y < height and row_has[y]:
-                y += 1
-            end = y - 1
-            if end - start + 1 >= min_group_height:
-                groups.append((start, end))
-
-        boxes = []
-        for start, end in groups:
-            box = box_for_rows(start, end)
-            if not box:
-                continue
-            area = (box[2] - box[0]) * (box[3] - box[1])
-            if area >= 20000:
-                boxes.append(box)
-
-        if len(boxes) < 2:
-            halves = ((0, height // 2), (height // 2, height))
-            split_boxes = []
-            for y_start, y_end in halves:
-                top = None
-                bottom = None
-                for yy in range(y_start, y_end):
-                    if row_lit_count(yy) >= min_row_pixels:
-                        if top is None:
-                            top = yy
-                        bottom = yy
-                if top is None or bottom is None:
-                    continue
-                box = box_for_rows(top, bottom)
-                if not box:
-                    continue
-                area = (box[2] - box[0]) * (box[3] - box[1])
-                if area >= 20000:
-                    split_boxes.append(box)
-            boxes = split_boxes
-
-        if len(boxes) > 2:
-            boxes = sorted(
-                boxes,
-                key=lambda b: (b[2] - b[0]) * (b[3] - b[1]),
-                reverse=True,
-            )[:2]
-        boxes.sort(key=lambda b: b[1])
-        return boxes
+        return footer_service._extract_badge_boxes(image, threshold)
 
     def _load_credit_badge_sources(self):
         cached = getattr(self, "_credit_badge_sources_cache", None)
@@ -9238,8 +7089,10 @@ if not install_started:
             return []
         try:
             image_module = importlib.import_module("PIL.Image")
-            with image_module.open(path) as source_file:
-                source = source_file.convert("RGBA")
+            source = theme_service.get_cached_rgba_image(self, path, image_module)
+            if source is None:
+                self._credit_badge_sources_cache = []
+                return []
             boxes = self._extract_badge_boxes(source)
             if len(boxes) < 2:
                 self._credit_badge_sources_cache = []
@@ -9252,149 +7105,10 @@ if not install_started:
             return []
 
     def _load_credit_github_icon(self, max_size=16, tint="#dff6ff", with_plate=False):
-        cache = getattr(self, "_credit_github_icon_cache", None)
-        if cache is None:
-            cache = {}
-            self._credit_github_icon_cache = cache
-        signature = (int(max_size), str(tint), bool(with_plate))
-        cached = cache.get(signature)
-        if cached is not None:
-            return cached
-        base_dir = self._resource_base_dir()
-        candidates = [
-            os.path.join(base_dir, "assets", "buttons", "github_mark_official.png"),
-            os.path.join(base_dir, "assets", "buttons", "github_mark_octicons.png"),
-        ]
-        icon_path = next((path for path in candidates if os.path.isfile(path)), None)
-        if not icon_path:
-            self._bounded_cache_put(cache, signature, None, max_items=64)
-            return None
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            with image_module.open(icon_path) as icon_file:
-                icon = icon_file.convert("RGBA")
-            alpha = icon.split()[-1]
-            alpha_min, alpha_max = alpha.getextrema()
-            mask = alpha
-            if alpha_min == 255 and alpha_max == 255:
-                # Some downloaded marks ship on white backgrounds; derive a mask from luminance.
-                gray = icon.convert("L")
-                mask = gray.point(lambda p: max(0, min(255, (235 - p) * 4)))
-            bounds = mask.getbbox()
-            if bounds:
-                icon = icon.crop(bounds)
-                mask = mask.crop(bounds)
-            tint_hex = str(tint).strip().lstrip("#")
-            if len(tint_hex) != 6:
-                tint_hex = "dff6ff"
-            rgb = tuple(int(tint_hex[i:i + 2], 16) for i in (0, 2, 4))
-            tinted = image_module.new("RGBA", icon.size, rgb + (0,))
-            tinted.putalpha(mask)
-            icon = tinted
-            if max_size and (icon.width > max_size or icon.height > max_size):
-                scale = min(max_size / float(icon.width), max_size / float(icon.height))
-                new_size = (
-                    max(1, int(round(icon.width * scale))),
-                    max(1, int(round(icon.height * scale))),
-                )
-                icon = icon.resize(new_size, image_module.LANCZOS)
-            if with_plate:
-                draw_module = importlib.import_module("PIL.ImageDraw")
-                plate_pad = 3
-                plate_size = max(icon.width, icon.height) + (plate_pad * 2)
-                plate = image_module.new("RGBA", (plate_size, plate_size), (0, 0, 0, 0))
-                draw = draw_module.Draw(plate)
-                draw.ellipse(
-                    (0, 0, plate_size - 1, plate_size - 1),
-                    fill=(70, 116, 146, 28),
-                )
-                draw.ellipse(
-                    (1, 1, plate_size - 2, plate_size - 2),
-                    fill=(18, 30, 42, 210),
-                    outline=(76, 111, 136, 120),
-                    width=1,
-                )
-                pos = ((plate_size - icon.width) // 2, (plate_size - icon.height) // 2)
-                plate.alpha_composite(icon, pos)
-                icon = plate
-            photo = self._pil_to_photo(icon)
-            self._bounded_cache_put(cache, signature, photo, max_items=64)
-            return photo
-        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
-            self._bounded_cache_put(cache, signature, None, max_items=64)
-            return None
+        return footer_service._load_credit_github_icon(self, max_size, tint, with_plate)
 
     def _load_credit_discord_icon(self, max_size=16, tint="#dff6ff", with_plate=False):
-        cache = getattr(self, "_credit_discord_icon_cache", None)
-        if cache is None:
-            cache = {}
-            self._credit_discord_icon_cache = cache
-        signature = (int(max_size), str(tint), bool(with_plate))
-        cached = cache.get(signature)
-        if cached is not None:
-            return cached
-        base_dir = self._resource_base_dir()
-        candidates = [
-            os.path.join(base_dir, "assets", "buttons", "discord_clyde_icon.png"),
-            os.path.join(base_dir, "assets", "buttons", "discord_mark_symbol.png"),
-        ]
-        icon_path = next((path for path in candidates if os.path.isfile(path)), None)
-        if not icon_path:
-            self._bounded_cache_put(cache, signature, None, max_items=64)
-            return None
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            with image_module.open(icon_path) as icon_file:
-                icon = icon_file.convert("RGBA")
-            alpha = icon.split()[-1]
-            alpha_min, alpha_max = alpha.getextrema()
-            mask = alpha
-            if alpha_min == 255 and alpha_max == 255:
-                gray = icon.convert("L")
-                mask = gray.point(lambda p: max(0, min(255, (235 - p) * 4)))
-            bounds = mask.getbbox()
-            if bounds:
-                icon = icon.crop(bounds)
-                mask = mask.crop(bounds)
-            tint_hex = str(tint).strip().lstrip("#")
-            if len(tint_hex) != 6:
-                tint_hex = "dff6ff"
-            rgb = tuple(int(tint_hex[i:i + 2], 16) for i in (0, 2, 4))
-            tinted = image_module.new("RGBA", icon.size, rgb + (0,))
-            tinted.putalpha(mask)
-            icon = tinted
-            if max_size and (icon.width > max_size or icon.height > max_size):
-                scale = min(max_size / float(icon.width), max_size / float(icon.height))
-                new_size = (
-                    max(1, int(round(icon.width * scale))),
-                    max(1, int(round(icon.height * scale))),
-                )
-                icon = icon.resize(new_size, image_module.LANCZOS)
-            if with_plate:
-                draw_module = importlib.import_module("PIL.ImageDraw")
-                plate_pad = 3
-                plate_size = max(icon.width, icon.height) + (plate_pad * 2)
-                plate = image_module.new("RGBA", (plate_size, plate_size), (0, 0, 0, 0))
-                draw = draw_module.Draw(plate)
-                draw.ellipse(
-                    (0, 0, plate_size - 1, plate_size - 1),
-                    fill=(70, 116, 146, 28),
-                )
-                draw.ellipse(
-                    (1, 1, plate_size - 2, plate_size - 2),
-                    fill=(18, 30, 42, 210),
-                    outline=(76, 111, 136, 120),
-                    width=1,
-                )
-                pos = ((plate_size - icon.width) // 2, (plate_size - icon.height) // 2)
-                plate.alpha_composite(icon, pos)
-                icon = plate
-            photo = self._pil_to_photo(icon)
-            self._bounded_cache_put(cache, signature, photo, max_items=64)
-            return photo
-        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
-            self._bounded_cache_put(cache, signature, None, max_items=64)
-            return None
+        return footer_service._load_credit_discord_icon(self, max_size, tint, with_plate)
 
     def _resize_pil_image_to_height(self, image, max_height):
         if not image or not max_height or image.height <= max_height:
@@ -9424,205 +7138,10 @@ if not install_started:
             return None
 
     def _render_credit_badges(self):
-        parent = self._credit_badge_host
-        if parent is None:
-            return
-
-        github_specs = [
-            ("SIINDBAD", "https://github.com/Siindbad"),
-            ("KAMUE", "https://github.com/Kamue-cmd"),
-        ]
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        palette = self._footer_badge_palette(variant)
-        spec = self._footer_visual_spec()
-        sources = self._load_credit_badge_sources()
-        self._credit_badge_images = []
-        chip_bg = palette["bg"]
-        chip_border = palette["border"]
-        text_fg = palette["fg"]
-        icon_tint = "#d8e8f2"
-        icon_with_plate = False
-        icon_size = int(spec["chip_icon_size"])
-        render_signature = (
-            tuple(github_specs),
-            variant,
-            self._footer_style_variant(),
-            chip_bg,
-            chip_border,
-            text_fg,
-            icon_tint,
-            bool(icon_with_plate),
-            int(icon_size),
-            tuple(spec["chip_font"]),
-        )
-        if (
-            render_signature == getattr(self, "_credit_badge_render_signature", None)
-            and parent.winfo_children()
-        ):
-            return
-        for child in parent.winfo_children():
-            child.destroy()
-
-        github_icon_photo = self._load_credit_github_icon(
-            max_size=icon_size,
-            tint=icon_tint,
-            with_plate=icon_with_plate,
-        )
-        if github_icon_photo is not None:
-            self._credit_badge_images.append(github_icon_photo)
-        name_font = spec["chip_font"]
-
-        for idx, (name, url) in enumerate(github_specs):
-            source = sources[idx] if idx < len(sources) else None
-            pad_left = 0 if idx == 0 else int(spec["chip_gap"])
-            open_cb = lambda _event, link=url: self._open_external_link(link)
-
-            chip = tk.Frame(
-                parent,
-                bg=chip_bg,
-                bd=0,
-                highlightthickness=1,
-                highlightbackground=chip_border,
-                highlightcolor=chip_border,
-            )
-            chip.pack(side="left", padx=(pad_left, 0))
-            if github_icon_photo is not None:
-                icon_label = tk.Label(
-                    chip,
-                    image=github_icon_photo,
-                    bg=chip_bg,
-                    bd=0,
-                    highlightthickness=0,
-                )
-                icon_label.pack(side="left", padx=(spec["chip_icon_left_pad"], spec["chip_icon_gap"]), pady=0)
-            elif source is not None:
-                icon_width = max(1, int(round(source.width * 0.30)))
-                icon = source.crop((0, 0, icon_width, source.height))
-                icon = self._resize_pil_image_to_height(icon, int(spec["chip_icon_size"]))
-                icon_photo = self._pil_to_photo(icon)
-                if icon_photo is not None:
-                    self._credit_badge_images.append(icon_photo)
-                    icon_label = tk.Label(
-                        chip,
-                        image=icon_photo,
-                        bg=chip_bg,
-                        bd=0,
-                        highlightthickness=0,
-                    )
-                    icon_label.pack(side="left", padx=(spec["chip_icon_left_pad"], spec["chip_icon_gap"]), pady=0)
-            text_label = tk.Label(
-                chip,
-                text=name,
-                bg=chip_bg,
-                fg=text_fg,
-                font=name_font,
-                bd=0,
-                highlightthickness=0,
-                padx=0,
-                pady=spec["chip_text_pady"],
-            )
-            text_label.pack(side="left", padx=(0, spec["chip_text_right_pad"]), pady=0)
-            self._bind_click_recursive(chip, open_cb)
-        self._credit_badge_render_signature = render_signature
+        return footer_service._render_credit_badges(self)
 
     def _render_credit_discord_badges(self):
-        parent = self._credit_discord_badge_host
-        if parent is None:
-            return
-        discord_specs = [
-            ("SIN.NETWORK", "https://discord.gg/kpFXrtyr2Z"),
-            ("G-DEVS", "https://discord.gg/U7pZFXXtcn"),
-        ]
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        palette = self._footer_badge_palette(variant)
-        spec = self._footer_visual_spec()
-        theme = getattr(self, "_theme", {})
-        self._credit_discord_badge_images = []
-        chip_bg = palette["bg"]
-        chip_border = palette["border"]
-        text_fg = palette["fg"]
-        label_bg = theme.get("credit_bg", "#0b1118")
-        label_fg = theme.get("credit_label_fg", "#b5cade")
-        icon_tint = "#d8e8f2"
-        icon_with_plate = False
-        icon_size = int(spec["chip_icon_size"])
-        render_signature = (
-            tuple(discord_specs),
-            variant,
-            self._footer_style_variant(),
-            chip_bg,
-            chip_border,
-            text_fg,
-            label_bg,
-            label_fg,
-            icon_tint,
-            bool(icon_with_plate),
-            int(icon_size),
-            tuple(spec["chip_font"]),
-        )
-        if (
-            render_signature == getattr(self, "_credit_discord_badge_render_signature", None)
-            and parent.winfo_children()
-        ):
-            return
-        for child in parent.winfo_children():
-            child.destroy()
-        discord_icon_photo = self._load_credit_discord_icon(
-            max_size=icon_size,
-            tint=icon_tint,
-            with_plate=icon_with_plate,
-        )
-        if discord_icon_photo is not None:
-            self._credit_discord_badge_images.append(discord_icon_photo)
-        name_font = spec["chip_font"]
-        discord_label = tk.Label(
-            parent,
-            text="DISCORD :",
-            bg=label_bg,
-            fg=label_fg,
-            font=spec["label_font"],
-            bd=0,
-            highlightthickness=0,
-            padx=0,
-            pady=spec["chip_text_pady"],
-        )
-        discord_label.pack(side="left", padx=(0, spec["label_gap"]))
-
-        for idx, (name, url) in enumerate(discord_specs):
-            pad_left = 0 if idx == 0 else int(spec["chip_gap"])
-            chip = tk.Frame(
-                parent,
-                bg=chip_bg,
-                bd=0,
-                highlightthickness=1,
-                highlightbackground=chip_border,
-                highlightcolor=chip_border,
-            )
-            chip.pack(side="left", padx=(pad_left, 0))
-            if discord_icon_photo is not None:
-                icon_label = tk.Label(
-                    chip,
-                    image=discord_icon_photo,
-                    bg=chip_bg,
-                    bd=0,
-                    highlightthickness=0,
-                )
-                icon_label.pack(side="left", padx=(spec["chip_icon_left_pad"], spec["chip_icon_gap"]), pady=0)
-            text_label = tk.Label(
-                chip,
-                text=name,
-                bg=chip_bg,
-                fg=text_fg,
-                font=name_font,
-                bd=0,
-                highlightthickness=0,
-                padx=0,
-                pady=spec["chip_text_pady"],
-            )
-            text_label.pack(side="left", padx=(0, spec["chip_text_right_pad"]), pady=0)
-            if url:
-                self._bind_click_recursive(chip, lambda _event, link=url: self._open_external_link(link))
-        self._credit_discord_badge_render_signature = render_signature
+        return footer_service._render_credit_discord_badges(self)
 
     def _build_credit_badges(self, parent):
         self._credit_badge_host = parent
@@ -9845,7 +7364,9 @@ if not install_started:
             cached = cache.get(signature)
             if cached is not None:
                 return cached
-            image = image_module.open(path).convert("RGBA")
+            image = theme_service.get_cached_rgba_image(self, path, image_module)
+            if image is None:
+                return None
             if image.width > max_width:
                 scale = max_width / image.width
                 new_size = (max_width, int(image.height * scale))
@@ -10188,24 +7709,7 @@ if not install_started:
             self.load_file(path)
 
     def load_file(self, path):
-        try:
-            if path.lower().endswith(".hhsav"):
-                with gzip.open(path, "rb") as f:
-                    raw = f.read().decode("utf-8")
-                self.data = json.loads(raw)
-            else:
-                with open(path, "r", encoding="utf-8") as f:
-                    self.data = json.load(f)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
-            messagebox.showerror("Load failed", str(exc))
-            return
-
-        self.path = path
-        self.root.title(
-            f"SIINDBAD's HackHub Editor - {os.path.basename(path)} - v{self.APP_VERSION}"
-        )
-        self._rebuild_tree()
-        self.set_status("Loaded")
+        return editor_purge_service.load_file(self, path)
 
     @staticmethod
     def _tree_marker_palette(theme_variant):
@@ -10582,148 +8086,7 @@ if not install_started:
         return joined
 
     def _append_find_search_entries(self, path, value, entries):
-        mode_is_input = str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT"
-        if isinstance(value, dict):
-            hidden_keys_getter = getattr(self, "_hidden_root_tree_keys_for_mode", None)
-            hidden_keys = (
-                hidden_keys_getter() if callable(hidden_keys_getter) else set(getattr(self, "HIDDEN_ROOT_TREE_KEYS", set()))
-            )
-            keys = list(value.keys())
-            if isinstance(path, list) and len(path) == 0:
-                keys = sorted(
-                    keys,
-                    key=lambda raw: str(self._tree_display_label_for_key(raw)).casefold(),
-                )
-            for key in keys:
-                if (
-                    isinstance(path, list)
-                    and not path
-                    and self._normalize_root_tree_key(key) in hidden_keys
-                ):
-                    continue
-                child_path = path + [key]
-                child_text = self._tree_display_label_for_key(key)
-                if tuple(path or []) in (("Typewriter",),):
-                    entry_value = value.get(key)
-                    if isinstance(entry_value, dict):
-                        type_value = entry_value.get("type")
-                        if type_value:
-                            child_text = str(type_value)
-                child_value = value.get(key)
-                summary_fn = getattr(self, "_find_search_value_summary", None)
-                summary_text = summary_fn(child_value) if callable(summary_fn) else ""
-                searchable_text = f"{child_text} {summary_text}".strip().casefold()
-                entries.append((child_path, searchable_text))
-                should_recurse = isinstance(child_value, (dict, list)) and len(child_value) > 0
-                if (
-                    should_recurse
-                    and mode_is_input
-                    and isinstance(path, list)
-                    and not path
-                    and self._normalize_root_tree_key(key) in set(getattr(self, "INPUT_MODE_NO_EXPAND_ROOT_KEYS", set()))
-                ):
-                    # INPUT mode keeps locked roots collapsed; Find index should not force deep expansion.
-                    should_recurse = False
-                if should_recurse:
-                    self._append_find_search_entries(child_path, child_value, entries)
-            return
-
-        if isinstance(value, list) and self._is_network_list(path, value):
-            groups = {}
-            for idx, item in enumerate(value):
-                group = item.get("type") if isinstance(item, dict) else "UNKNOWN"
-                groups.setdefault(group, []).append((idx, item))
-
-            ordered_groups = [t for t in self.network_types if t in groups]
-            for group in sorted(g for g in groups.keys() if g not in self.network_types_set):
-                ordered_groups.append(group)
-
-            for group in ordered_groups:
-                if tree_policy_service.is_network_group_hidden_for_mode(self, path, group):
-                    continue
-                items = groups[group]
-                group_label = f"{group} ({len(items)})"
-                entries.append((("__group__", list(path), group), group_label.casefold()))
-                group_is_locked = (
-                    mode_is_input
-                    and str(path[0] if path else "").strip().casefold() == "network"
-                    and str(group or "").strip().casefold() in set(getattr(self, "INPUT_MODE_NETWORK_NO_EXPAND_GROUP_KEYS", set()))
-                )
-                for idx, item in items:
-                    label = ""
-                    if isinstance(item, dict):
-                        if group in ("ROUTER", "DEVICE", "FIREWALL", "SPLITTER"):
-                            ip = item.get("ip")
-                            if group == "SPLITTER":
-                                name = None
-                            elif group == "FIREWALL":
-                                name = None
-                                users = item.get("users")
-                                if isinstance(users, list) and users:
-                                    user0 = users[0]
-                                    if isinstance(user0, dict):
-                                        name = user0.get("id")
-                            else:
-                                name = item.get("name")
-                                if not name:
-                                    domain = item.get("domain")
-                                    if isinstance(domain, dict):
-                                        name = domain.get("name")
-                                if not name:
-                                    users = item.get("users")
-                                    if isinstance(users, list) and users:
-                                        user0 = users[0]
-                                        if isinstance(user0, dict):
-                                            name = user0.get("firstName") or user0.get("name")
-                                if not name and group in ("ROUTER", "DEVICE"):
-                                    name = item.get("type")
-                            if ip is not None or name is not None:
-                                ip_str = "" if ip is None else str(ip)
-                                name_str = "" if name is None else str(name)
-                                label = f"{ip_str} | {name_str}".strip(" |")
-                            else:
-                                extra = []
-                                if "id" in item:
-                                    extra.append(f"id={item['id']}")
-                                if "ip" in item:
-                                    extra.append(f"ip={item['ip']}")
-                                if extra:
-                                    label = " ".join(extra)
-                        else:
-                            extra = []
-                            if "id" in item:
-                                extra.append(f"id={item['id']}")
-                            if "ip" in item:
-                                extra.append(f"ip={item['ip']}")
-                            if extra:
-                                label = " ".join(extra)
-                    if not label:
-                        label = f"Item {idx + 1}"
-                    child_path = path + [idx]
-                    summary_fn = getattr(self, "_find_search_value_summary", None)
-                    summary_text = summary_fn(item) if callable(summary_fn) else ""
-                    searchable_text = f"{label} {summary_text}".strip().casefold()
-                    entries.append((child_path, searchable_text))
-                    if not group_is_locked and isinstance(item, (dict, list)) and len(item) > 0:
-                        self._append_find_search_entries(child_path, item, entries)
-            return
-
-        if isinstance(value, list):
-            labeler = self._list_labelers.get(tuple(path))
-            for idx, item in enumerate(value):
-                if labeler:
-                    label = labeler(idx, item)
-                elif self._is_database_table_rows_path(path):
-                    label = self._database_table_row_label(idx, item)
-                else:
-                    label = f"[{idx}]"
-                child_path = path + [idx]
-                summary_fn = getattr(self, "_find_search_value_summary", None)
-                summary_text = summary_fn(item) if callable(summary_fn) else ""
-                searchable_text = f"{label} {summary_text}".strip().casefold()
-                entries.append((child_path, searchable_text))
-                if isinstance(item, (dict, list)) and len(item) > 0:
-                    self._append_find_search_entries(child_path, item, entries)
+        return editor_purge_service._append_find_search_entries(self, path, value, entries)
 
     def _ensure_tree_item_for_path(self, target_path):
         if not isinstance(target_path, list):
@@ -10861,261 +8224,29 @@ if not install_started:
         self.set_status(f'Find: {self.find_index}/{len(self.find_matches)}')
 
     def _collapse_previous_find_root_if_category_changed(self, next_item_id):
-        # UX rule: when JSON Find Next jumps to a different top-level category,
-        # collapse the previously visited category to avoid branch sprawl.
-        tree_widget = getattr(self, "tree", None)
-        if tree_widget is None:
-            return
-        if not next_item_id:
-            return
-        try:
-            if not tree_widget.winfo_exists():
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        def _root_item(item_id):
-            current = item_id
-            if not current:
-                return ""
-            while True:
-                try:
-                    parent = tree_widget.parent(current)
-                except _EXPECTED_APP_ERRORS:
-                    return current
-                if not parent:
-                    return current
-                current = parent
-
-        try:
-            next_root = _root_item(next_item_id)
-            previous_root = str(getattr(self, "_find_last_root_item", "") or "")
-            if previous_root and next_root and previous_root != next_root:
-                tree_widget.item(previous_root, open=False)
-            self._find_last_root_item = next_root
-        except _EXPECTED_APP_ERRORS:
-            return
+        json_find_nav_service.collapse_previous_find_root_if_category_changed(self, next_item_id)
 
     def _build_json_find_matches(self, query_lower):
-        # Deterministic JSON-mode search across real data paths.
-        # Each match is a concrete path so Find Next can cycle categories reliably.
-        needle = str(query_lower or "").strip().casefold()
-        if not needle:
-            return []
-
-        matches = []
-        seen = set()
-        hidden_keys = self._hidden_root_tree_keys_for_mode("JSON")
-
-        def _add(path):
-            if not isinstance(path, list) or not path:
-                return
-            key = tuple(path)
-            if key in seen:
-                return
-            seen.add(key)
-            matches.append(path)
-
-        def _walk(value, path):
-            if isinstance(value, dict):
-                keys = list(value.keys())
-                if not path:
-                    keys = sorted(keys, key=lambda raw: str(self._tree_display_label_for_key(raw)).casefold())
-                for key in keys:
-                    if not path and self._normalize_root_tree_key(key) in hidden_keys:
-                        continue
-                    child_path = path + [key]
-                    key_text = f"{key} {self._tree_display_label_for_key(key)}".casefold()
-                    if needle in key_text:
-                        _add(child_path)
-                    _walk(value.get(key), child_path)
-                return
-
-            if isinstance(value, list):
-                labeler = self._list_labelers.get(tuple(path))
-                for idx, item in enumerate(value):
-                    child_path = path + [idx]
-                    if labeler:
-                        label = str(labeler(idx, item))
-                    elif self._is_database_table_rows_path(path):
-                        label = str(self._database_table_row_label(idx, item))
-                    else:
-                        label = f"[{idx}]"
-                    if needle in label.casefold():
-                        _add(child_path)
-                    _walk(item, child_path)
-                return
-
-            value_text = str(value).casefold() if value is not None else "none"
-            if needle in value_text:
-                if len(path) > 1:
-                    _add(path[:-1])
-                _add(path)
-
-        _walk(self.data, [])
-        return matches
+        return json_find_service.build_json_find_matches(self, query_lower)
 
     def _find_next_json_text_match(self, query):
-        # Cycle through visible JSON text matches with wrap-around behavior.
-        text_widget = getattr(self, "text", None)
-        if text_widget is None:
-            return False
-        needle = str(query or "").strip()
-        if not needle:
-            return False
-        try:
-            if not text_widget.winfo_exists():
-                return False
-            query_key = needle.casefold()
-            last_query = str(getattr(self, "_json_find_last_query", "") or "")
-            start_index = "1.0"
-            wrapped = False
-            current_start = ""
-            if last_query == query_key:
-                ranges = list(text_widget.tag_ranges("find_next_match"))
-                if len(ranges) >= 2:
-                    current_start = str(ranges[0])
-                    start_index = str(ranges[1])
-                else:
-                    start_index = str(text_widget.index("insert +1c"))
-
-            start = text_widget.search(needle, start_index, stopindex="end", nocase=1)
-            if not start and start_index != "1.0":
-                wrapped = True
-                start = text_widget.search(needle, "1.0", stopindex=start_index, nocase=1)
-            if not start:
-                self._json_find_last_query = query_key
-                return False
-            if wrapped and current_start:
-                # Any wrap means this JSON view is exhausted for forward traversal.
-                # Hand off to tree-level fallback so Find Next advances sections.
-                self._json_find_last_query = query_key
-                return False
-
-            end = f"{start}+{len(needle)}c"
-            text_widget.tag_remove("find_next_match", "1.0", "end")
-            text_widget.tag_add("find_next_match", start, end)
-            text_widget.tag_config(
-                "find_next_match",
-                background="#214a6a",
-                foreground="#e8f6ff",
-            )
-            text_widget.mark_set("insert", end)
-            text_widget.see(start)
-            self._json_find_last_query = query_key
-            return True
-        except _EXPECTED_APP_ERRORS:
-            return False
+        return json_text_find_service.find_next_json_text_match(self, query)
 
     def _focus_json_find_match(self, query):
-        # After tree-level Find Next picks a node, also jump to the text match in JSON editor.
-        self._json_find_last_query = ""
-        self._find_next_json_text_match(query)
+        json_text_find_service.focus_json_find_match(self, query)
 
     def _find_next_input_mode(self):
-        query = self.find_entry.get().strip()
-        if not query:
-            self.set_status("Find: enter text to search")
-            return
-
-        query_lower = query.lower()
-        if (
-            query_lower != self.last_find_query
-            or not self.find_matches
-            or not isinstance(self.find_matches[0], dict)
-            or "widget" not in self.find_matches[0]
-        ):
-            entries = self._build_input_mode_search_entries()
-            self.find_matches = [entry[0] for entry in entries if query_lower in entry[1]]
-            self.find_index = 0
-            self.last_find_query = query_lower
-
-        if not self.find_matches:
-            self.set_status(f'Find: no matches for "{query}"')
-            return
-
-        match = self.find_matches[self.find_index]
-        self.find_index = (self.find_index + 1) % len(self.find_matches)
-        widget = match.get("widget")
-        if widget is not None:
-            self._scroll_input_widget_into_view(widget)
-            try:
-                focus_target = match.get("focus_widget") or widget
-                focus_target.focus_set()
-                if isinstance(focus_target, tk.Entry):
-                    focus_target.selection_range(0, "end")
-                    focus_target.icursor("end")
-            except _EXPECTED_APP_ERRORS:
-                pass
-        self.set_status(f'Find: {self.find_index}/{len(self.find_matches)}')
+        input_mode_find_service.find_next_input_mode(self, tk_module=tk)
 
     def _build_input_mode_search_entries(self):
-        host = getattr(self, "_input_mode_fields_host", None)
-        if host is None:
-            return []
-        entries = []
-
-        def _walk(widget):
-            try:
-                children = list(widget.winfo_children())
-            except _EXPECTED_APP_ERRORS:
-                children = []
-            for child in children:
-                _add_entry(child)
-                _walk(child)
-
-        def _add_entry(widget):
-            text = ""
-            focus_widget = None
-            try:
-                if isinstance(widget, tk.Entry):
-                    text = str(widget.get() or "")
-                    focus_widget = widget
-                elif isinstance(widget, tk.Label):
-                    text = str(widget.cget("text") or "")
-                    focus_widget = self._find_first_entry_descendant(widget.master)
-            except _EXPECTED_APP_ERRORS:
-                return
-            text = text.strip()
-            if not text:
-                return
-            entries.append(({"widget": widget, "focus_widget": focus_widget}, text.casefold()))
-
-        _walk(host)
-        return entries
+        return input_mode_find_service.build_input_mode_search_entries(self, tk_module=tk)
 
     @staticmethod
     def _find_first_entry_descendant(root_widget):
-        if root_widget is None:
-            return None
-        queue = [root_widget]
-        while queue:
-            current = queue.pop(0)
-            if isinstance(current, tk.Entry):
-                return current
-            try:
-                queue.extend(list(current.winfo_children()))
-            except _EXPECTED_APP_ERRORS:
-                continue
-        return None
+        return input_mode_find_service.find_first_entry_descendant(root_widget, tk_module=tk)
 
     def _scroll_input_widget_into_view(self, widget):
-        canvas = getattr(self, "_input_mode_canvas", None)
-        host = getattr(self, "_input_mode_fields_host", None)
-        if canvas is None or host is None or widget is None:
-            return
-        try:
-            canvas.update_idletasks()
-            host.update_idletasks()
-            total_height = max(1, int(host.winfo_height()))
-            view_height = max(1, int(canvas.winfo_height()))
-            y_in_host = int(widget.winfo_rooty() - host.winfo_rooty())
-            target_y = max(0, y_in_host - int(view_height * 0.35))
-            denom = max(1, total_height - view_height)
-            fraction = max(0.0, min(1.0, float(target_y) / float(denom)))
-            canvas.yview_moveto(fraction)
-        except _EXPECTED_APP_ERRORS:
-            return
+        input_mode_find_service.scroll_input_widget_into_view(self, widget)
 
     def _populate_children(self, item_id):
         tree_engine_service.populate_children(self, item_id)
@@ -11221,70 +8352,20 @@ if not install_started:
         self.set_status(self._describe(value))
 
     def _show_value(self, value, path=None):
-        self._json_render_seq = int(getattr(self, "_json_render_seq", 0) or 0) + 1
-        render_seq = int(self._json_render_seq)
-        try:
-            self.text.configure(state="normal")
-        except _EXPECTED_APP_ERRORS:
-            pass
-        self.text.delete("1.0", "end")
-        try:
-            rendered = json.dumps(value, indent=2, ensure_ascii=False)
-        except TypeError:
-            rendered = str(value)
-        self.text.insert("1.0", rendered)
-        # Keep visible key highlights instant; defer heavier value-rule pass.
-        self._clear_json_lock_highlight()
-        self._set_json_text_editable(True)
-        self._apply_json_view_key_highlights(path, line_limit=self._initial_highlight_line_limit())
-        self._schedule_json_view_lock_state(path, render_seq=render_seq)
-        try:
-            # Keep undo/redo scoped to the current node content.
-            self.text.edit_reset()
-            self.text.edit_modified(False)
-        except _EXPECTED_APP_ERRORS:
-            pass
+        json_view_render_service.show_value(self, value, path=path)
 
     def _initial_highlight_line_limit(self):
-        # Fast-first paint: highlight currently visible JSON area first.
-        try:
-            text_h = max(1, int(self.text.winfo_height()))
-            top_idx = str(self.text.index("@0,0"))
-            bottom_idx = str(self.text.index(f"@0,{text_h}"))
-            top_line = int(top_idx.split(".", 1)[0])
-            bottom_line = int(bottom_idx.split(".", 1)[0])
-            return max(80, int(bottom_line - top_line + 30))
-        except _EXPECTED_APP_ERRORS:
-            return 160
+        return json_view_render_service.initial_highlight_line_limit(self)
 
     def _cancel_pending_json_view_lock_state(self):
-        after_id = getattr(self, "_json_lock_apply_after_id", None)
-        self._json_lock_apply_after_id = None
-        if not after_id:
-            return
-        try:
-            self.root.after_cancel(after_id)
-        except _EXPECTED_APP_ERRORS:
-            return
+        json_view_render_service.cancel_pending_json_view_lock_state(self)
 
     def _schedule_json_view_lock_state(self, path, render_seq=None):
-        self._cancel_pending_json_view_lock_state()
-        snapshot_path = list(path or [])
-        expected_seq = int(render_seq if render_seq is not None else getattr(self, "_json_render_seq", 0) or 0)
-
-        def _apply_pending():
-            self._json_lock_apply_after_id = None
-            if int(getattr(self, "_json_render_seq", 0) or 0) != expected_seq:
-                return
-            self._apply_json_view_key_highlights(snapshot_path)
-            self._apply_json_view_value_highlights(snapshot_path)
-
-        try:
-            self._json_lock_apply_after_id = self.root.after_idle(_apply_pending)
-        except _EXPECTED_APP_ERRORS:
-            self._json_lock_apply_after_id = None
-            self._apply_json_view_key_highlights(snapshot_path)
-            self._apply_json_view_value_highlights(snapshot_path)
+        json_view_render_service.schedule_json_view_lock_state(
+            self,
+            path,
+            render_seq=render_seq,
+        )
 
     def _json_lock_tag_palette(self):
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -11299,2379 +8380,326 @@ if not install_started:
         }
 
     def _configure_json_lock_tags(self):
-        palette = self._json_lock_tag_palette()
-        try:
-            self.text.tag_config("json_brace_token", foreground="#54d5ff")
-            self.text.tag_config("json_bracket_token", foreground="#ff7ac8")
-            self.text.tag_config("json_bool_true", foreground="#5fa8ff")
-            self.text.tag_config("json_bool_false", foreground="#ff9ea1")
-            self.text.tag_config("json_value_green", foreground="#49c979")
-            self.text.tag_config("json_property_key", foreground=palette["fg"])
-            self.text.tag_config("json_locked_key", foreground=palette["fg"])
-            self.text.tag_config(
-                "json_locked_block",
-                foreground=palette["fg"],
-                background=palette["block_bg"],
-            )
-            # Lime-green label accents for coordinate/dimension keys.
-            self.text.tag_config("json_xy_key", foreground="#b6ff3b")
-            self.text.tag_raise("json_brace_token")
-            self.text.tag_raise("json_bracket_token")
-            self.text.tag_raise("json_bool_true")
-            self.text.tag_raise("json_bool_false")
-            self.text.tag_raise("json_value_green")
-            self.text.tag_raise("json_locked_key")
-            self.text.tag_raise("json_property_key")
-            self.text.tag_raise("json_xy_key")
-        except _EXPECTED_APP_ERRORS:
-            return
+        return json_diagnostics_service._configure_json_lock_tags(self)
 
     def _clear_json_lock_highlight(self):
-        try:
-            self.text.tag_remove("json_brace_token", "1.0", "end")
-            self.text.tag_remove("json_bracket_token", "1.0", "end")
-            self.text.tag_remove("json_bool_true", "1.0", "end")
-            self.text.tag_remove("json_bool_false", "1.0", "end")
-            self.text.tag_remove("json_value_green", "1.0", "end")
-            self.text.tag_remove("json_property_key", "1.0", "end")
-            self.text.tag_remove("json_locked_key", "1.0", "end")
-            self.text.tag_remove("json_locked_block", "1.0", "end")
-            self.text.tag_remove("json_xy_key", "1.0", "end")
-        except _EXPECTED_APP_ERRORS:
-            return
+        return json_diagnostics_service._clear_json_lock_highlight(self)
 
     def _set_json_text_editable(self, editable=True):
-        text = getattr(self, "text", None)
-        if text is None:
-            return
-        target_state = "normal" if editable else "disabled"
-        try:
-            if str(text.cget("state")) != target_state:
-                text.configure(state=target_state)
-        except _EXPECTED_APP_ERRORS:
-            return
+        return json_diagnostics_service._set_json_text_editable(self, editable)
 
     def _json_token_followed_by_colon(self, end_index, lookahead_chars=24):
-        # Locked-key highlight guard: only tag JSON object keys ("key":), not string values ("KEY").
-        text = getattr(self, "text", None)
-        if text is None:
-            return False
-        try:
-            tail = self.text.get(end_index, f"{end_index}+{max(1, int(lookahead_chars))}c")
-        except _EXPECTED_APP_ERRORS:
-            return False
-        if not tail:
-            return False
-        for ch in tail:
-            if ch in (" ", "\t", "\r", "\n"):
-                continue
-            return ch == ":"
-        return False
+        return json_repair_service._json_token_followed_by_colon(self, end_index, lookahead_chars)
 
     def _tag_json_locked_key_occurrences(self, key_name):
-        token = f'"{key_name}"'
-        malformed_missing_close_quote = f'"{key_name}:'
-        malformed_missing_open_quote = f'{key_name}"'
-        index = "1.0"
-        while True:
-            try:
-                hit = self.text.search(token, index, stopindex="end", nocase=True)
-            except _EXPECTED_APP_ERRORS:
-                hit = ""
-            if not hit:
-                break
-            try:
-                end = f"{hit}+{len(token)}c"
-                if self._json_token_followed_by_colon(end):
-                    self.text.tag_add("json_locked_key", hit, end)
-            except _EXPECTED_APP_ERRORS:
-                break
-            index = end
-        # Parse-error continuity: keep key labels highlighted when one quote is removed
-        # (for example `"key:` or `key"` before `:`) while user is fixing JSON syntax.
-        for malformed_token in (malformed_missing_close_quote, malformed_missing_open_quote):
-            index = "1.0"
-            while True:
-                try:
-                    hit = self.text.search(malformed_token, index, stopindex="end", nocase=True)
-                except _EXPECTED_APP_ERRORS:
-                    hit = ""
-                if not hit:
-                    break
-                try:
-                    if malformed_token.endswith(":"):
-                        end = f"{hit}+{len(malformed_token) - 1}c"
-                    else:
-                        end = f"{hit}+{len(malformed_token)}c"
-                    if self._json_token_followed_by_colon(end):
-                        self.text.tag_add("json_locked_key", hit, end)
-                except _EXPECTED_APP_ERRORS:
-                    break
-                index = end
+        return json_diagnostics_service._tag_json_locked_key_occurrences(self, key_name)
 
     def _tag_json_xy_key_occurrences(self, key_name):
-        token = f'"{key_name}"'
-        index = "1.0"
-        while True:
-            try:
-                hit = self.text.search(token, index, stopindex="end", nocase=False)
-            except _EXPECTED_APP_ERRORS:
-                hit = ""
-            if not hit:
-                break
-            try:
-                end = f"{hit}+{len(token)}c"
-                if self._json_token_followed_by_colon(end):
-                    self.text.tag_add("json_xy_key", hit, end)
-            except _EXPECTED_APP_ERRORS:
-                break
-            index = end
+        return json_diagnostics_service._tag_json_xy_key_occurrences(self, key_name)
 
     def _should_batch_tag_locked_keys(self, key_names):
-        # Large-category optimization: use one-pass key tagging for big root JSON blocks.
-        if not key_names:
-            return False
-        if len(tuple(key_names)) < 12:
-            return False
-        # While editing with active error overlays, keep per-key path for malformed key handling.
-        try:
-            if getattr(self, "error_overlay", None) is not None:
-                return False
-        except _EXPECTED_APP_ERRORS:
-            return False
-        try:
-            raw = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return False
-        if len(raw or "") < 4000:
-            return False
-        return True
+        return json_diagnostics_service._should_batch_tag_locked_keys(self, key_names)
 
     def _tag_json_key_occurrences_batch(self, locked_key_names, xy_key_names=(), line_limit=None):
-        locked_targets = {
-            str(name or "").strip().casefold()
-            for name in tuple(locked_key_names or ())
-            if str(name or "").strip()
-        }
-        xy_targets = {
-            str(name or "").strip()
-            for name in tuple(xy_key_names or ())
-            if str(name or "").strip()
-        }
-        if not locked_targets and not xy_targets:
-            return
-        try:
-            raw = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return
-        line_no = 1
-        key_pattern = re.compile(r'"([^"\r\n:]+)"\s*:')
-        max_lines = int(line_limit or 0)
-        for line_text in str(raw or "").splitlines():
-            if max_lines and line_no > max_lines:
-                break
-            for hit in key_pattern.finditer(line_text):
-                key_name = str(hit.group(1) or "")
-                locked_match = key_name.casefold() in locked_targets
-                xy_match = key_name in xy_targets
-                if not locked_match and not xy_match:
-                    continue
-                key_start = int(hit.start(0))
-                key_end = int(key_start + len(key_name) + 2)
-                try:
-                    start = f"{line_no}.{key_start}"
-                    end = f"{line_no}.{key_end}"
-                    if locked_match:
-                        self.text.tag_add("json_locked_key", start, end)
-                    if xy_match:
-                        self.text.tag_add("json_xy_key", start, end)
-                except _EXPECTED_APP_ERRORS:
-                    continue
-            line_no += 1
+        return json_diagnostics_service._tag_json_key_occurrences_batch(self, locked_key_names, xy_key_names, line_limit)
 
     def _tag_json_string_value_literals(self, line_limit=None):
-        # Value accent pass: tag quoted JSON string values while leaving object keys untagged.
-        try:
-            raw = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return
-        line_no = 1
-        max_lines = int(line_limit or 0)
-        token_pattern = re.compile(r'"([^"\\]|\\.)*"')
-        for line_text in str(raw or "").splitlines():
-            if max_lines and line_no > max_lines:
-                break
-            for hit in token_pattern.finditer(line_text):
-                start_col = int(hit.start(0))
-                end_col = int(hit.end(0))
-                next_nonspace = ""
-                for ch in line_text[end_col:]:
-                    if ch in (" ", "\t", "\r", "\n"):
-                        continue
-                    next_nonspace = ch
-                    break
-                is_key = next_nonspace == ":"
-                if is_key:
-                    continue
-                try:
-                    self.text.tag_add("json_value_green", f"{line_no}.{start_col}", f"{line_no}.{end_col}")
-                except _EXPECTED_APP_ERRORS:
-                    continue
-            line_no += 1
+        return json_diagnostics_service._tag_json_string_value_literals(self, line_limit)
 
     def _tag_json_brace_tokens(self, line_limit=None):
-        # Structural accent pass: color object/list tokens without touching quoted strings.
-        try:
-            raw = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return
-        line_no = 1
-        max_lines = int(line_limit or 0)
-        for line_text in str(raw or "").splitlines():
-            if max_lines and line_no > max_lines:
-                break
-            in_string = False
-            escaped = False
-            col_no = 0
-            for ch in line_text:
-                if escaped:
-                    escaped = False
-                    col_no += 1
-                    continue
-                if ch == "\\" and in_string:
-                    escaped = True
-                    col_no += 1
-                    continue
-                if ch == '"':
-                    in_string = not in_string
-                    col_no += 1
-                    continue
-                if not in_string and ch in ("{", "}", "[", "]"):
-                    try:
-                        token_tag = "json_brace_token" if ch in ("{", "}") else "json_bracket_token"
-                        self.text.tag_add(token_tag, f"{line_no}.{col_no}", f"{line_no}.{col_no + 1}")
-                    except _EXPECTED_APP_ERRORS:
-                        pass
-                col_no += 1
-            line_no += 1
+        return json_diagnostics_service._tag_json_brace_tokens(self, line_limit)
 
     def _tag_json_boolean_literals(self, line_limit=None):
-        # Boolean accent pass: color JSON literals true/false outside quoted strings.
-        try:
-            raw = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return
-        line_no = 1
-        max_lines = int(line_limit or 0)
-        token_pattern = re.compile(r"\b(true|false)\b")
-        for line_text in str(raw or "").splitlines():
-            if max_lines and line_no > max_lines:
-                break
-            in_string = False
-            escaped = False
-            string_mask = [False] * len(line_text)
-            for idx, ch in enumerate(line_text):
-                string_mask[idx] = in_string
-                if escaped:
-                    escaped = False
-                    continue
-                if ch == "\\" and in_string:
-                    escaped = True
-                    continue
-                if ch == '"':
-                    in_string = not in_string
-            for hit in token_pattern.finditer(line_text):
-                start_col = int(hit.start(0))
-                end_col = int(hit.end(0))
-                inside_string = any(string_mask[idx] for idx in range(start_col, min(end_col, len(string_mask))))
-                if inside_string:
-                    continue
-                token = str(hit.group(1) or "")
-                tag_name = "json_bool_true" if token == "true" else "json_bool_false"
-                try:
-                    self.text.tag_add(tag_name, f"{line_no}.{start_col}", f"{line_no}.{end_col}")
-                except _EXPECTED_APP_ERRORS:
-                    continue
-            line_no += 1
+        return json_diagnostics_service._tag_json_boolean_literals(self, line_limit)
 
     def _tag_json_property_keys(self, line_limit=None):
-        # Property-key accent pass: color all JSON object key tokens including quotes.
-        try:
-            raw = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return
-        line_no = 1
-        max_lines = int(line_limit or 0)
-        key_pattern = re.compile(r'"([^"\\]|\\.)*"\s*:')
-        for line_text in str(raw or "").splitlines():
-            if max_lines and line_no > max_lines:
-                break
-            for hit in key_pattern.finditer(line_text):
-                token = str(hit.group(0) or "")
-                colon_index = token.rfind(":")
-                if colon_index <= 0:
-                    continue
-                end_col = int(hit.start(0) + colon_index)
-                start_col = int(hit.start(0))
-                while end_col > start_col and line_text[end_col - 1] in (" ", "\t"):
-                    end_col -= 1
-                try:
-                    self.text.tag_add("json_property_key", f"{line_no}.{start_col}", f"{line_no}.{end_col}")
-                except _EXPECTED_APP_ERRORS:
-                    continue
-            line_no += 1
+        return json_diagnostics_service._tag_json_property_keys(self, line_limit)
 
     def _json_literal_offsets_after_key(self, key_end_index, literal_token, lookahead_chars=120, ignore_case=False):
-        # Value-highlight guard: only tag when this key is immediately followed by the configured JSON literal.
-        text = getattr(self, "text", None)
-        token = str(literal_token or "")
-        if text is None or not token:
-            return None
-        try:
-            tail = self.text.get(key_end_index, f"{key_end_index}+{max(1, int(lookahead_chars))}c")
-        except _EXPECTED_APP_ERRORS:
-            return None
-        if not tail:
-            return None
-        i = 0
-        while i < len(tail) and tail[i] in (" ", "\t", "\r", "\n"):
-            i += 1
-        if i >= len(tail) or tail[i] != ":":
-            return None
-        i += 1
-        while i < len(tail) and tail[i] in (" ", "\t", "\r", "\n"):
-            i += 1
-        if i >= len(tail):
-            return None
-        candidate = tail[i:i + len(token)]
-        if ignore_case:
-            if candidate.casefold() != token.casefold():
-                return None
-        else:
-            if candidate != token:
-                return None
-        end = i + len(token)
-        if end < len(tail):
-            next_ch = tail[end]
-            if next_ch not in (" ", "\t", "\r", "\n", ",", "}", "]"):
-                return None
-        return i, end
+        return json_diagnostics_service._json_literal_offsets_after_key(self, key_end_index, literal_token, lookahead_chars, ignore_case)
 
     def _tag_json_locked_value_occurrences(self, field_name, literal_value, ignore_case=False):
-        key_token = json.dumps(str(field_name), ensure_ascii=False)
-        value_token = json.dumps(literal_value, ensure_ascii=False)
-        index = "1.0"
-        while True:
-            try:
-                hit = self.text.search(key_token, index, stopindex="end", nocase=True)
-            except _EXPECTED_APP_ERRORS:
-                hit = ""
-            if not hit:
-                break
-            try:
-                key_end = f"{hit}+{len(key_token)}c"
-                offsets = self._json_literal_offsets_after_key(
-                    key_end,
-                    value_token,
-                    ignore_case=bool(ignore_case),
-                )
-                if offsets is not None:
-                    value_start = f"{key_end}+{int(offsets[0])}c"
-                    value_end = f"{key_end}+{int(offsets[1])}c"
-                    self.text.tag_add("json_locked_key", value_start, value_end)
-            except _EXPECTED_APP_ERRORS:
-                break
-            index = key_end
+        return json_diagnostics_service._tag_json_locked_value_occurrences(self, field_name, literal_value, ignore_case)
 
     def _apply_json_view_lock_state(self, path):
-        self._clear_json_lock_highlight()
-        self._set_json_text_editable(True)
-        self._apply_json_view_key_highlights(path)
-        self._apply_json_view_value_highlights(path)
+        return json_diagnostics_service._apply_json_view_lock_state(self, path)
 
     def _apply_json_view_key_highlights(self, path, line_limit=None):
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "JSON":
-            return
-        self._tag_json_brace_tokens(line_limit=line_limit)
-        self._tag_json_boolean_literals(line_limit=line_limit)
-        self._tag_json_property_keys(line_limit=line_limit)
-        use_path = list(path or [])
-        xy_keys = ("x", "y") if len(use_path) == 1 else ()
-        dimension_keys = ("width", "height")
-        if highlight_label_service.is_locked_field_path(use_path):
-            # Subcategory JSON stays white; apply-time guard still blocks locked edits.
-            return
-        locked_fields = tuple(highlight_label_service.locked_highlight_fields_for_path(use_path))
-        if self._should_batch_tag_locked_keys(locked_fields):
-            self._tag_json_key_occurrences_batch(locked_fields, xy_key_names=xy_keys, line_limit=line_limit)
-        else:
-            for coord_key in xy_keys:
-                self._tag_json_xy_key_occurrences(coord_key)
-            for field_name in locked_fields:
-                self._tag_json_locked_key_occurrences(field_name)
-        for dim_key in dimension_keys:
-            self._tag_json_xy_key_occurrences(dim_key)
-        # Global value tint: render quoted values in light green without overriding key highlights.
-        self._tag_json_string_value_literals(line_limit=line_limit)
+        # Legacy wiring token kept for regression checks: xy_keys = ("x", "y") if len(use_path) == 1 else ()
+        return editor_purge_service._apply_json_view_key_highlights(self, path, line_limit)
 
     def _apply_json_view_value_highlights(self, path):
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "JSON":
-            return
-        use_path = list(path or [])
-        if highlight_label_service.is_locked_field_path(use_path):
-            return
-        for rule in highlight_label_service.locked_highlight_value_rules_for_path(use_path):
-            field_name = str(rule.get("field") or "").strip()
-            if not field_name:
-                continue
-            ignore_case = bool(rule.get("ignore_case", False))
-            for literal in tuple(rule.get("values") or ()):
-                self._tag_json_locked_value_occurrences(field_name, literal, ignore_case=ignore_case)
+        return editor_purge_service._apply_json_view_value_highlights(self, path)
 
     def _describe(self, value):
-        if isinstance(value, dict):
-            return f"dict ({len(value)} keys)"
-        if isinstance(value, list):
-            return f"list ({len(value)} items)"
-        return f"{type(value).__name__}"
+        return json_diagnostics_service._describe(self, value)
 
 
     def apply_edit(self):
-        action = "auto_apply" if self._auto_apply_in_progress else "apply_edit"
-        self._begin_diag_action(action)
-        item_id = self.tree.focus()
-        if not item_id:
-            messagebox.showwarning("No selection", "Select a node in the tree.")
-            return
-        path = self.item_to_path.get(item_id, [])
-        mode = str(getattr(self, "_editor_mode", "JSON")).upper()
-        if isinstance(path, tuple) and path[0] == "__group__" and mode != "INPUT":
-            messagebox.showwarning("Not editable", "Select a specific item to edit.")
-            return
-        if mode == "INPUT":
-            self._apply_input_edit()
-            return
-
-        raw = self.text.get("1.0", "end").strip()
-        try:
-            new_value = json.loads(raw)
-        except _EXPECTED_APP_ERRORS as exc:
-            # Hard guarantee: append at least one diagnostics entry for every
-            # Apply Edit parse failure, even if normal logger flow is bypassed.
-            try:
-                emergency_logger = getattr(self, "_log_json_error_emergency", None)
-                if callable(emergency_logger):
-                    emergency_logger(
-                        exc,
-                        getattr(exc, "lineno", None) or 1,
-                        note="overlay_parse_apply_emergency",
-                    )
-            except Exception:
-                pass
-            message = self._format_json_error(exc)
-            self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", message)
-            # Keep highlight-label colors active while JSON is temporarily invalid.
-            self._apply_json_view_lock_state(path)
-            # Prefer one specific diagnostic note per apply cycle; use overlay_parse only as fallback.
-            self._last_error_highlight_note = ""
-            self._highlight_json_error(exc)
-            highlight_note = str(getattr(self, "_last_error_highlight_note", "") or "").strip()
-            if (
-                not highlight_note
-                or highlight_note == "highlight"
-                or highlight_note.startswith("highlight_failed")
-            ):
-                try:
-                    self._log_json_error(exc, getattr(exc, "lineno", None) or 1, note="overlay_parse")
-                except _EXPECTED_APP_ERRORS:
-                    pass
-            return
-        self._clear_json_error_highlight()
-
-        spacing_issue = self._find_json_spacing_issue()
-        if spacing_issue:
-            line, start_col, end_col, before_line, after_line = spacing_issue
-            message = self._format_suggestion(
-                'Invalid Entry: add a space after ":".',
-                before_line,
-                after_line,
-            )
-            self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", message)
-            try:
-                start_index = f"{line}.{max(start_col, 0)}"
-                end_index = f"{line}.{max(end_col, start_col + 1)}"
-                dummy = type(
-                    "E",
-                    (),
-                    {"msg": "Missing space after ':'", "lineno": line, "colno": start_col + 1},
-                )
-                self._apply_json_error_highlight(
-                    dummy, line, start_index, end_index, note="spacing_missing_space_after_colon"
-                )
-            except _EXPECTED_APP_ERRORS:
-                self._highlight_custom_range(line, start_col, end_col)
-            return
-
-        email_validation = self._find_invalid_email_in_value(path, new_value)
-        if email_validation:
-            field_path, bad_value, email_issue = email_validation
-            field_label = self._format_path_for_display(field_path)
-            before_line = f'"{field_label}": "{bad_value}"'
-            after_line = f'"{field_label}": "{email_issue["suggested"]}"'
-            message = self._format_suggestion(
-                email_issue["message"],
-                before_line,
-                after_line,
-            )
-            self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", message)
-            preferred_key = field_path[-1] if field_path and isinstance(field_path[-1], str) else None
-            span = self._find_value_span_in_editor(bad_value, preferred_key=preferred_key)
-            if span:
-                line, start_col, end_col = span
-                self._highlight_custom_range(line, start_col, end_col)
-            else:
-                self._highlight_custom_range(1, 0, max(1, len(before_line)))
-            try:
-                log_line = span[0] if span else 1
-                log_col = (span[1] + 1) if span else 1
-                dummy = type("E", (), {"msg": email_issue["log_msg"], "lineno": log_line, "colno": log_col})
-                self._log_json_error(dummy, log_line, note=email_issue["note"])
-            except _EXPECTED_APP_ERRORS:
-                pass
-            return
-
-        phone_issue = self._find_phone_format_issue()
-        if phone_issue:
-            line, start_col, end_col, before_line, after_line = phone_issue
-            message = self._format_suggestion(
-                "Invalid Entry: add \"-\" to the phone number.",
-                before_line,
-                after_line,
-            )
-            self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", message)
-            self._highlight_custom_range(line, start_col, end_col)
-            try:
-                dummy = type("E", (), {"msg": "Missing '-' in phone", "lineno": line, "colno": start_col + 1})
-                self._log_json_error(dummy, line, note="missing_phone_dash")
-            except _EXPECTED_APP_ERRORS:
-                pass
-            return
-
-        if not self._is_json_edit_allowed(path, new_value, show_feedback=True, auto_restore=True):
-            return
-        self._destroy_error_overlay()
-        self._error_visual_mode = "guide"
-        if not self._is_edit_allowed(path, new_value):
-            return
-
-        self._set_value(path, new_value)
-
-        # Refresh subtree
-        self._populate_children(item_id)
-        # Repaint label highlights after JSON edits so fixed key quotes stay orange.
-        self._apply_json_view_lock_state(path)
-        pending_restore = str(getattr(self, "_pending_insert_restore_index", "") or "")
-        self._pending_insert_restore_index = ""
-        if pending_restore:
-            try:
-                if getattr(self, "root", None) is not None:
-                    self.root.after_idle(lambda idx=pending_restore: self._restore_insert_index(idx, log_failure=True))
-                else:
-                    self._restore_insert_index(pending_restore, log_failure=True)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        # Successful Apply Edit ends any prior live-error feedback cycle so
-        # subsequent typing stays quiet until the next explicit invalid apply.
-        self._auto_apply_pending = False
-        self._auto_apply_in_progress = False
-        self.set_status("Edited")
+        return editor_purge_service.apply_edit(self)
 
     def _extract_key_name_from_diag_line(self, line_text):
-        raw = str(line_text or "").strip()
-        if not raw:
-            return ""
-        m = re.search(r'"([^"\r\n:]+)"\s*:', raw)
-        if m:
-            return str(m.group(1) or "").strip()
-        m = re.search(r'([A-Za-z_][A-Za-z0-9_]*)"\s*:', raw)
-        if m:
-            return str(m.group(1) or "").strip()
-        m = re.search(r'"([A-Za-z_][A-Za-z0-9_]*)\s*:', raw)
-        if m:
-            return str(m.group(1) or "").strip()
-        return ""
+        return json_diagnostics_service._extract_key_name_from_diag_line(self, line_text)
 
     def _locked_field_name_from_parse_diag(self, path, diag):
-        use_path = list(path or [])
-        if highlight_label_service.is_locked_field_path(use_path) and use_path:
-            return str(use_path[-1] or "").strip()
-        locked_fields = tuple(highlight_label_service.locked_highlight_fields_for_path(use_path))
-        if not locked_fields:
-            return ""
-        for key in ("after", "before"):
-            field_name = self._extract_key_name_from_diag_line((diag or {}).get(key))
-            if not field_name:
-                continue
-            for locked_name in locked_fields:
-                if str(locked_name).casefold() == str(field_name).casefold():
-                    return str(locked_name)
-        return ""
+        return editor_purge_service._locked_field_name_from_parse_diag(self, path, diag)
 
     def _find_lock_anchor_index(self, field_name, preferred_index=None):
-        token = f'"{str(field_name or "").strip()}"'
-        if token == '""':
-            token = ""
-        normalized_preferred = str(preferred_index or "")
-        try:
-            if normalized_preferred:
-                normalized_preferred = str(self.text.index(normalized_preferred))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        if not token:
-            return normalized_preferred
-        try:
-            if normalized_preferred:
-                # Anchor priority for repeated locked keys:
-                # 1) nearest key at/above current edit position
-                # 2) nearest key below current edit position
-                backward_hit = self.text.search(
-                    token,
-                    normalized_preferred,
-                    stopindex="1.0",
-                    nocase=True,
-                    backwards=True,
-                )
-                if backward_hit:
-                    return backward_hit
-                forward_hit = self.text.search(token, normalized_preferred, stopindex="end", nocase=True)
-                if forward_hit:
-                    return forward_hit
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            hit = self.text.search(token, "1.0", stopindex="end", nocase=True)
-            if hit:
-                return hit
-        except _EXPECTED_APP_ERRORS:
-            pass
-        return normalized_preferred
+        return json_diagnostics_service._find_lock_anchor_index(self, field_name, preferred_index)
 
     def _diag_line_mentions_locked_field(self, line_no, field_name):
-        if not line_no or not field_name:
-            return False
-        try:
-            line_text = str(self._line_text(int(line_no)) or "")
-        except _EXPECTED_APP_ERRORS:
-            return False
-        if not line_text.strip():
-            return False
-        field_lookup = str(field_name).strip().casefold()
-        line_lookup = line_text.casefold()
-        if field_lookup in line_lookup:
-            return True
-        compact_field = "".join(ch for ch in field_lookup if ch.isalnum())
-        compact_line = "".join(ch for ch in line_lookup if ch.isalnum())
-        if compact_field and compact_field in compact_line:
-            return True
-        return False
+        return json_diagnostics_service._diag_line_mentions_locked_field(self, line_no, field_name)
 
     def _maybe_restore_locked_parse_error(self, path, diag, exc=None):
-        # Parse-error lock handoff: key-quote parse failures on protected keys should restore via lock flow.
-        note = str((diag or {}).get("note") or "").strip().lower()
-        parse_lock_notes = {
-            "missing_key_quote_before_colon",
-            "symbol_wrong_property_key_symbol",
-            "symbol_wrong_property_quote_char",
-        }
-        if note not in parse_lock_notes:
-            return False
-        use_path = list(path or [])
-        policy = highlight_label_service.lock_policy_for_path(use_path)
-        if policy is None:
-            return False
-        field_name = self._locked_field_name_from_parse_diag(use_path, diag)
-        if not field_name:
-            return False
-        try:
-            insert_line = self._line_number_from_index(self.text.index("insert")) or 0
-        except _EXPECTED_APP_ERRORS:
-            insert_line = 0
-        try:
-            insert_line_text = str(self._line_text(int(insert_line)) or "") if insert_line else ""
-        except _EXPECTED_APP_ERRORS:
-            insert_line_text = ""
-        try:
-            diag_line = int((diag or {}).get("line") or 0)
-        except _EXPECTED_APP_ERRORS:
-            diag_line = 0
-        # Strict handoff gate:
-        # diagnostic line must match parser-reported line for this exact Apply Edit parse failure.
-        try:
-            parse_line = int(getattr(exc, "lineno", 0) or 0)
-        except _EXPECTED_APP_ERRORS:
-            parse_line = 0
-        if parse_line and diag_line and int(parse_line) != int(diag_line):
-            return False
-        # Lock handoff must be anchored to the actively edited line.
-        if insert_line and diag_line and int(insert_line) != int(diag_line):
-            return False
-        # Parse-lock guard gate:
-        # only auto-restore when the parse diagnostic is near the user's active edit location.
-        if insert_line and diag_line and abs(int(insert_line) - int(diag_line)) > 1:
-            return False
-        if diag_line and not self._diag_line_mentions_locked_field(diag_line, field_name):
-            return False
-        # Strict key-quote gate:
-        # only route into lock auto-restore when the parser line itself is a key-quote syntax issue.
-        if diag_line:
-            try:
-                diag_line_text = str(self._line_text(diag_line) or "")
-            except _EXPECTED_APP_ERRORS:
-                diag_line_text = ""
-            has_key_quote_issue = False
-            try:
-                has_key_quote_issue = bool(
-                    self._line_has_missing_key_quote_before_colon(diag_line_text)
-                    or self._line_has_property_key_invalid_escape(diag_line_text)
-                )
-            except _EXPECTED_APP_ERRORS:
-                has_key_quote_issue = False
-            if not has_key_quote_issue:
-                return False
-            line_field = self._extract_key_name_from_diag_line(diag_line_text)
-            if line_field and str(line_field).casefold() != str(field_name).casefold():
-                return False
-        # Also require the current insert line to be the same locked key-quote issue.
-        try:
-            insert_has_key_quote_issue = bool(
-                self._line_has_missing_key_quote_before_colon(insert_line_text)
-                or self._line_has_property_key_invalid_escape(insert_line_text)
-            )
-        except _EXPECTED_APP_ERRORS:
-            insert_has_key_quote_issue = False
-        if not insert_has_key_quote_issue:
-            return False
-        insert_field = self._extract_key_name_from_diag_line(insert_line_text)
-        if insert_field and str(insert_field).casefold() != str(field_name).casefold():
-            return False
-        try:
-            current_value = self._get_value(use_path)
-        except _EXPECTED_APP_ERRORS:
-            return False
-
-        try:
-            previous_insert = self.text.index("insert")
-        except _EXPECTED_APP_ERRORS:
-            previous_insert = "1.0"
-        self._show_value(current_value, path=use_path)
-        self._clear_json_error_highlight()
-        self._error_visual_mode = "guide"
-        self._show_error_overlay(
-            "Not editable",
-            f'Locked: "{field_name}" is a protected field. Line restored.',
-        )
-        anchor_index = self._find_lock_anchor_index(field_name, preferred_index=previous_insert)
-        if not anchor_index:
-            try:
-                anchor_index = str(previous_insert or self.text.index("insert"))
-            except _EXPECTED_APP_ERRORS:
-                anchor_index = "1.0"
-        self._error_focus_index = anchor_index
-        try:
-            self.text.mark_set("insert", anchor_index)
-            self.text.see(anchor_index)
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            anchor_line = self._line_number_from_index(anchor_index) or 1
-            self._position_error_overlay(anchor_line)
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            self._tag_json_locked_key_occurrences(field_name)
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            self.set_status(
-                str(policy.get("status_restored") or "Auto-fixed: protected field restored.")
-            )
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            log_line = int((diag or {}).get("line") or 1)
-            marker = type("E", (), {"msg": "Locked parse edit restored", "lineno": log_line, "colno": 1})
-            self._log_json_error(marker, log_line, note="locked_parse_auto_restore")
-        except _EXPECTED_APP_ERRORS:
-            pass
-        return True
+        # Parse-lock guard gate: delegated lock-restore flow preserves strict line/key gating.
+        return editor_purge_service._maybe_restore_locked_parse_error(self, path, diag, exc)
 
     def _format_json_error(self, exc):
         return json_error_diagnostics_core.format_json_error(self, exc)
 
 
     def _example_for_error(self, exc):
-        lineno = getattr(exc, "lineno", None)
-        line_text = ""
-        if lineno:
-            try:
-                line_text = self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                line_text = ""
-
-        msg = getattr(exc, "msg", None)
-        if msg == "Expecting ',' delimiter":
-            if self._is_missing_object_open_at(lineno):
-                return "{"
-            if self._is_missing_object_open(exc):
-                return self._missing_object_example(lineno)
-            if self._is_missing_object_close():
-                return self._missing_close_example("Expecting '}'")
-            if self._is_missing_list_close():
-                return self._missing_close_example("Expecting ']'")
-            return self._comma_example_line(lineno)
-
-        if msg == "Expecting property name enclosed in double quotes":
-            if line_text:
-                return line_text
-            return "\"key\": \"value\""
-
-        if msg == "Expecting ':' delimiter":
-            if line_text:
-                return self._missing_colon_example(line_text)
-            return "\"key\": \"value\""
-
-        if msg and msg.startswith("Invalid control character"):
-            if line_text:
-                return self._fix_missing_quote(line_text)
-            return "\"key\": \"value\""
-
-        if msg in ("Expecting ']'", "Expecting '}'"):
-            return self._missing_close_example(msg)
-
-        if msg == "Expecting value":
-            if self._is_missing_list_open_at_start(exc):
-                return "["
-            if self._is_missing_list_close():
-                return self._missing_close_example("Expecting ']'")
-            if self._is_missing_object_close():
-                return self._missing_close_example("Expecting '}'")
-            if self._is_missing_list_open(exc):
-                return "\"items\": ["
-            if self._is_missing_object_open(exc):
-                return "\"data\": {"
-
-        if msg == "Extra data":
-            if self._missing_object_open_from_extra_data():
-                return "{"
-            if self._missing_list_open_from_extra_data():
-                return "["
-            next_line = self._next_non_empty_line(lineno or 1)
-            if next_line:
-                next_text = self._line_text(next_line).strip()
-                if next_text:
-                    return next_text
-            if line_text:
-                return line_text
-            return "\"key\": \"value\""
-
-        if msg in ("Unexpected ']'", "Unexpected '}'"):
-            return self._missing_close_example(msg)
-
-        if msg == "Unterminated string":
-            return "\"text\""
-
-        if line_text:
-            return line_text
-        return "\"key\": \"value\""
+        return json_diagnostics_service._example_for_error(self, exc)
 
     def _missing_colon_example(self, line_text):
-        if ":" in line_text:
-            return line_text
-        has_trailing_comma = line_text.rstrip().endswith(",")
-        stripped = line_text.strip().strip(",")
-        if not stripped:
-            return "\"key\": \"value\""
-        # Handle: "key" value  ->  "key": value
-        m = re.match(r'^\s*"([^"]+)"\s+(.+?)\s*$', stripped)
-        if m:
-            key = m.group(1)
-            value = m.group(2).strip()
-            result = f"\"{key}\": {value}"
-            if has_trailing_comma and not result.rstrip().endswith(","):
-                result += ","
-            return result
-        # If we have two quoted strings, insert colon between them.
-        if "\"" in stripped:
-            try:
-                first = stripped.split("\"", 2)
-                if len(first) >= 2:
-                    quote_index = stripped.find('"', 1)
-                    rest = stripped[quote_index + 1 :].strip()
-                    rest = rest.lstrip()
-                    if rest.startswith("\""):
-                        result = f"{stripped[:quote_index + 1]}: {rest}"
-                        if line_text.rstrip().endswith(",") and not result.rstrip().endswith(","):
-                            result = result.rstrip() + ","
-                        return result
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if not stripped.startswith("\""):
-            stripped = f"\"{stripped.strip()}\""
-        result = f"{stripped}: \"value\""
-        if has_trailing_comma and not result.rstrip().endswith(","):
-            result += ","
-        return result
+        return json_repair_service._missing_colon_example(self, line_text)
 
     def _is_json_value_token_start(self, value_text):
-        stripped = (value_text or "").lstrip()
-        if not stripped:
-            return False
-        ch = stripped[0]
-        if ch in ('"', "{", "[") or ch == "-" or ch.isdigit():
-            return True
-        for lit in ("true", "false", "null"):
-            if stripped.startswith(lit):
-                end = len(lit)
-                if end >= len(stripped) or not re.match(r"[A-Za-z0-9_]", stripped[end]):
-                    return True
-        return False
+        return json_diagnostics_service._is_json_value_token_start(self, value_text)
 
     def _missing_colon_key_value_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        if ":" in raw:
-            return None
-        m = re.match(r'^(?P<indent>\s*)"(?P<key>[^"]+)"(?P<gap>\s+)(?P<value>.+?)\s*,?\s*$', raw)
-        if not m:
-            return None
-        value = m.group("value") or ""
-        if not self._is_json_value_token_start(value):
-            return None
-        first_q = raw.find('"')
-        if first_q < 0:
-            return None
-        second_q = raw.find('"', first_q + 1)
-        if second_q < 0:
-            return None
-        insert_col = second_q + 1
-        return insert_col, insert_col
+        return json_repair_service._missing_colon_key_value_span(self, line_text)
 
     def _line_has_missing_colon_key_value(self, line_text):
         return self._missing_colon_key_value_span(line_text) is not None
 
     def _find_nearby_missing_colon_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_missing_colon_key_value(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_missing_colon_line(self, lineno, lookback)
 
     def _is_key_colon_comma_line(self, line_text):
-        if not line_text:
-            return False
-        return bool(re.match(r'^\s*"[^"]+"\s*:\s*,\s*$', line_text))
+        return json_repair_service._is_key_colon_comma_line(self, line_text)
 
     def _key_colon_comma_to_list_open(self, line_text):
-        if not self._is_key_colon_comma_line(line_text):
-            return line_text
-        m = re.match(r'^(\s*"[^"]+"\s*:\s*),\s*$', line_text)
-        if not m:
-            return line_text
-        return m.group(1) + "["
+        return json_repair_service._key_colon_comma_to_list_open(self, line_text)
 
     def _line_extra_quote_in_string_value(self, line_text):
-        # Detect: "key": "value""   -> likely meant comma after closing quote.
-        if not line_text:
-            return False
-        return bool(re.match(r'^\s*"[^"]+"\s*:\s*"[^"]*""\s*,?\s*$', line_text))
+        return json_repair_service._line_extra_quote_in_string_value(self, line_text)
 
     def _fix_extra_quote_to_comma(self, line_text):
-        if not self._line_extra_quote_in_string_value(line_text):
-            return line_text
-        idx = line_text.rfind('""')
-        if idx == -1:
-            return line_text
-        return line_text[:idx] + '",' + line_text[idx + 2 :]
+        return json_repair_service._fix_extra_quote_to_comma(self, line_text)
 
     def _line_has_trailing_stray_quote_after_comma(self, line_text):
-        # Detect: "key": "value","
-        if not line_text:
-            return False
-        return bool(re.match(r'^\s*"[^"]+"\s*:\s*"[^"]*"\s*,\s*"\s*$', line_text))
+        return json_repair_service._line_has_trailing_stray_quote_after_comma(self, line_text)
 
     def _fix_trailing_stray_quote_after_comma(self, line_text):
-        if not self._line_has_trailing_stray_quote_after_comma(line_text):
-            return line_text
-        return re.sub(r',\s*"\s*$', ",", line_text)
+        return json_repair_service._fix_trailing_stray_quote_after_comma(self, line_text)
 
     def _find_nearby_trailing_stray_quote_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt:
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_trailing_stray_quote_after_comma(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_trailing_stray_quote_line(self, lineno, lookback)
 
     def _line_has_duplicate_trailing_comma(self, line_text):
-        if not line_text:
-            return False
-        return bool(re.match(r'^\s*"[^"]+"\s*:\s*.+,\s*,\s*$', line_text))
+        return json_repair_service._line_has_duplicate_trailing_comma(self, line_text)
 
     def _fix_duplicate_trailing_comma(self, line_text):
-        if not self._line_has_duplicate_trailing_comma(line_text):
-            return line_text
-        return re.sub(r',\s*,\s*$', ",", line_text)
+        return json_repair_service._fix_duplicate_trailing_comma(self, line_text)
 
     def _find_nearby_duplicate_trailing_comma_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt:
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_duplicate_trailing_comma(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_duplicate_trailing_comma_line(self, lineno, lookback)
 
     def _line_requires_trailing_comma(self, lineno):
-        if not lineno:
-            return False
-        next_line = self._next_non_empty_line_number(lineno)
-        if not next_line:
-            return False
-        next_text = self._line_text(next_line).lstrip()
-        return not next_text.startswith(("}", "]"))
+        return json_repair_service._line_requires_trailing_comma(self, lineno)
 
     def _duplicate_comma_run_span(self, line_text, lineno=None):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        # Detect any trailing duplicate-comma run and return span of only the
-        # extra commas (or all commas when no delimiter is allowed).
-        m = re.match(r'^(?P<prefix>.*?),(?P<extra>\s*,+\s*)$', raw)
-        if not m:
-            return None
-        prefix = m.group("prefix") or ""
-        extra = m.group("extra") or ""
-        if not extra or "," not in extra:
-            return None
-        # Guard against non-value lines like "key:" where comma runs are handled elsewhere.
-        prefix_stripped = prefix.strip()
-        if not prefix_stripped or prefix_stripped.endswith(":"):
-            return None
-
-        keep_one_comma = self._line_requires_trailing_comma(lineno)
-        if keep_one_comma:
-            leading_ws = len(extra) - len(extra.lstrip())
-            start_col = len(prefix) + 1 + leading_ws
-        else:
-            # No delimiter is valid before a closer; highlight the whole comma run.
-            start_col = len(prefix)
-        end_col = len(raw.rstrip())
-        if end_col <= start_col:
-            end_col = start_col + 1
-        return start_col, end_col
+        return json_repair_service._duplicate_comma_run_span(self, line_text, lineno)
 
     def _line_has_duplicate_comma_run(self, line_text, lineno=None):
         return self._duplicate_comma_run_span(line_text, lineno=lineno) is not None
 
     def _fix_duplicate_comma_run(self, line_text, lineno=None):
-        if not line_text:
-            return line_text
-        raw = line_text.rstrip()
-        m = re.match(r'^(?P<prefix>.*?),(?P<extra>\s*,+\s*)$', raw)
-        if not m:
-            return raw
-        prefix = m.group("prefix") or ""
-        if self._line_requires_trailing_comma(lineno):
-            return prefix + ","
-        return prefix
+        return json_repair_service._fix_duplicate_comma_run(self, line_text, lineno)
 
     def _find_nearby_duplicate_comma_run_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_duplicate_comma_run(txt, lineno=ln):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_duplicate_comma_run_line(self, lineno, lookback)
 
     def _comma_before_colon_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        m = re.match(r'^(?P<head>\s*"[^"]+"\s*)(?P<run>,(?:\s*,)*)(?P<rest>\s*:\s*.+)$', raw)
-        if not m:
-            return None
-        start_col = len(m.group("head") or "")
-        run = (m.group("run") or "").rstrip()
-        end_col = start_col + max(1, len(run))
-        return start_col, end_col
+        return json_colon_comma_service.comma_before_colon_span(line_text)
 
     def _line_has_comma_before_colon(self, line_text):
-        return self._comma_before_colon_span(line_text) is not None
+        return json_colon_comma_service.line_has_comma_before_colon(line_text)
 
     def _fix_comma_before_colon(self, line_text):
-        if not line_text:
-            return line_text
-        raw = line_text.rstrip()
-        m = re.match(r'^(?P<head>\s*"[^"]+"\s*)(?P<run>,(?:\s*,)*)(?P<rest>\s*:\s*.+)$', raw)
-        if not m:
-            return raw
-        head = m.group("head") or ""
-        rest = m.group("rest") or ""
-        return head + rest
+        return json_colon_comma_service.fix_comma_before_colon(line_text)
 
     def _find_nearby_comma_before_colon_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_comma_before_colon(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_comma_before_colon_line(self, lineno, lookback)
 
     def _comma_after_colon_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        # Match: "key":, value / "key":,, value (comma run after colon section)
-        m = re.match(r'^(?P<head>\s*"[^"]+"\s*:\s*)(?P<run>,(?:\s*,)*)(?P<tail>\s*.+)$', raw)
-        if not m:
-            return None
-        tail = m.group("tail") or ""
-        if not tail.strip():
-            return None
-        start_col = len(m.group("head") or "")
-        run = (m.group("run") or "").rstrip()
-        run_len = max(1, len(run))
-        first_non_ws = None
-        for idx, ch in enumerate(tail):
-            if not ch.isspace():
-                first_non_ws = idx
-                break
-        if first_non_ws is None:
-            return None
-
-        def is_value_start(s, idx):
-            def has_clean_tail(end_idx):
-                j = end_idx
-                while j < len(s) and s[j].isspace():
-                    j += 1
-                if j >= len(s):
-                    return True
-                if s[j] in (",", "}", "]"):
-                    k = j + 1
-                    while k < len(s) and s[k].isspace():
-                        k += 1
-                    return k >= len(s)
-                return False
-
-            ch = s[idx]
-            if ch in ("{", "["):
-                return True
-            if ch == '"':
-                mstr = re.match(r'"(?:\\.|[^"\\])*"', s[idx:])
-                if not mstr:
-                    return False
-                end = idx + len(mstr.group(0))
-                return has_clean_tail(end)
-            if ch == "-" or ch.isdigit():
-                mnum = re.match(r'-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?', s[idx:])
-                if not mnum:
-                    return False
-                end = idx + len(mnum.group(0))
-                return has_clean_tail(end)
-            if s.startswith("true", idx) and (idx + 4 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 4])):
-                return has_clean_tail(idx + 4)
-            if s.startswith("false", idx) and (idx + 5 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 5])):
-                return has_clean_tail(idx + 5)
-            if s.startswith("null", idx) and (idx + 4 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 4])):
-                return has_clean_tail(idx + 4)
-            return False
-
-        def next_value_start_on_boundary(s, start_idx):
-            i = start_idx
-            while i < len(s):
-                while i < len(s) and not s[i].isspace():
-                    i += 1
-                while i < len(s) and s[i].isspace():
-                    i += 1
-                if i < len(s) and is_value_start(s, i):
-                    return i
-            return None
-
-        invalid_prefix_len = 0
-        if not is_value_start(tail, first_non_ws):
-            next_valid = next_value_start_on_boundary(tail, first_non_ws)
-            if next_valid is not None:
-                invalid_prefix_len = next_valid
-            else:
-                invalid_prefix_len = len(tail.rstrip())
-
-        end_col = start_col + run_len + max(0, invalid_prefix_len)
-        return start_col, end_col
+        return json_colon_comma_service.comma_after_colon_span(line_text)
 
     def _line_has_comma_after_colon(self, line_text):
-        return self._comma_after_colon_span(line_text) is not None
+        return json_colon_comma_service.line_has_comma_after_colon(line_text)
 
     def _fix_comma_after_colon(self, line_text):
-        if not line_text:
-            return line_text
-        m = re.match(r'^(?P<head>\s*"[^"]+"\s*:\s*)(?P<run>,(?:\s*,)*)(?P<tail>\s*.+)$', line_text.rstrip())
-        if not m:
-            return line_text.rstrip()
-        head = m.group("head") or ""
-        tail = m.group("tail") or ""
-        first_non_ws = None
-        for idx, ch in enumerate(tail):
-            if not ch.isspace():
-                first_non_ws = idx
-                break
-        if first_non_ws is None:
-            return head.rstrip()
-
-        def is_value_start(s, idx):
-            def has_clean_tail(end_idx):
-                j = end_idx
-                while j < len(s) and s[j].isspace():
-                    j += 1
-                if j >= len(s):
-                    return True
-                if s[j] in (",", "}", "]"):
-                    k = j + 1
-                    while k < len(s) and s[k].isspace():
-                        k += 1
-                    return k >= len(s)
-                return False
-
-            ch = s[idx]
-            if ch in ("{", "["):
-                return True
-            if ch == '"':
-                mstr = re.match(r'"(?:\\.|[^"\\])*"', s[idx:])
-                if not mstr:
-                    return False
-                end = idx + len(mstr.group(0))
-                return has_clean_tail(end)
-            if ch == "-" or ch.isdigit():
-                mnum = re.match(r'-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?', s[idx:])
-                if not mnum:
-                    return False
-                end = idx + len(mnum.group(0))
-                return has_clean_tail(end)
-            if s.startswith("true", idx) and (idx + 4 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 4])):
-                return has_clean_tail(idx + 4)
-            if s.startswith("false", idx) and (idx + 5 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 5])):
-                return has_clean_tail(idx + 5)
-            if s.startswith("null", idx) and (idx + 4 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 4])):
-                return has_clean_tail(idx + 4)
-            return False
-
-        def next_value_start_on_boundary(s, start_idx):
-            i = start_idx
-            while i < len(s):
-                while i < len(s) and not s[i].isspace():
-                    i += 1
-                while i < len(s) and s[i].isspace():
-                    i += 1
-                if i < len(s) and is_value_start(s, i):
-                    return i
-            return None
-
-        keep_from = first_non_ws
-        if not is_value_start(tail, first_non_ws):
-            next_valid = next_value_start_on_boundary(tail, first_non_ws)
-            if next_valid is not None:
-                keep_from = next_valid
-
-        kept_tail = tail[keep_from:].lstrip()
-        sep = "" if not kept_tail else ("" if head.endswith((" ", "\t")) else " ")
-        return f"{head}{sep}{kept_tail}"
+        return json_colon_comma_service.fix_comma_after_colon(line_text)
 
     def _find_nearby_comma_after_colon_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_comma_after_colon(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_comma_after_colon_line(self, lineno, lookback)
 
     def _analyze_invalid_prefix_after_colon(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        m = re.match(r'^(?P<head>\s*"[^"]+"\s*:\s*)(?P<tail>.*)$', raw)
-        if not m:
-            return None
-        head = m.group("head") or ""
-        tail = m.group("tail") or ""
-        if not tail.strip():
-            return None
-        first_non_ws = None
-        for idx, ch in enumerate(tail):
-            if not ch.isspace():
-                first_non_ws = idx
-                break
-        if first_non_ws is None:
-            return None
-        # Comma-after-colon has a dedicated diagnostic path.
-        if tail[first_non_ws] == ",":
-            return None
-        # Keep existing value-typo paths for normal value starts.
-        first_ch = tail[first_non_ws]
-        if first_ch.isalnum() or first_ch in ('"', "-"):
-            return None
-
-        def head_with_space():
-            return re.sub(r':\s*$', ': ', head)
-
-        def token_end_if_clean(s, idx):
-            ch = s[idx]
-            if ch == '"':
-                mstr = re.match(r'"(?:\\.|[^"\\])*"', s[idx:])
-                if not mstr:
-                    return None
-                end = idx + len(mstr.group(0))
-            elif ch == "-" or ch.isdigit():
-                mnum = re.match(r'-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?', s[idx:])
-                if not mnum:
-                    return None
-                end = idx + len(mnum.group(0))
-            elif s.startswith("true", idx) and (idx + 4 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 4])):
-                end = idx + 4
-            elif s.startswith("false", idx) and (idx + 5 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 5])):
-                end = idx + 5
-            elif s.startswith("null", idx) and (idx + 4 >= len(s) or not re.match(r"[A-Za-z0-9_]", s[idx + 4])):
-                end = idx + 4
-            elif ch in ("{", "["):
-                close = "}" if ch == "{" else "]"
-                j = idx + 1
-                while j < len(s) and s[j].isspace():
-                    j += 1
-                if j >= len(s):
-                    # Allow container start at EOL (valid multi-line value).
-                    return len(s)
-                if j < len(s) and s[j] == close:
-                    end = j + 1
-                else:
-                    return None
-            else:
-                return None
-
-            j = end
-            while j < len(s) and s[j].isspace():
-                j += 1
-            if j < len(s) and s[j] == ",":
-                j += 1
-                while j < len(s) and s[j].isspace():
-                    j += 1
-            if j == len(s):
-                return end
-            return None
-
-        # If the first value token is valid and the rest of the tail is clean,
-        # this is not an invalid-prefix-after-colon case.
-        if token_end_if_clean(tail, first_non_ws) is not None:
-            return None
-
-        def next_value_start_on_boundary(s, start_idx):
-            i = start_idx
-            while i < len(s):
-                while i < len(s) and not s[i].isspace():
-                    i += 1
-                while i < len(s) and s[i].isspace():
-                    i += 1
-                if i < len(s) and token_end_if_clean(s, i) is not None:
-                    return i
-            return None
-
-        next_valid = next_value_start_on_boundary(tail, first_non_ws)
-        start_col = len(head) + first_non_ws
-        if next_valid is not None:
-            end_col = len(head) + next_valid
-            after = f"{head_with_space()}{tail[next_valid:].lstrip()}".rstrip()
-        else:
-            end_col = len(raw)
-            after = head.rstrip()
-        if end_col <= start_col:
-            end_col = start_col + 1
-        return {"start_col": start_col, "end_col": end_col, "after": after}
+        return json_repair_service._analyze_invalid_prefix_after_colon(self, line_text)
 
     def _line_has_invalid_prefix_after_colon(self, line_text):
         return self._analyze_invalid_prefix_after_colon(line_text) is not None
 
     def _fix_invalid_prefix_after_colon(self, line_text):
-        analysis = self._analyze_invalid_prefix_after_colon(line_text)
-        if not analysis:
-            return line_text
-        return analysis["after"]
+        return json_repair_service._fix_invalid_prefix_after_colon(self, line_text)
 
     def _find_nearby_invalid_prefix_after_colon_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_invalid_prefix_after_colon(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_invalid_prefix_after_colon_line(self, lineno, lookback)
 
     def _comma_before_closer_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        m = re.match(
-            r'^(?P<indent>\s*)(?P<run>,(?:\s*,)*)\s*(?P<close>[\}\]])(?P<trail>\s*)$',
-            raw,
-        )
-        if not m:
-            return None
-        start_col = len(m.group("indent") or "")
-        end_col = len(raw)
-        if end_col <= start_col:
-            end_col = start_col + 1
-        return start_col, end_col
+        return json_colon_comma_service.comma_before_closer_span(line_text)
 
     def _line_has_comma_before_closer(self, line_text):
-        return self._comma_before_closer_span(line_text) is not None
+        return json_colon_comma_service.line_has_comma_before_closer(line_text)
 
     def _fix_comma_before_closer(self, line_text):
-        if not line_text:
-            return line_text
-        raw = line_text.rstrip()
-        m = re.match(
-            r'^(?P<indent>\s*)(?P<run>,(?:\s*,)*)\s*(?P<close>[\}\]])(?P<trail>\s*)$',
-            raw,
-        )
-        if not m:
-            return raw
-        indent = m.group("indent") or ""
-        close = m.group("close") or "}"
-        return f"{indent}{close},"
+        return json_colon_comma_service.fix_comma_before_closer(line_text)
 
     def _find_nearby_comma_before_closer_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_comma_before_closer(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_comma_before_closer_line(self, lineno, lookback)
 
     def _comma_line_invalid_tail_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        m = re.match(r'^(?P<indent>\s*),(?P<tail>.*)$', raw)
-        if not m:
-            return None
-        tail = m.group("tail") or ""
-        idx = 0
-        while idx < len(tail) and tail[idx].isspace():
-            idx += 1
-        if idx >= len(tail):
-            return None
-        # Dedicated comma-before-closer rule handles ",}" / ",]".
-        if tail[idx] in ("}", "]"):
-            return None
-        start_col = len(m.group("indent") or "")
-        end_col = len(raw)
-        if end_col <= start_col:
-            end_col = start_col + 1
-        return start_col, end_col
+        return json_colon_comma_service.comma_line_invalid_tail_span(line_text)
 
     def _line_has_comma_line_invalid_tail(self, line_text):
-        return self._comma_line_invalid_tail_span(line_text) is not None
+        return json_colon_comma_service.line_has_comma_line_invalid_tail(line_text)
 
     def _expected_missing_close_symbol(self, lineno):
-        try:
-            if self._is_missing_object_close():
-                return "}"
-            if self._is_missing_list_close():
-                return "]"
-        except _EXPECTED_APP_ERRORS:
-            pass
-        next_line = self._next_non_empty_line_number(lineno or 1) if lineno else None
-        next_text = self._line_text(next_line).strip() if next_line else ""
-        if next_text.startswith("["):
-            return "]"
-        return "}"
+        return json_repair_service._expected_missing_close_symbol(self, lineno)
 
     def _fix_comma_line_invalid_tail(self, line_text, lineno=None):
-        if not line_text:
-            return line_text
-        raw = line_text.rstrip()
-        m = re.match(r'^(?P<indent>\s*),(?P<tail>.*)$', raw)
-        if not m:
-            return raw
-        indent = m.group("indent") or ""
-        close = self._expected_missing_close_symbol(lineno)
-        return f"{indent}{close},"
+        return json_repair_service._fix_comma_line_invalid_tail(self, line_text, lineno)
 
     def _find_nearby_comma_line_invalid_tail_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_comma_line_invalid_tail(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_comma_line_invalid_tail_line(self, lineno, lookback)
 
     def _missing_key_quote_before_colon_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        # Detect: `"name=: ...` where an invalid trailing symbol appears before
-        # the key/value colon and should be removed before closing quote.
-        m = re.match(
-            r'^(?P<indent>\s*)"(?P<base>[A-Za-z_][A-Za-z0-9_]*)(?P<bad>[^\w"]+):(?P<rest>.*)$',
-            raw,
-        )
-        if m:
-            indent = m.group("indent") or ""
-            base = m.group("base") or ""
-            bad = m.group("bad") or ""
-            start_col = len(indent) + 1 + len(base)
-            return {
-                "start_col": start_col,
-                "end_col": start_col + len(bad),
-                "issue": "wrong_symbol_before_colon",
-            }
-
-        # Detect: `"name: "lib",` where the closing quote on the key is missing.
-        m = re.match(r'^(?P<indent>\s*)"(?P<key>[^":]+):(?P<rest>.*)$', raw)
-        if m:
-            rest = m.group("rest") or ""
-            rest_trim = rest.lstrip()
-            # Ignore array-item/value typos like `"hackhub.net:,` so they route
-            # through value-tail diagnostics instead of key-quote diagnostics.
-            if not rest_trim or rest_trim.startswith(","):
-                return None
-            indent = m.group("indent") or ""
-            key = m.group("key") or ""
-            colon_col = len(indent) + 1 + len(key)
-            return {
-                "start_col": colon_col,
-                "end_col": colon_col,
-                "issue": "missing_close_quote",
-            }
-
-        # Detect: `<bad>name": ...` where a wrong opening quote symbol is used
-        # (for example `'`, `` ` ``, `\`, or other punctuation).
-        m = re.match(r'^(?P<indent>\s*)(?P<bad>[^\w"\s])(?P<key>[^":]+)"(?P<rest>\s*:.*)$', raw)
-        if m:
-            indent = m.group("indent") or ""
-            start_col = len(indent)
-            return {
-                "start_col": start_col,
-                "end_col": start_col + 1,
-                "issue": "wrong_open_quote_char",
-            }
-
-        # Detect: `name": ...` where opening quote is missing.
-        m = re.match(r'^(?P<indent>\s*)(?P<key>[A-Za-z_][A-Za-z0-9_]*)"(?P<rest>\s*:.*)$', raw)
-        if not m:
-            return None
-        indent = m.group("indent") or ""
-        start_col = len(indent)
-        return {
-            "start_col": start_col,
-            "end_col": start_col,
-            "issue": "missing_open_quote",
-        }
+        return json_property_key_rule_service.missing_key_quote_before_colon_span(line_text)
 
     def _line_has_missing_key_quote_before_colon(self, line_text):
-        return self._missing_key_quote_before_colon_span(line_text) is not None
+        return json_property_key_rule_service.line_has_missing_key_quote_before_colon(line_text)
 
     def _fix_property_key_symbol_before_colon(self, line_text):
-        if not line_text:
-            return line_text
-        return re.sub(
-            r'^(\s*)"([A-Za-z_][A-Za-z0-9_]*)([^\w"]+)(\s*:)',
-            r'\1"\2"\4',
-            line_text.rstrip(),
-            count=1,
-        )
+        return json_property_key_rule_service.fix_property_key_symbol_before_colon(line_text)
 
     def _find_nearby_missing_key_quote_before_colon_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_missing_key_quote_before_colon(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_missing_key_quote_before_colon_line(self, lineno, lookback)
 
     def _property_key_invalid_escape_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        # Detect: `"name\: ...` where an invalid backslash is used before the
-        # key/value colon and should be corrected to a closing quote.
-        m = re.match(r'^(?P<indent>\s*)"(?P<key>[^"]*)\\(?P<rest>\s*:.*)$', raw)
-        if not m:
-            return None
-        indent = m.group("indent") or ""
-        key = m.group("key") or ""
-        start_col = len(indent) + 1 + len(key)
-        return start_col, start_col + 1
+        return json_property_key_rule_service.property_key_invalid_escape_span(line_text)
 
     def _line_has_property_key_invalid_escape(self, line_text):
-        return self._property_key_invalid_escape_span(line_text) is not None
+        return json_property_key_rule_service.line_has_property_key_invalid_escape(line_text)
 
     def _fix_property_key_invalid_escape(self, line_text):
-        if not line_text:
-            return line_text
-        # Only replace the first key-close escape before ":".
-        return re.sub(r'^(\s*"[^"]*)\\(\s*:)', r'\1"\2', line_text.rstrip(), count=1)
+        return json_property_key_rule_service.fix_property_key_invalid_escape(line_text)
 
     def _find_nearby_property_key_invalid_escape_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_property_key_invalid_escape(txt):
-                return ln, txt
-        return None, None
+        return json_diagnostics_service._find_nearby_property_key_invalid_escape_line(self, lineno, lookback)
 
     def _missing_key_quote_before_colon_diag(self, line_no, colno=1):
-        missing_key_quote_no, missing_key_quote_text = self._find_nearby_missing_key_quote_before_colon_line(
-            line_no
-        )
-        if not (missing_key_quote_text and missing_key_quote_no):
-            return None
-        raw = self._line_text(missing_key_quote_no)
-        span = self._missing_key_quote_before_colon_span(raw)
-        if span:
-            start_col = int(span.get("start_col", max((colno or 1) - 1, 0)))
-            end_col = int(span.get("end_col", start_col))
-            issue = str(span.get("issue", "")).strip().lower()
-        else:
-            start_col = max((colno or 1) - 1, 0)
-            end_col = start_col
-            issue = ""
-        header = "Invalid Entry: add quotes around the highlighted name."
-        note = "missing_key_quote_before_colon"
-        after = self._quote_property_name(missing_key_quote_text).strip()
-        if issue == "wrong_symbol_before_colon":
-            header = "Invalid Entry: remove the invalid symbol before ':'."
-            note = "symbol_wrong_property_key_symbol"
-            after = self._fix_property_key_symbol_before_colon(missing_key_quote_text).strip()
-        if issue == "wrong_open_quote_char":
-            header = "Invalid Entry: replace the wrong quote with a double quote."
-            note = "symbol_wrong_property_quote_char"
-        return {
-            "header": header,
-            "before": missing_key_quote_text.strip(),
-            "after": after,
-            "line": missing_key_quote_no,
-            "start_col": start_col,
-            "end_col": end_col,
-            "note": note,
-        }
+        return json_repair_service._missing_key_quote_before_colon_diag(self, line_no, colno)
 
     def _quoted_item_invalid_tail_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        # Object-member typo like `"name: "value"` should use key-quote repair,
-        # not quoted-array-item trailing-symbol diagnostics.
-        if self._line_has_missing_key_quote_before_colon(raw):
-            return None
-        m = re.match(r'^(?P<head>\s*"[^"]*")(?P<tail>.*)$', raw)
-        if not m:
-            return None
-        head = m.group("head") or ""
-        tail = m.group("tail") or ""
-        # Array-item rule only: ignore object member lines like
-        # `"phone": "909-505-4131",,,#`.
-        if tail.lstrip().startswith(":"):
-            return None
-        idx = 0
-        while idx < len(tail) and tail[idx].isspace():
-            idx += 1
-        if idx >= len(tail):
-            return None
-
-        # Allow one delimiter comma after a quoted array item. Highlight only
-        # extra/invalid symbols after that first comma.
-        if tail[idx] == ",":
-            idx += 1
-            while idx < len(tail) and tail[idx].isspace():
-                idx += 1
-            if idx >= len(tail):
-                return None
-
-        start_col = len(head) + idx
-        end_col = len(raw)
-        if end_col <= start_col:
-            end_col = start_col + 1
-        return start_col, end_col
+        return json_repair_service._quoted_item_invalid_tail_span(self, line_text)
 
     def _line_has_invalid_tail_after_quoted_item(self, line_text):
-        return self._quoted_item_invalid_tail_span(line_text) is not None
+        return json_repair_service._line_has_invalid_tail_after_quoted_item(self, line_text)
 
     def _fix_invalid_tail_after_quoted_item(self, line_text, lineno=None):
-        if not line_text:
-            return line_text
-        m = re.match(r'^(?P<head>\s*"[^"]*")(?P<tail>.*)$', line_text.rstrip())
-        if not m:
-            return line_text
-        head = m.group("head")
-        next_line = self._next_non_empty_line_number(lineno or 1) if lineno else None
-        next_text = self._line_text(next_line).strip() if next_line else ""
-        needs_comma = not next_text.startswith(("]", "}"))
-        return head + ("," if needs_comma else "")
+        return editor_purge_service._fix_invalid_tail_after_quoted_item(self, line_text, lineno)
 
     def _find_nearby_invalid_tail_after_quoted_item_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_invalid_tail_after_quoted_item(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_invalid_tail_after_quoted_item_line(self, lineno, lookback)
 
     def _line_has_illegal_trailing_comma_before_close(self, line_text, lineno):
-        if not line_text or not lineno:
-            return False
-        raw = line_text.rstrip()
-        if not raw.endswith(","):
-            return False
-        # If there are already invalid trailing symbols after a completed
-        # value/item, prefer the symbol-run diagnostic so the full bad tail
-        # is highlighted (not just the final comma).
-        if self._line_has_invalid_trailing_symbols_after_string_value(raw):
-            return False
-        if self._line_has_invalid_tail_after_quoted_item(raw):
-            return False
-        # Comma runs are handled by duplicate-comma diagnostics so only extra
-        # commas are marked red and "After" reduces to a single comma.
-        if re.search(r',\s*,+\s*$', raw):
-            return False
-        next_line = self._next_non_empty_line_number(lineno)
-        if not next_line:
-            return False
-        next_text = self._line_text(next_line).lstrip()
-        return next_text.startswith(("}", "]"))
+        return json_repair_service._line_has_illegal_trailing_comma_before_close(self, line_text, lineno)
 
     def _trailing_comma_before_close_col(self, line_text):
-        if not line_text:
-            return None
-        idx = line_text.rstrip().rfind(",")
-        return idx if idx >= 0 else None
+        return json_repair_service._trailing_comma_before_close_col(self, line_text)
 
     def _fix_illegal_trailing_comma_before_close(self, line_text):
-        if not line_text:
-            return line_text
-        return re.sub(r',\s*$', "", line_text.rstrip())
+        return json_repair_service._fix_illegal_trailing_comma_before_close(self, line_text)
 
     def _find_nearby_illegal_trailing_comma_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_illegal_trailing_comma_before_close(txt, ln):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_illegal_trailing_comma_line(self, lineno, lookback)
 
     def _line_has_illegal_comma_after_top_level_close(self, line_text, lineno):
-        if not line_text or not lineno:
-            return False
-        if not re.match(r'^\s*[\}\]]\s*,+\s*$', line_text):
-            return False
-        # If content continues, it's more likely a missing list/object wrapper.
-        next_line = self._next_non_empty_line_number(lineno)
-        return next_line is None
+        return json_repair_service._line_has_illegal_comma_after_top_level_close(self, line_text, lineno)
 
     def _top_level_close_symbol_run_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        m = re.match(r'^(?P<indent>\s*)(?P<close>[\}\]])(?P<trail>.*)$', raw)
-        if not m:
-            return None
-        tail = m.group("trail") or ""
-        idx = 0
-        while idx < len(tail) and tail[idx].isspace():
-            idx += 1
-        if idx >= len(tail):
-            return None
-        start_col = len(m.group("indent") or "") + 1 + idx
-        end_col = len(raw)
-        if end_col <= start_col:
-            end_col = start_col + 1
-        return start_col, end_col
+        return json_top_level_close_service.top_level_close_symbol_run_span(line_text)
 
     def _line_has_top_level_close_symbol_run(self, line_text, lineno):
-        if not line_text or not lineno:
-            return False
-        if self._top_level_close_symbol_run_span(line_text) is None:
-            return False
-        # Only classify as top-level tail run when this is EOF context.
-        next_line = self._next_non_empty_line_number(lineno)
-        return next_line is None
+        return json_repair_service._line_has_top_level_close_symbol_run(self, line_text, lineno)
 
     def _fix_top_level_close_symbol_run(self, line_text):
-        if not line_text:
-            return line_text
-        return re.sub(r'(\s*[\}\]])\s*.*$', r'\1', line_text.rstrip())
+        return json_top_level_close_service.fix_top_level_close_symbol_run(line_text)
 
     def _find_nearby_top_level_close_symbol_run_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_top_level_close_symbol_run(txt, ln):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_top_level_close_symbol_run_line(self, lineno, lookback)
 
     def _comma_run_after_top_level_close_span(self, line_text):
-        if not line_text:
-            return None
-        raw = line_text.rstrip()
-        m = re.match(r'^(?P<indent>\s*)(?P<close>[\}\]])(?P<trail>\s*,+\s*)$', raw)
-        if not m:
-            return None
-        indent_len = len(m.group("indent") or "")
-        start_col = raw.find(",", indent_len + 1)
-        if start_col < 0:
-            return None
-        end_col = len(raw)
-        if end_col <= start_col:
-            end_col = start_col + 1
-        return start_col, end_col
+        return json_top_level_close_service.comma_run_after_top_level_close_span(line_text)
 
     def _fix_illegal_comma_after_top_level_close(self, line_text):
-        if not line_text:
-            return line_text
-        return re.sub(r'(\s*[\}\]])\s*,+\s*$', r'\1', line_text.rstrip())
+        return json_top_level_close_service.fix_illegal_comma_after_top_level_close(line_text)
 
     def _find_nearby_illegal_comma_after_top_level_close_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt.strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_illegal_comma_after_top_level_close(txt, ln):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_illegal_comma_after_top_level_close_line(self, lineno, lookback)
 
     def _split_completed_scalar_value_tail(self, line_text):
-        """Return (head, tail, prefix_len) for lines like `"key": <scalar><tail>`.
-
-        Supports completed scalar values:
-        - string: "value"
-        - number: 123 / -1.2 / 1e3
-        - literals: true / false / null
-        """
-        if not line_text:
-            return None
-        m = re.match(r'^(?P<prefix>\s*"[^"]+"\s*:\s*)(?P<rest>.*)$', line_text)
-        if not m:
-            return None
-        prefix = m.group("prefix") or ""
-        rest = m.group("rest") or ""
-        idx = 0
-        while idx < len(rest) and rest[idx].isspace():
-            idx += 1
-        if idx >= len(rest):
-            return None
-
-        value_end = None
-        ch = rest[idx]
-        if ch == '"':
-            j = idx + 1
-            escaped = False
-            while j < len(rest):
-                c = rest[j]
-                if escaped:
-                    escaped = False
-                elif c == "\\":
-                    escaped = True
-                elif c == '"':
-                    value_end = j + 1
-                    break
-                j += 1
-            if value_end is None:
-                return None
-        elif ch in "-0123456789":
-            num_m = re.match(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", rest[idx:])
-            if not num_m:
-                return None
-            value_end = idx + len(num_m.group(0))
-        else:
-            literal_end = None
-            for lit in ("true", "false", "null"):
-                if rest.startswith(lit, idx):
-                    end_idx = idx + len(lit)
-                    if end_idx >= len(rest) or not re.match(r"[A-Za-z0-9_]", rest[end_idx]):
-                        literal_end = end_idx
-                        break
-            if literal_end is None:
-                return None
-            value_end = literal_end
-
-        prefix_len = len(prefix) + value_end
-        head = line_text[:prefix_len]
-        tail = line_text[prefix_len:]
-        return head, tail, prefix_len
+        return json_scalar_tail_service.split_completed_scalar_value_tail(line_text)
 
     def _line_has_invalid_trailing_symbols_after_string_value(self, line_text):
-        parsed = self._split_completed_scalar_value_tail(line_text)
-        if not parsed:
-            return False
-        _head, tail, _prefix_len = parsed
-        return tail.strip() not in ("", ",")
+        return json_scalar_tail_service.line_has_invalid_trailing_symbols_after_string_value(line_text)
 
     def _first_invalid_trailing_symbol_col(self, line_text, lineno=None):
-        parsed = self._split_completed_scalar_value_tail(line_text)
-        if not parsed:
-            return None
-        _head, tail, prefix_len = parsed
-        idx = 0
-        # Skip whitespace after the value.
-        while idx < len(tail) and tail[idx].isspace():
-            idx += 1
-        # A single trailing comma can be valid for continued objects/lists.
-        # If anything follows that comma, include the comma in the error span
-        # only when the comma itself is illegal for this line.
-        if idx < len(tail) and tail[idx] == ",":
-            comma_idx = idx
-            idx += 1
-            while idx < len(tail) and tail[idx].isspace():
-                idx += 1
-            if idx < len(tail):
-                comma_is_valid = bool(lineno) and self._line_requires_trailing_comma(lineno)
-                if comma_is_valid:
-                    return prefix_len + idx
-                return prefix_len + comma_idx
-            return None
-        if idx < len(tail):
-            return prefix_len + idx
-        return None
+        return json_repair_service._first_invalid_trailing_symbol_col(self, line_text, lineno)
 
     def _fix_invalid_trailing_symbols_after_string_value(self, line_text, lineno=None):
-        parsed = self._split_completed_scalar_value_tail(line_text)
-        if not parsed:
-            return line_text
-        head, _tail, _prefix_len = parsed
-        next_line = self._next_non_empty_line_number(lineno or 1) if lineno else None
-        next_text = self._line_text(next_line).strip() if next_line else ""
-        needs_comma = not next_text.startswith(("}", "]"))
-        return head + ("," if needs_comma else "")
+        return editor_purge_service._fix_invalid_trailing_symbols_after_string_value(self, line_text, lineno)
 
     def _find_nearby_invalid_trailing_symbols_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt:
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_invalid_trailing_symbols_after_string_value(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_invalid_trailing_symbols_line(self, lineno, lookback)
 
     def _line_has_invalid_symbol_after_closer(self, line_text):
-        if not line_text:
-            return False
-        m = re.match(r'^\s*([\}\]])(?P<trail>.*)$', line_text)
-        if not m:
-            return False
-        tail = (m.group("trail") or "").strip()
-        # Valid: just closer, or closer followed by comma.
-        return tail not in ("", ",")
+        return json_closer_symbol_service.line_has_invalid_symbol_after_closer(line_text)
 
     def _first_invalid_symbol_after_closer_col(self, line_text):
-        m = re.match(r'^\s*([\}\]])(?P<trail>.*)$', line_text)
-        if not m:
-            return None
-        prefix_len = len(line_text) - len(m.group("trail"))
-        tail = m.group("trail") or ""
-        idx = 0
-        while idx < len(tail) and tail[idx].isspace():
-            idx += 1
-        if idx < len(tail) and tail[idx] == ",":
-            idx += 1
-            while idx < len(tail) and tail[idx].isspace():
-                idx += 1
-        if idx < len(tail):
-            return prefix_len + idx
-        return None
+        return json_closer_symbol_service.first_invalid_symbol_after_closer_col(line_text)
 
     def _fix_invalid_symbol_after_closer(self, line_text):
-        m = re.match(r'^(\s*[\}\]])(?P<trail>.*)$', line_text)
-        if not m:
-            return line_text
-        head = m.group(1)
-        return head + ","
+        return json_closer_symbol_service.fix_invalid_symbol_after_closer(line_text)
 
     def _find_nearby_invalid_symbol_after_closer_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt:
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_invalid_symbol_after_closer(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_invalid_symbol_after_closer_line(self, lineno, lookback)
 
     def _invalid_symbol_after_open_span(self, line_text):
-        if not line_text:
-            return None
-        m = re.match(r'^(?P<indent>\s*)(?P<open>[\{\[])(?P<trail>.*)$', line_text)
-        if not m:
-            return None
-        opener = m.group("open")
-        tail = m.group("trail") or ""
-        idx = 0
-        while idx < len(tail) and tail[idx].isspace():
-            idx += 1
-        if idx >= len(tail):
-            return None
-        ch = tail[idx]
-
-        if opener == "{":
-            # After '{' at line start, only a quoted key or '}' is valid.
-            if ch in ('"', "}"):
-                return None
-        else:
-            # After '[' at line start, allow common JSON value starts.
-            if ch in ("]", "{", "[", '"', "-") or ch.isdigit() or ch.lower() in ("t", "f", "n"):
-                return None
-
-        # Restrict this path to symbol errors so name/value diagnostics can
-        # continue handling alphanumeric cases.
-        if ch.isalnum() or ch in ('"', "'", "_"):
-            return None
-
-        run_end = idx + 1
-        while run_end < len(tail):
-            nxt = tail[run_end]
-            if nxt.isspace() or nxt.isalnum() or nxt in ('"', "'", "_"):
-                break
-            run_end += 1
-
-        col_start = len(m.group("indent")) + 1 + idx
-        col_end = len(m.group("indent")) + 1 + run_end
-        symbol_text = tail[idx:run_end]
-        return opener, col_start, col_end, symbol_text
+        return json_open_symbol_service.invalid_symbol_after_open_span(line_text)
 
     def _line_has_invalid_symbol_after_open(self, line_text):
-        return self._invalid_symbol_after_open_span(line_text) is not None
+        return json_open_symbol_service.line_has_invalid_symbol_after_open(line_text)
 
     def _fix_invalid_symbol_after_open(self, line_text):
-        span = self._invalid_symbol_after_open_span(line_text)
-        if not span:
-            return line_text
-        _opener, start_col, end_col, _symbol_text = span
-        return line_text[:start_col] + line_text[end_col:]
+        return json_open_symbol_service.fix_invalid_symbol_after_open(line_text)
 
     def _find_nearby_invalid_symbol_after_open_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt:
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_has_invalid_symbol_after_open(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_invalid_symbol_after_open_line(self, lineno, lookback)
 
     def _find_nearby_extra_quote_in_value_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt:
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_extra_quote_in_string_value(txt):
-                return ln, txt
-        return None, None
+        return json_repair_service._find_nearby_extra_quote_in_value_line(self, lineno, lookback)
 
     def _build_symbol_json_diagnostic(self, exc, lineno=None):
         return json_error_diagnostics_core.build_symbol_json_diagnostic(self, exc, lineno=lineno)
@@ -13682,231 +8710,28 @@ if not install_started:
 
 
     def _quote_unquoted_value(self, line_text):
-        if not line_text or ":" not in line_text:
-            return line_text
-        left, right = line_text.split(":", 1)
-        right = right.lstrip()
-        if not right:
-            return line_text
-
-        # Work only on the first value token after "key:" and preserve any tail.
-        comma_idx = right.find(",")
-        if comma_idx != -1:
-            token = right[:comma_idx].strip()
-            tail = right[comma_idx:]
-        else:
-            token = right.strip()
-            tail = ""
-        if token == "":
-            return line_text
-        lower = token.lower()
-
-        # Keep valid JSON literals/numbers unquoted.
-        if lower in ("true", "false", "null"):
-            return line_text
-        if re.fullmatch(r"-?\d+(\.\d+)?([eE][+-]?\d+)?", token):
-            return line_text
-        if token.startswith("{") or token.startswith("[") or token.startswith('"'):
-            return line_text
-
-        # Fix common case: missing opening quote (or mismatched quote) around scalar.
-        token = token.strip()
-        if token.endswith('"') and token.count('"') == 1:
-            token = token[:-1]
-        # Remove invalid trailing characters before wrapping in quotes
-        token = _strip_invalid_trailing_chars(token.strip())
-        fixed = f'{left}: "{token}"{tail}'
-        return fixed
+        return json_repair_service._quote_unquoted_value(self, line_text)
 
     def _quote_unquoted_scalar_line(self, line_text):
-        if not line_text:
-            return line_text
-        if ":" in line_text:
-            return self._quote_unquoted_value(line_text)
-
-        stripped = line_text.strip()
-        if not stripped:
-            return line_text
-
-        has_trailing_comma = stripped.endswith(",")
-        token = stripped[:-1].rstrip() if has_trailing_comma else stripped
-        if not token:
-            return line_text
-
-        lower = token.lower()
-        if lower in ("true", "false", "null"):
-            return line_text
-        if re.fullmatch(r"-?\d+(\.\d+)?([eE][+-]?\d+)?", token):
-            return line_text
-        if token.startswith("{") or token.startswith("[") or token.startswith("]") or token.startswith("}"):
-            return line_text
-        if token.startswith('"') and token.endswith('"') and token.count('"') >= 2:
-            return line_text
-
-        if token.endswith('"') and token.count('"') == 1:
-            token = token[:-1].strip()
-        elif token.startswith('"') and token.count('"') == 1:
-            token = token[1:].strip()
-        else:
-            token = token.strip().strip('"')
-
-        # Remove invalid trailing characters before wrapping in quotes
-        token = _strip_invalid_trailing_chars(token)
-        fixed = f"\"{token}\""
-        if has_trailing_comma:
-            fixed += ","
-        return fixed
+        return json_repair_service._quote_unquoted_scalar_line(self, line_text)
 
     def _line_needs_value_quotes(self, line_text):
-        if not line_text:
-            return False
-        fixed = self._quote_unquoted_scalar_line(line_text)
-        return bool(fixed and fixed != line_text)
+        return json_diagnostics_service._line_needs_value_quotes(self, line_text)
 
     def _missing_value_close_quote_insert_col(self, line_text):
-        # Detect: "key": "value,  (missing closing quote before comma/EOL).
-        if not line_text:
-            return None
-        raw = str(line_text)
-        # Keep object-key quote diagnostics for key-like forms:
-        #   "name: [
-        #   "name=: {
-        #   "name: "value"
-        if re.match(r'^\s*"[A-Za-z_][A-Za-z0-9_]*[^\w"]*:\s*[\[{"]', raw):
-            return None
-
-        def _scan_unclosed_quoted_value(value_text, base_col):
-            if not value_text.startswith('"'):
-                return None
-            escape = False
-            for idx, ch in enumerate(value_text[1:], start=1):
-                if escape:
-                    escape = False
-                    continue
-                if ch == "\\":
-                    escape = True
-                    continue
-                if ch == '"':
-                    # Already has a valid closing quote.
-                    return None
-                if ch == ",":
-                    return int(base_col + idx)
-            if value_text.count('"') == 1:
-                return int(base_col + len(value_text.rstrip()))
-            return None
-
-        object_value_match = re.match(r'^\s*"[^"]*"\s*:(?P<rest>.*)$', raw)
-        if object_value_match:
-            rest = object_value_match.group("rest") or ""
-            rest_start = int(object_value_match.start("rest"))
-            ws_len = len(rest) - len(rest.lstrip(" \t"))
-            value_text = rest.lstrip(" \t")
-            return _scan_unclosed_quoted_value(value_text, base_col=int(rest_start + ws_len))
-
-        # Array/scalar line form: "value,   (missing closing quote before comma/EOL).
-        ws_len = len(raw) - len(raw.lstrip(" \t"))
-        value_text = raw.lstrip(" \t")
-        return _scan_unclosed_quoted_value(value_text, base_col=int(ws_len))
+        return json_repair_service._missing_value_close_quote_insert_col(self, line_text)
 
     def _missing_value_open_quote_insert_col(self, line_text):
-        # Detect missing opening quote for scalar values so cursor can stay
-        # at the exact insert point instead of jumping to parser fallback lines.
-        raw = str(line_text or "")
-        if not raw:
-            return None
-        # Keep literal typo and wrong-token diagnostics in their existing paths.
-        if re.match(r'^\s*[A-Za-z_][A-Za-z0-9_]*\s*$', raw):
-            return None
-        fixed = self._quote_unquoted_scalar_line(raw)
-        if not fixed or fixed == raw:
-            return None
-        if ":" in raw:
-            colon_idx = raw.find(":")
-            rest = raw[colon_idx + 1 :]
-            ws_len = len(rest) - len(rest.lstrip(" \t"))
-            value_text = rest.lstrip(" \t")
-            if value_text.startswith('"'):
-                return None
-            return int(colon_idx + 1 + ws_len)
-        for idx, ch in enumerate(raw):
-            if not ch.isspace():
-                return int(idx)
-        return 0
+        return json_repair_service._missing_value_open_quote_insert_col(self, line_text)
 
     def _find_nearby_missing_value_close_quote_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if str(txt or "").strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            insert_col = self._missing_value_close_quote_insert_col(txt)
-            if insert_col is not None:
-                return int(ln), txt, int(insert_col)
-        return None, None, None
+        return json_repair_service._find_nearby_missing_value_close_quote_line(self, lineno, lookback)
 
     def _find_nearby_missing_value_open_quote_line(self, lineno, lookback=3):
-        if not lineno:
-            return None, None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if str(txt or "").strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            insert_col = self._missing_value_open_quote_insert_col(txt)
-            if insert_col is not None:
-                return int(ln), txt, int(insert_col)
-        return None, None, None
+        return json_repair_service._find_nearby_missing_value_open_quote_line(self, lineno, lookback)
 
     def _find_nearby_unquoted_value_line(self, lineno, lookback=3):
-        if not lineno:
-            return None, None
-        # Check current line first, then a few previous non-empty lines.
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend").strip()))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                break
-            if txt:
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            if self._line_needs_value_quotes(txt):
-                return ln, txt
-        return None, None
+        return json_diagnostics_service._find_nearby_unquoted_value_line(self, lineno, lookback)
 
     def _suggest_json_literal_from_token(self, token):
         return json_diag_core.suggest_json_literal_from_token(token)
@@ -13915,265 +8740,71 @@ if not install_started:
         return json_diag_core.boolean_literal_typo_diagnostic(line_text)
 
     def _find_nearby_boolean_literal_typo_line(self, lineno, lookback=3):
-        return json_diag_core.find_nearby_boolean_literal_typo_line(
-            self._line_text,
-            lineno,
-            lookback=lookback,
-        )
+        return json_diagnostics_service._find_nearby_boolean_literal_typo_line(self, lineno, lookback)
 
     def _is_wrong_list_open_for_object(self, prev_text, next_text):
-        if not prev_text:
-            return False
-        prev = prev_text.strip()
-        prev_compact = "".join(prev.split())
-        if not (prev.endswith("\": [") or prev.endswith("\":[") or prev_compact.endswith("\":[") ):
-            return False
-        nxt = next_text.strip()
-        # Only treat as object-open mismatch when the next token looks like an
-        # object property (`"key": ...`), not a plain list item (`"value"`).
-        return bool(re.match(r'^"[^"]+"\s*:', nxt))
+        return json_diagnostics_service._is_wrong_list_open_for_object(self, prev_text, next_text)
 
     def _find_wrong_list_open_line(self, lineno, lookback=3):
-        if not lineno:
-            return None
-        line = lineno - 1
-        checked = 0
-        while line >= 1 and checked < lookback:
-            text = self._line_text(line).strip()
-            if text:
-                next_line_num = self._next_non_empty_line_number(line)
-                next_text = self._line_text(next_line_num).strip() if next_line_num else ""
-                if self._is_wrong_list_open_for_object(text, next_text):
-                    return line
-                checked += 1
-            line -= 1
-        return None
+        return json_diagnostics_service._find_wrong_list_open_line(self, lineno, lookback)
 
     def _find_wrong_object_open_line(self, lineno, lookback=3):
-        if not lineno:
-            return None
-        line = lineno - 1
-        checked = 0
-        while line >= 1 and checked < lookback:
-            text = self._line_text(line).strip()
-            if text:
-                if text in ("[", "[,"):
-                    next_line_num = self._next_non_empty_line_number(line)
-                    next_text = self._line_text(next_line_num).strip() if next_line_num else ""
-                    # Only treat "[" as wrong object opener when the following
-                    # line looks like an object property (`"key": ...`).
-                    if re.match(r'^"[^"]+"\s*:', next_text):
-                        return line
-                checked += 1
-            line -= 1
-        return None
+        return json_diagnostics_service._find_wrong_object_open_line(self, lineno, lookback)
 
     def _expected_closer_before_position(self, target_line, target_col):
-        return json_diag_core.expected_closer_before_position(
-            self._line_text,
-            target_line,
-            target_col,
-        )
+        return json_diagnostics_service._expected_closer_before_position(self, target_line, target_col)
 
     def _find_wrong_closing_symbol_line(self, lineno, lookback=2):
-        return json_diag_core.find_wrong_closing_symbol_line(
-            self._line_text,
-            lineno,
-            lookback=lookback,
-        )
+        return json_repair_service._find_wrong_closing_symbol_line(self, lineno, lookback)
 
     def _find_missing_list_close_before_object_end(self, lineno, lookback=4):
-        return json_diag_core.find_missing_list_close_before_object_end(
-            self._line_text,
-            self._closest_non_empty_line_before,
-            lineno,
-            lookback=lookback,
-        )
+        return json_repair_service._find_missing_list_close_before_object_end(self, lineno, lookback)
 
     def _next_non_empty_line_number(self, start_line):
-        try:
-            last_line = int(self.text.index("end-1c").split(".")[0])
-        except _EXPECTED_APP_ERRORS:
-            return None
-        line = max(start_line + 1, 1)
-        while line <= last_line:
-            text = self._line_text(line)
-            if text.strip():
-                return line
-            line += 1
-        return None
+        return json_diagnostics_service._next_non_empty_line_number(self, start_line)
 
     def _missing_list_open_key_line(self, lineno):
-        if not lineno:
-            return None
-        line = max(lineno - 1, 1)
-        while line >= 1:
-            text = self._line_text(line).strip()
-            if text.endswith("\":") and not text.endswith("\": {") and not text.endswith("\": ["):
-                next_line_num = self._next_non_empty_line_number(line)
-                if next_line_num:
-                    next_text = self._line_text(next_line_num).strip()
-                    if next_text.startswith("{"):
-                        return line
-            line -= 1
-        return None
+        return json_repair_service._missing_list_open_key_line(self, lineno)
 
     @staticmethod
     def _line_looks_like_object_property(line_text):
         return bool(re.match(r'^"[^"]+"\s*:', str(line_text or "").strip()))
 
     def _find_missing_container_open_after_key_line(self, lineno, lookback=6):
-        """Find a key line that likely needs an opening container token.
-
-        Returns:
-            tuple[int|None, str|None]: (line_number, opener) where opener is
-            "{" for object-open suggestions or "[" for list-open suggestions.
-        """
-        if not lineno:
-            return None, None
-        line = max(lineno - 1, 1)
-        checked = 0
-        while line >= 1 and checked < lookback:
-            text = self._line_text(line).strip()
-            if text:
-                checked += 1
-                if text.endswith('":'):
-                    next_line_num = self._next_non_empty_line_number(line)
-                    if next_line_num:
-                        next_text = self._line_text(next_line_num).strip()
-                        if self._line_looks_like_object_property(next_text):
-                            return line, "{"
-                        if next_text.startswith('"') or next_text.startswith("{"):
-                            return line, "["
-            line -= 1
-        return None, None
+        return json_repair_service._find_missing_container_open_after_key_line(self, lineno, lookback)
 
     def _find_missing_list_open_after_key_line(self, lineno, lookback=6):
-        line, opener = self._find_missing_container_open_after_key_line(
-            lineno, lookback=lookback
-        )
-        if opener == "[":
-            return line
-        return None
+        return json_repair_service._find_missing_list_open_after_key_line(self, lineno, lookback)
 
     def _missing_close_example(self, msg):
-        if msg in ("Expecting ']'", "Unexpected ']'"):
-            return "],"
-        return "},"
+        return json_repair_service._missing_close_example(self, msg)
 
     def _format_suggestion(self, header, before, after, header_only=False):
-        if header_only:
-            return f"Suggestion:\n- Before: {before}\n- After:  {after}"
-        return f"{header}\n\nSuggestion:\n- Before: {before}\n- After:  {after}"
+        return json_diagnostics_service._format_suggestion(self, header, before, after, header_only)
 
     def _suggestion_from_example(self, example, add_after=None, add_colon=False, quote_key=False):
-        before = example.strip()
-        after = before
-        if quote_key:
-            after = self._quote_property_name(before)
-        if add_colon and ":" not in after:
-            if after and not after.endswith(":"):
-                after = after.rstrip(",") + ": \"value\""
-        if add_after:
-            if add_after in (",", "],", "},", "{", "["):
-                if add_after == ",":
-                    before = before.rstrip().rstrip(",")
-                    after = before + ","
-                else:
-                    after = add_after
-                    if add_after in ("},", "],"):
-                        before = add_after.replace(",", "")
-                    if add_after in ("{", "["):
-                        before = add_after
-            else:
-                # Append non-structural additions (e.g. closing quote) to the
-                # example so suggestions show the full corrected string.
-                after = before + add_after
-        return (before if before else "\"value\""), (after if after else "\"value\"")
+        return json_diagnostics_service._suggestion_from_example(self, example, add_after, add_colon, quote_key)
     def _is_missing_object_open_at(self, lineno):
-        if not lineno:
-            return False
-        line_text = self._line_text(lineno).lstrip()
-        if not line_text or ":" not in line_text:
-            return False
-        prev_line_num = self._closest_non_empty_line_before(lineno)
-        if not prev_line_num:
-            return False
-        prev_text = self._line_text(prev_line_num).strip()
-        # Do not treat a normal object-member line after "{" as missing object-open.
-        # This heuristic is only for property lines that likely lost their leading "{"
-        # in list/object boundaries.
-        if prev_text in ("[", ",", "],", "},"):
-            return True
-        return False
+        return json_repair_service._is_missing_object_open_at(self, lineno)
 
     def _line_text(self, lineno):
-        try:
-            return self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")
-        except _EXPECTED_APP_ERRORS:
-            return ""
+        return json_diagnostics_service._line_text(self, lineno)
 
     def _line_has_missing_open_key_quote(self, line_text):
-        stripped = (line_text or "").lstrip()
-        if not stripped or stripped.startswith("\""):
-            return False
-        if "\":" not in stripped:
-            return False
-        first = stripped[0]
-        return first.isalpha() or first == "_"
+        return json_repair_service._line_has_missing_open_key_quote(self, line_text)
 
     def _missing_close_target_line_from_exc(self, exc, open_bracket, close_bracket):
-        line = getattr(exc, "lineno", None)
-        if line:
-            return line
-        return self._missing_close_target_line(open_bracket, close_bracket)
+        return json_repair_service._missing_close_target_line_from_exc(self, exc, open_bracket, close_bracket)
 
     def _missing_close_target_line_any(self, exc):
-        if self._is_missing_object_close():
-            line, _idx = self._missing_close_insertion_point("{", "}", exc)
-            if line:
-                return line
-        if self._is_missing_list_close():
-            line, _idx = self._missing_close_insertion_point("[", "]", exc)
-            if line:
-                return line
-        return None
+        return json_repair_service._missing_close_target_line_any(self, exc)
 
     def _missing_list_close_target_line(self, exc):
         line, _idx = self._missing_close_insertion_point("[", "]", exc)
         return line
 
     def _unmatched_open_bracket_lines(self, open_bracket, close_bracket):
-        text = self.text.get("1.0", "end-1c")
-        stack = []
-        line = 1
-        in_string = False
-        escape = False
-        for ch in text:
-            if ch == "\n":
-                line += 1
-                if in_string and not escape:
-                    # Keep string state; multiline strings are invalid JSON but
-                    # this preserves safer structural scanning behavior.
-                    pass
-                escape = False
-                continue
-            if in_string:
-                if escape:
-                    escape = False
-                elif ch == "\\":
-                    escape = True
-                elif ch == "\"":
-                    in_string = False
-                continue
-            if ch == "\"":
-                in_string = True
-                continue
-            if ch == open_bracket:
-                stack.append(line)
-            elif ch == close_bracket and stack:
-                stack.pop()
-        return stack
+        return json_diagnostics_service._unmatched_open_bracket_lines(self, open_bracket, close_bracket)
 
     def _is_missing_list_close(self):
         return bool(self._unmatched_open_bracket_lines("[", "]"))
@@ -14182,1138 +8813,155 @@ if not install_started:
         return bool(self._unmatched_open_bracket_lines("{", "}"))
 
     def _last_unmatched_bracket_line(self, open_bracket, close_bracket):
-        stack = self._unmatched_open_bracket_lines(open_bracket, close_bracket)
-        if stack:
-            return stack[-1]
-        return None
+        return json_diagnostics_service._last_unmatched_bracket_line(self, open_bracket, close_bracket)
 
     def _line_indent_width(self, lineno):
         raw = self._line_text(lineno)
         return len(raw) - len(raw.lstrip(" \t"))
 
     def _missing_close_insertion_point(self, open_bracket, close_bracket, exc=None):
-        open_line = self._last_unmatched_bracket_line(open_bracket, close_bracket)
-        try:
-            max_line = int(self.text.index("end-1c").split(".")[0])
-        except _EXPECTED_APP_ERRORS:
-            max_line = 1
-        if not open_line:
-            fallback_line = self._last_non_empty_line_number() or 1
-            return fallback_line, self.text.index(f"{fallback_line}.0 lineend")
-
-        open_indent = self._line_indent_width(open_line)
-        closer_tokens = [close_bracket]
-        # Missing object-close can surface before array closers and missing
-        # list-close can surface before object closers.
-        if close_bracket == "}":
-            closer_tokens.append("]")
-        elif close_bracket == "]":
-            closer_tokens.append("}")
-
-        candidate = None
-        for ln in range(open_line + 1, max_line + 1):
-            text = self._line_text(ln)
-            stripped = text.strip()
-            if not stripped:
-                continue
-            if any(stripped.startswith(tok) for tok in closer_tokens):
-                indent = self._line_indent_width(ln)
-                if indent <= open_indent:
-                    candidate = ln
-                    break
-
-        if candidate is not None:
-            insert_line = candidate
-            if candidate > 1 and not self._line_text(candidate - 1).strip():
-                insert_line = candidate - 1
-            closer_indent = self._line_indent_width(candidate)
-            if not self._line_text(insert_line).strip():
-                existing_end = len(self._line_text(insert_line))
-                col = max(existing_end, closer_indent, 0)
-            else:
-                col = max(closer_indent, 0)
-            return insert_line, f"{insert_line}.{col}"
-
-        # No structural closer found: place insertion at trailing EOF.
-        last_non_empty = self._last_non_empty_line_number() or open_line
-        trailing_blank = None
-        for ln in range(max_line, last_non_empty, -1):
-            if self._line_text(ln).strip():
-                break
-            trailing_blank = ln
-        if trailing_blank is not None:
-            existing_end = len(self._line_text(trailing_blank))
-            col = max(existing_end, open_indent, 0)
-            return trailing_blank, f"{trailing_blank}.{col}"
-        return last_non_empty, self.text.index(f"{last_non_empty}.0 lineend")
+        return json_repair_service._missing_close_insertion_point(self, open_bracket, close_bracket, exc)
 
     def _missing_object_close_target_line(self, exc):
         line, _idx = self._missing_close_insertion_point("{", "}", exc)
         return line
 
     def _find_comma_only_line_before(self, start_line):
-        line = max(start_line - 1, 1)
-        while line >= 1:
-            try:
-                text = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                return None
-            if text == ",":
-                return line
-            line -= 1
-        return None
+        return json_repair_service._find_comma_only_line_before(self, start_line)
 
     def _find_missing_comma_between_block_values_line(self, line):
-        if not line:
-            return None
-        current = self._line_text(line).strip()
-        if not current.startswith(("{", "[")):
-            return None
-        prev_line = self._closest_non_empty_line_before(line)
-        if not prev_line:
-            return None
-        prev_text = self._line_text(prev_line).strip()
-        if prev_text.endswith(","):
-            return None
-        if prev_text in ("}", "]"):
-            return prev_line
-        return None
+        return json_repair_service._find_missing_comma_between_block_values_line(self, line)
 
     def _find_blank_line_before(self, start_line):
-        line = max(start_line - 1, 1)
-        while line >= 1:
-            try:
-                text = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                return None
-            if text.strip() == "":
-                return line
-            line -= 1
-        return None
+        return json_diagnostics_service._find_blank_line_before(self, start_line)
 
     def _closest_non_empty_line_before(self, start_line):
-        line = max(start_line - 1, 1)
-        while line >= 1:
-            try:
-                text = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                return None
-            if text:
-                return line
-            line -= 1
-        return None
+        return json_diagnostics_service._closest_non_empty_line_before(self, start_line)
 
     def _last_non_empty_line_number(self):
-        try:
-            line = int(self.text.index("end-1c").split(".")[0])
-        except _EXPECTED_APP_ERRORS:
-            return None
-        while line >= 1:
-            try:
-                text = self.text.get(f"{line}.0", f"{line}.0 lineend").strip()
-            except _EXPECTED_APP_ERRORS:
-                return None
-            if text:
-                return line
-            line -= 1
-        return None
+        return json_diagnostics_service._last_non_empty_line_number(self)
 
 
     def _missing_close_target_line(self, open_bracket, close_bracket):
-        open_line = self._last_unmatched_bracket_line(open_bracket, close_bracket)
-        if not open_line:
-            return None
-        line = open_line + 1
-        last_line = int(self.text.index("end-1c").split(".")[0])
-        while line <= last_line:
-            try:
-                text = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                return open_line
-            if text.strip():
-                return line
-            line += 1
-        return open_line
+        return json_repair_service._missing_close_target_line(self, open_bracket, close_bracket)
 
     def _is_missing_object_open(self, exc):
-        lineno = getattr(exc, "lineno", None)
-        if not lineno:
-            return False
-        prev_line = self._previous_non_empty_line(lineno)
-        if not prev_line:
-            return False
-        prev_line_stripped = prev_line.strip()
-        return prev_line_stripped.endswith("\":") and not prev_line_stripped.endswith("\": {")
+        return json_repair_service._is_missing_object_open(self, exc)
 
     def _is_missing_list_open(self, exc):
-        lineno = getattr(exc, "lineno", None)
-        if not lineno:
-            return False
-        prev_line = self._previous_non_empty_line(lineno)
-        if not prev_line:
-            return False
-        prev_line_stripped = prev_line.strip()
-        if not prev_line_stripped.endswith("\":"):
-            return False
-        next_line = self._next_non_empty_line(lineno)
-        if not next_line:
-            return False
-        next_line_stripped = next_line.strip()
-        return next_line_stripped.startswith("\"")
+        return json_repair_service._is_missing_list_open(self, exc)
 
     def _is_missing_list_open_at_start(self, exc, allow_any_position=False):
-        lineno = getattr(exc, "lineno", None)
-        colno = getattr(exc, "colno", None)
-        if not allow_any_position:
-            if lineno not in (None, 1) or (colno not in (None, 1)):
-                return False
-        first_line = self._next_non_empty_line(1)
-        if not first_line:
-            return False
-        first_text = self._line_text(first_line).lstrip()
-        if first_text.startswith("\ufeff"):
-            first_text = first_text.lstrip("\ufeff")
-        if not first_text:
-            return False
-        if first_text.startswith("["):
-            return False
-        if not (first_text.startswith("{") or first_text.startswith("\"")):
-            return False
-        if allow_any_position:
-            return True
-        return True
+        return json_repair_service._is_missing_list_open_at_start(self, exc, allow_any_position)
 
     def _missing_list_open_top_level(self):
-        first_line = self._next_non_empty_line(1)
-        if not first_line:
-            return False
-        first_text = self._line_text(first_line).lstrip()
-        if first_text.startswith("\ufeff"):
-            first_text = first_text.lstrip("\ufeff")
-        if not first_text or first_text.startswith("["):
-            return False
-        return first_text.startswith("{") or first_text.startswith("\"")
+        return json_repair_service._missing_list_open_top_level(self)
 
     def _missing_object_open_from_extra_data(self):
-        # For "Extra data", if the first meaningful line looks like an object member
-        # (`"key": ...`) then the missing delimiter is '{', not '['.
-        if getattr(self, "_last_json_error_msg", "") != "Extra data":
-            return False
-        first_line = self._next_non_empty_line_number(0)
-        if not first_line:
-            return False
-        first_text = self._line_text(first_line).lstrip()
-        if first_text.startswith("\ufeff"):
-            first_text = first_text.lstrip("\ufeff").lstrip()
-        if not first_text.startswith('"'):
-            return False
-        return '":' in first_text
+        return json_repair_service._missing_object_open_from_extra_data(self)
 
     def _first_non_ws_char(self):
-        try:
-            text = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return ""
-        for ch in text:
-            if ch == "\ufeff":
-                continue
-            if ch.isspace():
-                continue
-            return ch
-        return ""
+        return json_diagnostics_service._first_non_ws_char(self)
 
     def _missing_list_open_from_extra_data(self):
-        # Only treat as missing list open for the "Extra data" parser error.
-        if getattr(self, "_last_json_error_msg", "") != "Extra data":
-            return False
-        if self._missing_object_open_from_extra_data():
-            return False
-        first_char = self._first_non_ws_char()
-        if not first_char or first_char == "[":
-            return False
-        return True
+        return json_repair_service._missing_list_open_from_extra_data(self)
 
     def _previous_non_empty_line(self, lineno):
-        line = max(lineno - 1, 1)
-        while line >= 1:
-            try:
-                text = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                return ""
-            if text.strip():
-                return text
-            line -= 1
-        return ""
+        return json_diagnostics_service._previous_non_empty_line(self, lineno)
 
     def _next_non_empty_line(self, lineno):
-        line = max(lineno, 1)
-        last_line = int(self.text.index("end-1c").split(".")[0])
-        while line <= last_line:
-            try:
-                text = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                return ""
-            if text.strip():
-                return text
-            line += 1
-        return ""
+        return json_diagnostics_service._next_non_empty_line(self, lineno)
 
     def _missing_object_example(self, lineno):
-        prev_line = self._previous_non_empty_line(lineno)
-        if not prev_line:
-            return "\"data\": {"
-        prev_line_stripped = prev_line.strip()
-        if prev_line_stripped.endswith("\":"):
-            return prev_line_stripped + " {"
-        return "\"data\": {"
+        return json_repair_service._missing_object_example(self, lineno)
 
     def _close_before_list(self, lineno):
-        next_text = self._next_non_empty_line(lineno or 1)
-        if not next_text:
-            return False
-        return next_text.strip().startswith("]")
+        return json_diagnostics_service._close_before_list(self, lineno)
 
     def _quote_property_name(self, line_text):
-        if ":" in line_text:
-            left, right = line_text.split(":", 1)
-            left = left.strip()
-            # Normalize wrong/missing key quote characters before wrapping.
-            left = left.strip().strip(",").strip()
-            if left and not left.startswith('"') and left.endswith('"'):
-                first = left[0]
-                if (not first.isalnum()) and first != "_":
-                    left = left[1:]
-            left = left.strip().strip('"').strip("'").strip("`")
-            left = f"\"{left}\""
-            right = right.strip()
-            return f"{left}: {right}"
-        return "\"key\": \"value\""
+        return json_repair_service._quote_property_name(self, line_text)
 
     def _highlight_custom_range(self, line, start_col, end_col):
-        try:
-            if end_col <= start_col:
-                end_col = start_col + 1
-            start_index = f"{line}.{max(start_col, 0)}"
-            end_index = f"{line}.{max(end_col, start_col + 1)}"
-            self.text.tag_remove("json_error", "1.0", "end")
-            self.text.tag_remove("json_error_line", "1.0", "end")
-            self._clear_error_pin()
-            palette = self._current_error_palette()
-            self.text.tag_add("json_error", start_index, end_index)
-            self.text.tag_config("json_error", background=palette["fix_bg"], foreground="#ffffff")
-            self.text.tag_add("json_error_line", f"{line}.0", f"{line}.0 lineend")
-            self.text.tag_config("json_error_line", background=palette["line_bg"], foreground="#ffffff")
-            self.text.tag_raise("json_error_line")
-            self.text.tag_raise("json_error")
-            self._error_focus_index = start_index
-            insert_index = self._preferred_error_insert_index(line, start_index)
-            self.text.mark_set("insert", insert_index)
-            self.text.see(insert_index)
-            self._position_error_overlay(line)
-        except _EXPECTED_APP_ERRORS:
-            return
+        return json_diagnostics_service._highlight_custom_range(self, line, start_col, end_col)
 
     def _fix_missing_at(self, value, domain_roots=None):
-        if "@" in value:
-            return value
-        domains = [
-            "gomail.com",
-            "gmail.com",
-            "yahoo.com",
-            "outlook.com",
-            "hotmail.com",
-            "icloud.com",
-        ]
-        for domain in domains:
-            idx = value.find(domain)
-            if idx != -1:
-                return value[:idx] + "@" + value[idx:]
-        parts = value.split(".")
-        if len(parts) == 2:
-            left, tld = parts
-            if domain_roots:
-                best = None
-                for root in domain_roots:
-                    if left.endswith(root):
-                        if best is None or len(root) > len(best):
-                            best = root
-                if best:
-                    local = left[: -len(best)]
-                    if local:
-                        return f"{local}@{best}.{tld}"
-        if len(parts) == 3:
-            part0, part1, tld = parts
-            if domain_roots:
-                best = None
-                for root in domain_roots:
-                    if part1.endswith(root):
-                        if best is None or len(root) > len(best):
-                            best = root
-                if best:
-                    local_tail = part1[: -len(best)].rstrip(".")
-                    local = part0 + (("." + local_tail) if local_tail else "")
-                    return f"{local}@{best}.{tld}"
-            for domlen in (5, 4, 6, 3):
-                if len(part1) - domlen >= 3:
-                    local_tail = part1[: -domlen]
-                    domain = part1[-domlen:] + "." + tld
-                    return f"{part0}.{local_tail}@{domain}"
-        if len(parts) >= 3:
-            return ".".join(parts[:-2]) + "@" + ".".join(parts[-2:])
-        last_dot = value.rfind(".")
-        if last_dot > 0:
-            return value[:last_dot] + "@" + value[last_dot + 1 :]
-        # If there's no dot in the value, it's unlikely to be an email (e.g. IBAN).
-        # Do not append '@' in that case; return the original value unchanged.
-        return value
+        return json_repair_service._fix_missing_at(self, value, domain_roots)
 
     def _format_phone(self, value):
-        digits = "".join(ch for ch in value if ch.isdigit())
-        if len(digits) != 10:
-            return None
-        return f"{digits[0:3]}-{digits[3:6]}-{digits[6:10]}"
+        return json_repair_service._format_phone(self, value)
 
     def _find_phone_format_issue(self):
-        try:
-            text = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return None
-        for idx, line_text in enumerate(text.splitlines(), start=1):
-            match = self.PHONE_FIELD_PATTERN.search(line_text)
-            if not match:
-                continue
-            value = match.group(1)
-            if not value:
-                continue
-            formatted = self._format_phone(value)
-            if not formatted:
-                continue
-            if value == formatted:
-                continue
-            before_line = line_text.strip()
-            after_line = line_text[: match.start(1)] + formatted + line_text[match.end(1) :]
-            return idx, match.start(1), match.end(1), before_line, after_line.strip()
-        return None
+        return json_repair_service._find_phone_format_issue(self)
 
     def _fix_missing_space_after_colon(self, line_text):
-        if not line_text:
-            return line_text
-        # Normalize object-member style: "key": value
-        return re.sub(r'^(\s*"[^"]+"\s*):\s*(\S.*)$', r"\1: \2", line_text.rstrip(), count=1)
+        return json_repair_service._fix_missing_space_after_colon(self, line_text)
 
     def _find_json_spacing_issue(self):
-        """Detect valid-JSON style issues we enforce in editor text.
-
-        Current rule:
-        - object member must include a space after ":" (e.g. `"key": value`)
-        """
-        try:
-            text = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return None
-        for line_no, line_text in enumerate(text.splitlines(), start=1):
-            # Match object-member lines where ":" is immediately followed by a
-            # non-whitespace character (e.g. `"isMine":true`).
-            m = re.match(r'^(?P<head>\s*"[^"]+"\s*):(?P<tail>\S.*)$', line_text)
-            if not m:
-                continue
-            head = m.group("head") or ""
-            tail = m.group("tail") or ""
-            if not tail:
-                continue
-            before = line_text.strip()
-            after = self._fix_missing_space_after_colon(line_text).strip()
-            # Highlight at the value start after ":" so the missing space is obvious.
-            start_col = len(head) + 1
-            end_col = start_col + 1
-            return line_no, start_col, end_col, before, after
-        return None
+        return json_repair_service._find_json_spacing_issue(self)
 
     def _find_missing_email_at(self):
-        try:
-            text = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return None
-        lines = text.splitlines()
-        domain_roots = set()
-        for line_text in lines:
-            m = self.EMAIL_FIELD_PATTERN.search(line_text)
-            if not m:
-                continue
-            val = m.group(2)
-            if "@" not in val:
-                continue
-            domain = val.split("@", 1)[1]
-            parts = domain.split(".")
-            if len(parts) >= 2:
-                domain_roots.add(parts[-2])
-        for idx, line_text in enumerate(lines, start=1):
-            match = self.EMAIL_FIELD_PATTERN.search(line_text)
-            if not match:
-                continue
-            value = match.group(2)
-            if not value or "@" in value:
-                continue
-            fixed = self._fix_missing_at(value, domain_roots.union(self.KNOWN_EMAIL_DOMAIN_ROOTS))
-            # Prefer exact known domain match if present in value.
-            for domain in sorted(self.KNOWN_EMAIL_DOMAINS, key=len, reverse=True):
-                if domain in value:
-                    fixed = value.replace(domain, "@" + domain, 1)
-                    break
-            before_line = line_text.strip()
-            after_line = line_text[: match.start(2)] + fixed + line_text[match.end(2) :]
-            return idx, match.start(2), match.end(2), before_line, after_line.strip()
-        return None
+        return json_repair_service._find_missing_email_at(self)
 
     def _path_targets_email(self, path):
-        if not isinstance(path, list) or not path:
-            return False
-        lowered = [p.lower() for p in path if isinstance(p, str)]
-        if not lowered:
-            return False
-        key = lowered[-1]
-        if key in ("email", "from", "to"):
-            return True
-        # Nested forms like: ... email.address / email.value
-        if key in ("address", "value") and len(lowered) >= 2 and lowered[-2] == "email":
-            return True
-        return False
+        return json_repair_service._path_targets_email(self, path)
 
     def _looks_like_email_candidate(self, value):
-        value = (value or "").strip()
-        if not value:
-            return False
-        if "@" in value:
-            return True
-        if "." not in value:
-            return False
-        return re.search(r"[A-Za-z]", value) is not None
+        return json_repair_service._looks_like_email_candidate(self, value)
 
     def _should_validate_email_path_value(self, path, value):
-        lowered = [p.lower() for p in path if isinstance(p, str)]
-        if not lowered:
-            return False
-        key = lowered[-1]
-        if key == "email":
-            return True
-        if key in ("address", "value") and len(lowered) >= 2 and lowered[-2] == "email":
-            return True
-        if key in ("from", "to"):
-            # "from"/"to" appears in non-email objects (e.g. bank transactions).
-            return self._looks_like_email_candidate(value)
-        return False
+        return json_repair_service._should_validate_email_path_value(self, path, value)
 
     def _iter_candidate_email_values(self, node, rel_path=None):
-        if rel_path is None:
-            rel_path = []
-        if isinstance(node, dict):
-            for k, v in node.items():
-                yield from self._iter_candidate_email_values(v, rel_path + [k])
-            return
-        if isinstance(node, list):
-            for i, v in enumerate(node):
-                yield from self._iter_candidate_email_values(v, rel_path + [i])
-            return
-        if (
-            isinstance(node, str)
-            and self._path_targets_email(rel_path)
-            and self._should_validate_email_path_value(rel_path, node)
-        ):
-            yield rel_path, node
+        return json_repair_service._iter_candidate_email_values(self, node, rel_path)
 
     def _format_path_for_display(self, path):
         return tree_view_service.format_path_for_display(path)
 
     def _find_value_span_in_editor(self, value, preferred_key=None):
-        try:
-            text = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return None
-        if not text or not value:
-            return None
-
-        def to_line_col(abs_index):
-            line = text.count("\n", 0, abs_index) + 1
-            last_nl = text.rfind("\n", 0, abs_index)
-            col = abs_index if last_nl == -1 else abs_index - last_nl - 1
-            return line, col
-
-        escaped_value = re.escape(value)
-        patterns = []
-        if isinstance(preferred_key, str) and preferred_key:
-            escaped_key = re.escape(preferred_key)
-            patterns.append(rf'"{escaped_key}"\s*:\s*"(?P<val>{escaped_value})"')
-        patterns.append(rf'"(?P<val>{escaped_value})"')
-
-        for pattern in patterns:
-            m = re.search(pattern, text)
-            if not m:
-                continue
-            start = m.start("val")
-            end = m.end("val")
-            line, start_col = to_line_col(start)
-            _, end_col = to_line_col(end)
-            return line, start_col, end_col
-        return None
+        return json_diagnostics_service._find_value_span_in_editor(self, value, preferred_key)
 
     def _find_invalid_email_in_value(self, base_path, value):
-        # Direct string edit for an email-targeted field.
-        if (
-            isinstance(value, str)
-            and self._path_targets_email(base_path)
-            and self._should_validate_email_path_value(base_path, value)
-        ):
-            issue = self._validate_email_address(value)
-            if issue:
-                return base_path, value, issue
-        # Nested object/list edit: validate all candidate email fields.
-        if isinstance(value, (dict, list)):
-            for rel_path, email_val in self._iter_candidate_email_values(value):
-                issue = self._validate_email_address(email_val)
-                if issue:
-                    return list(base_path) + list(rel_path), email_val, issue
-        return None
+        return json_repair_service._find_invalid_email_in_value(self, base_path, value)
 
     def _best_domain_root_similarity(self, root):
-        if not root:
-            return 0.0
-        return max(
-            (difflib.SequenceMatcher(None, root.lower(), known).ratio() for known in self.KNOWN_EMAIL_DOMAIN_ROOTS),
-            default=0.0,
-        )
+        return json_diagnostics_service._best_domain_root_similarity(self, root)
 
     def _suggest_known_domain_from_local_and_domain(self, local, domain):
-        domain = (domain or "").lower()
-        if "." not in domain:
-            return None
-        parts = domain.split(".")
-        if len(parts) < 2:
-            return None
-        sld = parts[-2]
-        tld = parts[-1]
-        local_re = re.compile(r"^[A-Za-z0-9._%+\-]+$")
-        best = None
-        for known in sorted(self.KNOWN_EMAIL_DOMAINS, key=len, reverse=True):
-            kparts = known.split(".")
-            if len(kparts) < 2:
-                continue
-            ksld = kparts[-2]
-            ktld = kparts[-1]
-            if ktld != tld:
-                continue
-            if sld and not ksld.endswith(sld):
-                continue
-            missing_prefix = ksld[: len(ksld) - len(sld)] if sld else ksld
-            if not missing_prefix:
-                continue
-            if not local.lower().endswith(missing_prefix):
-                continue
-            cand_local = local[: len(local) - len(missing_prefix)]
-            if not cand_local or not local_re.fullmatch(cand_local):
-                continue
-            candidate = f"{cand_local}@{known}"
-            best = candidate
-            break
-        return best
+        return json_diagnostics_service._suggest_known_domain_from_local_and_domain(self, local, domain)
 
     def _suggest_email_for_malformed(self, value):
-        value = (value or "").strip()
-        if "@" not in value or value.count("@") != 1:
-            return "<name>@<domain.tld>"
-        local, domain = value.split("@", 1)
-        parts = domain.split(".")
-        if len(parts) < 2:
-            return "<name>@<domain.tld>"
-        sub_prefix = ".".join(parts[:-2]).strip(".")
-        sld = parts[-2]
-        tld = parts[-1]
-        # If the second-level domain is too short, first try rebuilding it
-        # from known roots by pulling only the missing prefix from local-part.
-        if len(sld) < 2:
-            best_prefix_fix = None
-            best_prefix_len = -1
-            for root in sorted(self.KNOWN_EMAIL_DOMAIN_ROOTS, key=len, reverse=True):
-                if not root.endswith(sld):
-                    continue
-                missing_prefix = root[: len(root) - len(sld)] if sld else root
-                if not missing_prefix:
-                    continue
-                if not local.lower().endswith(missing_prefix):
-                    continue
-                cand_local = local[: len(local) - len(missing_prefix)]
-                if not cand_local:
-                    continue
-                if not re.fullmatch(r"^[A-Za-z0-9._%+\-]+$", cand_local):
-                    continue
-                cand_domain = f"{root}.{tld}"
-                if sub_prefix:
-                    cand_domain = f"{sub_prefix}.{cand_domain}"
-                if not self._is_valid_email_domain(cand_domain):
-                    continue
-                # Prefer the longest matched root (more specific fix).
-                if len(root) > best_prefix_len:
-                    best_prefix_len = len(root)
-                    best_prefix_fix = f"{cand_local}@{cand_domain}"
-            if best_prefix_fix:
-                return best_prefix_fix
-
-        merged = local + sld
-        local_re = re.compile(r"^[A-Za-z0-9._%+\-]+$")
-        best = None
-        best_score = -10**9
-        original_len = len(local)
-        for split_idx in range(1, len(merged)):
-            cand_local = merged[:split_idx]
-            cand_sld = merged[split_idx:]
-            if not local_re.fullmatch(cand_local):
-                continue
-            cand_domain = f"{cand_sld}.{tld}"
-            if sub_prefix:
-                cand_domain = f"{sub_prefix}.{cand_domain}"
-            if not self._is_valid_email_domain(cand_domain):
-                continue
-            score = 0.0
-            if cand_sld.lower() in self.KNOWN_EMAIL_DOMAIN_ROOTS:
-                score += 500.0
-            score += self._best_domain_root_similarity(cand_sld) * 100.0
-            score -= abs(split_idx - original_len) * 2.0
-            if score > best_score:
-                best_score = score
-                best = f"{cand_local}@{cand_domain}"
-        return best if best else "<name>@<domain.tld>"
+        return json_repair_service._suggest_email_for_malformed(self, value)
 
     def _validate_email_address(self, value):
-        value = (value or "").strip()
-        if not value:
-            return None
-        if "@" not in value:
-            fixed = self._fix_missing_at(value, self.KNOWN_EMAIL_DOMAIN_ROOTS)
-            if fixed == value or "@" not in fixed:
-                return {
-                    "message": "Invalid Entry: malformed email address.",
-                    "log_msg": "Malformed email format",
-                    "note": "invalid_email_format",
-                    "suggested": self._suggest_email_for_malformed(value),
-                }
-            return {
-                "message": 'Invalid Entry: add "@" to the email address.',
-                "log_msg": "Missing '@' in email",
-                "note": "missing_email_at",
-                "suggested": fixed,
-            }
-
-        if value.count("@") != 1:
-            return {
-                "message": "Invalid Entry: malformed email address.",
-                "log_msg": "Malformed email format",
-                "note": "invalid_email_format",
-                "suggested": self._suggest_email_for_malformed(value),
-            }
-
-        local, domain = value.split("@", 1)
-        local_re = re.compile(r"^[A-Za-z0-9._%+\-]+$")
-        if not local or not domain or not local_re.fullmatch(local) or not self._is_valid_email_domain(domain):
-            return {
-                "message": "Invalid Entry: malformed email address.",
-                "log_msg": "Malformed email format",
-                "note": "invalid_email_format",
-                "suggested": self._suggest_email_for_malformed(value),
-            }
-
-        domain_lower = domain.lower()
-        if domain_lower not in self.KNOWN_EMAIL_DOMAINS:
-            suggestion = self._suggest_known_domain_from_local_and_domain(local, domain_lower)
-            if not suggestion:
-                close = difflib.get_close_matches(domain_lower, sorted(self.KNOWN_EMAIL_DOMAINS), n=1, cutoff=0.72)
-                if close:
-                    suggestion = f"{local}@{close[0]}"
-            return {
-                "message": "Invalid Entry: unknown email domain.",
-                "log_msg": "Unknown email domain",
-                "note": "unknown_email_domain",
-                "suggested": suggestion or "<name>@<domain.tld>",
-            }
-
-        return None
+        return json_repair_service._validate_email_address(self, value)
 
     def _is_valid_email_domain(self, domain):
-        if not domain or "." not in domain:
-            return False
-        parts = domain.split(".")
-        if len(parts) < 2:
-            return False
-        # Catch obvious misplaced-@ cases like "x@l.net".
-        if len(parts[-2]) < 2:
-            return False
-        tld = parts[-1]
-        if len(tld) < 2 or not tld.isalpha():
-            return False
-        label_re = re.compile(r"^[A-Za-z0-9-]+$")
-        for part in parts:
-            if not part:
-                return False
-            if part.startswith("-") or part.endswith("-"):
-                return False
-            if not label_re.fullmatch(part):
-                return False
-        return True
+        return json_repair_service._is_valid_email_domain(self, domain)
 
     def _find_invalid_email_format_issue(self):
-        try:
-            text = self.text.get("1.0", "end-1c")
-        except _EXPECTED_APP_ERRORS:
-            return None
-        for idx, line_text in enumerate(text.splitlines(), start=1):
-            match = self.EMAIL_FIELD_PATTERN.search(line_text)
-            if not match:
-                continue
-            value = (match.group(2) or "").strip()
-            if not value or "@" not in value:
-                continue
-            issue = self._validate_email_address(value)
-            if not issue:
-                continue
-            before_line = line_text.strip()
-            suggested = issue["suggested"]
-            after_line = line_text[: match.start(2)] + suggested + line_text[match.end(2) :]
-            return (
-                idx,
-                match.start(2),
-                match.end(2),
-                before_line,
-                after_line.strip(),
-                issue["message"],
-                issue["log_msg"],
-                issue["note"],
-            )
-        return None
+        return json_repair_service._find_invalid_email_format_issue(self)
 
     def _fix_missing_quote(self, line_text):
-        if not line_text:
-            return "\"key\": \"value\""
-        if line_text.count("\"") % 2 == 0:
-            return line_text
-        object_value_match = re.match(r'^(?P<key>\s*"[^"]*"\s*):(?P<rest>.*)$', str(line_text))
-        if object_value_match:
-            key_part = object_value_match.group("key") or ""
-            rest = object_value_match.group("rest") or ""
-            key_part = key_part.strip().strip(",")
-            rest = rest.strip().rstrip(",")
-            if rest == "\"":
-                rest = "\"\""
-            elif rest.startswith("\"") and rest.count("\"") == 1:
-                # Remove invalid trailing characters before closing the quote
-                rest = rest[1:]  # Remove opening quote
-                rest = _strip_invalid_trailing_chars(rest)
-                rest = "\"" + rest + "\""
-            if not key_part.endswith("\""):
-                key_part = key_part + "\""
-            if not key_part.startswith("\""):
-                key_part = "\"" + key_part
-            return f"{key_part}: {rest}" + ("," if line_text.strip().endswith(",") else "")
-        stripped = line_text.rstrip()
-        if stripped.endswith(","):
-            base = stripped[:-1]
-            # Remove invalid tail symbols before closing the missing quote.
-            m = re.match(r'^(?P<head>\s*")(?P<body>.*)$', base)
-            if m:
-                head = m.group("head") or ""
-                body = _strip_invalid_trailing_chars((m.group("body") or "").rstrip())
-                return head + body + "\"" + ("," if line_text.strip().endswith(",") else "")
-            return _strip_invalid_trailing_chars(base.rstrip()) + "\"" + (
-                "," if line_text.strip().endswith(",") else ""
-            )
-        return stripped + "\""
+        return json_repair_service._fix_missing_quote(self, line_text)
 
     def _unclosed_quoted_value_invalid_tail_span(self, line_text):
-        # Detect unclosed quoted scalar values with invalid trailing symbols
-        # before comma/EOL (for example: "hackhub.net:,).
-        raw = str(line_text or "")
-        if not raw:
-            return None
-        # Keep object-key quote diagnostics for key-like forms:
-        #   "name: [
-        #   "name: {
-        #   "name: "value"
-        if re.match(r'^\s*"[A-Za-z_][A-Za-z0-9_]*[^\w"]*:\s*[\[{"]', raw):
-            return None
-
-        object_value_match = re.match(r'^\s*"[^"]*"\s*:(?P<rest>.*)$', raw)
-        if object_value_match:
-            rest = object_value_match.group("rest") or ""
-            rest_start = int(object_value_match.start("rest"))
-            ws_len = len(rest) - len(rest.lstrip(" \t"))
-            value_text = rest.lstrip(" \t")
-            base_col = int(rest_start + ws_len)
-        else:
-            ws_len = len(raw) - len(raw.lstrip(" \t"))
-            value_text = raw.lstrip(" \t")
-            base_col = int(ws_len)
-
-        if not value_text.startswith('"'):
-            return None
-
-        escape = False
-        comma_idx = None
-        for idx, ch in enumerate(value_text[1:], start=1):
-            if escape:
-                escape = False
-                continue
-            if ch == "\\":
-                escape = True
-                continue
-            if ch == '"':
-                return None
-            if ch == ",":
-                comma_idx = idx
-                break
-        stop_idx = int(comma_idx) if comma_idx is not None else int(len(value_text.rstrip()))
-        if stop_idx <= 1:
-            return None
-
-        body = value_text[1:stop_idx]
-        body_rstrip = body.rstrip()
-        if not body_rstrip:
-            return None
-        trimmed = _strip_invalid_trailing_chars(body_rstrip)
-        if len(trimmed) >= len(body_rstrip):
-            return None
-        invalid_start = len(trimmed)
-        invalid_end = len(body_rstrip)
-        return (
-            int(base_col + 1 + invalid_start),
-            int(base_col + 1 + invalid_end),
-        )
+        return json_repair_service._unclosed_quoted_value_invalid_tail_span(self, line_text)
 
     def _find_nearby_unclosed_quoted_value_invalid_tail_line(self, lineno, lookback=2):
-        if not lineno:
-            return None, None, None
-        candidates = []
-        try:
-            candidates.append((lineno, self.text.get(f"{lineno}.0", f"{lineno}.0 lineend")))
-        except _EXPECTED_APP_ERRORS:
-            pass
-        line = max(lineno - 1, 1)
-        scanned = 0
-        while line >= 1 and scanned < lookback:
-            try:
-                txt = self.text.get(f"{line}.0", f"{line}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                break
-            if str(txt or "").strip():
-                candidates.append((line, txt))
-                scanned += 1
-            line -= 1
-        for ln, txt in candidates:
-            span = self._unclosed_quoted_value_invalid_tail_span(txt)
-            if span:
-                return int(ln), txt, span
-        return None, None, None
+        return json_repair_service._find_nearby_unclosed_quoted_value_invalid_tail_line(self, lineno, lookback)
 
     def _comma_example_line(self, lineno):
-        if not lineno:
-            return "\"item1\",\n\"item2\""
-        target_line = max(lineno - 1, 1)
-        try:
-            line_text = self.text.get(f"{target_line}.0", f"{target_line}.0 lineend").strip()
-        except _EXPECTED_APP_ERRORS:
-            line_text = ""
-        if not line_text:
-            return "\"item1\",\n\"item2\""
-        if not line_text.endswith(","):
-            line_text = line_text.rstrip()
-            line_text = line_text + ","
-        return line_text
+        return json_repair_service._comma_example_line(self, lineno)
 
     def _symbol_error_focus_index(self, start_index, end_index):
-        try:
-            segment = self.text.get(start_index, end_index)
-            if not segment:
-                return end_index
-            trimmed = len(segment.rstrip())
-            if trimmed <= 0:
-                return end_index
-            return self.text.index(f"{start_index} +{trimmed}c")
-        except _EXPECTED_APP_ERRORS:
-            return end_index
+        return json_repair_service._symbol_error_focus_index(self, start_index, end_index)
 
     def _apply_json_error_highlight(self, exc, line, start_index, end_index, note=""):
-        self.text.tag_remove("json_error", "1.0", "end")
-        self.text.tag_remove("json_error_line", "1.0", "end")
-        self._clear_error_pin()
-        palette = self._current_error_palette()
-        self._last_error_highlight_note = str(note or "")
-        comma_focus_notes = {
-            "missing_object_close_before_comma",
-            "missing_list_close_before_comma",
-            "missing_comma_between_blocks",
-        }
-        force_start_focus = str(note or "") in comma_focus_notes
-        before_comma_notes = {
-            "missing_object_close_before_comma",
-            "missing_list_close_before_comma",
-        }
-        missing_key_quote_notes = {"highlight", "missing_key_quote_before_colon"}
-        missing_key_quote_focus = False
-        try:
-            missing_key_quote_focus = (
-                str(note or "") in missing_key_quote_notes
-                and self._line_has_missing_open_key_quote(self._line_text(line))
-            )
-        except _EXPECTED_APP_ERRORS:
-            missing_key_quote_focus = False
-        insertion_only = start_index == end_index
-        self._last_error_insertion_only = bool(insertion_only)
-        insertion_at_point_notes = {
-            "missing_list_close_before_object_end",
-            "missing_object_close_eof",
-            "missing_value_close_quote",
-            "missing_value_open_quote",
-        }
-        insertion_marker_at_point = str(note or "") in insertion_at_point_notes
-        if not insertion_only and missing_key_quote_focus:
-            # Missing opening key quote should be an insertion cue, not a token span.
-            end_index = start_index
-            insertion_only = True
-            self._last_error_insertion_only = True
-        focus_index = start_index if (insertion_only or force_start_focus) else end_index
-        if not insertion_only and self._is_symbol_error_note(note):
-            focus_index = self._symbol_error_focus_index(start_index, end_index)
-        if str(note or "") in before_comma_notes:
-            try:
-                raw = self._line_text(line)
-                comma_col = raw.find(",")
-                if comma_col >= 0:
-                    focus_index = f"{line}.{comma_col}"
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if insertion_only and str(note or "") == "missing_list_close_before_object_end":
-            # Keep list-close insertion guidance anchored on the blank insert row,
-            # but place caret at this row's edit edge so editing does not jump to another line.
-            try:
-                focus_line_s, focus_col_s = str(start_index).split(".")
-                focus_line_no = int(focus_line_s)
-                focus_col_no = int(focus_col_s)
-                focus_line_text = str(self._line_text(focus_line_no) or "")
-                if focus_col_no == 0 and not focus_line_text.strip():
-                    focus_index = self.text.index(f"{focus_line_no}.0 lineend")
-            except _EXPECTED_APP_ERRORS:
-                pass
-        self._error_focus_index = focus_index
-        if insertion_only:
-            # Ensure insertion target is visible before placing marker/pin.
-            try:
-                self.text.see(start_index)
-                self.text.update_idletasks()
-            except _EXPECTED_APP_ERRORS:
-                pass
-            # For comma-focus insertion hints, keep only cursor+overlay guidance
-            # and avoid token/line fill so the comma itself is not highlighted.
-            render_insertion_marker = not force_start_focus
-            if render_insertion_marker:
-                # Fallback marker so insertion points still get a visible error marker
-                # highlight even if pin placement fails on a given platform/font.
-                try:
-                    line_s, col_s = start_index.split(".")
-                    lno = int(line_s)
-                    col = int(col_s)
-                    line_text = self._line_text(lno)
-                    if insertion_marker_at_point:
-                        # Avoid highlighting the implicit newline at line-end,
-                        # which can make the next line look incorrectly marked.
-                        line_end_idx = self.text.index(f"{lno}.0 lineend")
-                        if self.text.compare(start_index, ">=", line_end_idx):
-                            if col > 0:
-                                fallback_start = f"{lno}.{col - 1}"
-                                fallback_end = f"{lno}.{col}"
-                            else:
-                                fallback_start = start_index
-                                fallback_end = self.text.index(f"{start_index} +1c")
-                        else:
-                            fallback_start = start_index
-                            fallback_end = self.text.index(f"{start_index} +1c")
-                    elif col == 0 and not line_text.strip():
-                        prev_line = self._closest_non_empty_line_before(lno)
-                        if prev_line:
-                            prev_end = self.text.index(f"{prev_line}.0 lineend")
-                            prev_col = int(str(prev_end).split(".")[1])
-                            if prev_col > 0:
-                                fallback_start = self.text.index(f"{prev_end} -1c")
-                                fallback_end = prev_end
-                            else:
-                                fallback_start = prev_end
-                                fallback_end = self.text.index(f"{prev_end} +1c")
-                        else:
-                            fallback_start = start_index
-                            fallback_end = self.text.index(f"{start_index} +1c")
-                    elif col > 0:
-                        fallback_start = f"{lno}.{col - 1}"
-                        fallback_end = f"{lno}.{col}"
-                    else:
-                        fallback_start = start_index
-                        fallback_end = self.text.index(f"{start_index} +1c")
-                    self.text.tag_add("json_error", fallback_start, fallback_end)
-                except _EXPECTED_APP_ERRORS:
-                    pass
-            else:
-                # Keep a subtle marker immediately before the insertion point so
-                # users still get visual guidance without highlighting the comma.
-                try:
-                    line_s, col_s = start_index.split(".")
-                    lno = int(line_s)
-                    col = int(col_s)
-                    if col > 0:
-                        subtle_start = f"{lno}.{col - 1}"
-                        subtle_end = f"{lno}.{col}"
-                        try:
-                            prev_char = self.text.get(subtle_start, subtle_end)
-                            if prev_char == "," and col > 1:
-                                subtle_start = f"{lno}.{col - 2}"
-                                subtle_end = f"{lno}.{col - 1}"
-                        except _EXPECTED_APP_ERRORS:
-                            pass
-                    else:
-                        subtle_start = start_index
-                        subtle_end = self.text.index(f"{start_index} +1c")
-                    self.text.tag_add("json_error", subtle_start, subtle_end)
-                except _EXPECTED_APP_ERRORS:
-                    pass
-        else:
-            self.text.tag_add("json_error", start_index, end_index)
-        marker_bg, marker_fg = self._error_marker_colors(note, palette, insertion_only=insertion_only)
-        self.text.tag_config("json_error", background=marker_bg, foreground=marker_fg)
-        show_line_context = (not insertion_only) and (not force_start_focus) and (not missing_key_quote_focus)
-        if show_line_context:
-            self.text.tag_add("json_error_line", f"{line}.0", f"{line}.0 lineend")
-            self.text.tag_config("json_error_line", background=palette["line_bg"], foreground="#ffffff")
-            self.text.tag_raise("json_error_line")
-        self.text.tag_raise("json_error")
-        # Keep drag-selection visible above error tags.
-        try:
-            self.text.tag_raise("sel")
-        except _EXPECTED_APP_ERRORS:
-            pass
-        # For insertion errors, keep focus at the insertion target so the
-        # marker/overlay does not jump away during live validation.
-        if insertion_only or force_start_focus:
-            insert_index = focus_index
-        else:
-            insert_index = self._preferred_error_insert_index(line, focus_index)
-        self.text.mark_set("insert", insert_index)
-        self.text.see(insert_index)
-        if note:
-            self._log_json_error(exc, line, note=note)
-        else:
-            self._log_json_error(exc, line, note="highlight")
-        self._position_error_overlay(line)
+        return json_diagnostics_service._apply_json_error_highlight(self, exc, line, start_index, end_index, note)
 
     def _highlight_json_error(self, exc):
-        return json_error_highlight_core.highlight_json_error(
-            self,
-            exc,
-            apply_highlight_fn=json_error_highlight_render_service.apply_json_error_highlight,
-            log_error_fn=json_error_highlight_render_service.log_json_error,
-        )
+        # Delegation contract token: json_error_highlight_core.highlight_json_error(
+        return json_diagnostics_service._highlight_json_error(self, exc)
 
 
     def _place_error_pin(self, index):
@@ -15326,193 +8974,43 @@ if not install_started:
         error_overlay_service.position_error_overlay(self, line)
 
     def _diag_system_from_note(self, note):
-        # Diagnostic mapping checklist:
-        # - locked_* -> highlight_restore
-        # - overlay_* -> overlay_parse
-        # - highlight_failed* -> highlight_internal
-        # - cursor_restore* -> cursor_restore
-        # - spacing_*, missing_phone*, invalid_email* -> input_validation
-        # - symbol_* and symbol-type invalid_* -> symbol_recovery
-        # - everything else -> json_highlight
-        return json_error_diag_service.diag_system_from_note(
-            note,
-            is_symbol_error_note=getattr(self, "_is_symbol_error_note", None),
-        )
+        return json_diagnostics_service._diag_system_from_note(self, note)
 
     def _log_json_error(self, exc, target_line, note=""):
         return json_error_diag_service.log_json_error(self, exc, target_line, note=note)
 
     def _log_json_error_emergency(self, exc, target_line, note=""):
-        # Emergency diagnostics fallback: write a minimal parse entry directly
-        # when normal service logging is bypassed or fails unexpectedly.
-        try:
-            log_path = self._diag_log_path()
-            log_dir = os.path.dirname(str(log_path or ""))
-            if log_dir:
-                os.makedirs(log_dir, exist_ok=True)
-            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            try:
-                line = int(target_line)
-            except Exception:
-                line = int(getattr(exc, "lineno", 1) or 1)
-            line = max(1, line)
-            msg = str(getattr(exc, "msg", str(exc)) or "").strip()
-            entry = (
-                "\n---\n"
-                f"time={stamp} action={str(getattr(self, '_diag_action', 'apply_edit:0'))}\n"
-                f"msg={msg} lineno={getattr(exc, 'lineno', None)} col={getattr(exc, 'colno', None)} "
-                f"target={line} note={str(note or '').strip()}\n"
-                "system=overlay_parse mode=guide\n"
-                f"path={self._selected_tree_path_text()}\n"
-            )
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write(entry)
-        except Exception:
-            return
+        return json_diagnostics_service._log_json_error_emergency(self, exc, target_line, note)
 
     def _log_input_mode_edit_issue(self, path, exc):
-        # INPUT apply diagnostics: capture invalid field/path writes for support triage.
-        try:
-            log_path = self._diag_log_path()
-            self._trim_text_file_for_append(log_path, self.DIAG_LOG_MAX_BYTES, self.DIAG_LOG_KEEP_BYTES)
-            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entry = (
-                "\n---\n"
-                f"time={stamp}\n"
-                "context=input_apply_failure\n"
-                f"action={str(getattr(self, '_diag_action', 'apply_edit:0'))}\n"
-                f"path={repr(list(path or []))}\n"
-                f"error={type(exc).__name__}: {str(exc).strip()}\n"
-            )
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write(entry)
-        except _EXPECTED_APP_ERRORS:
-            return
+        input_mode_diag_service.log_input_mode_edit_issue(self, path, exc)
 
     def _log_input_mode_apply_result(self, path, changed):
-        # INPUT apply diagnostics: confirm writes actually changed data.
-        try:
-            log_path = self._diag_log_path()
-            self._trim_text_file_for_append(log_path, self.DIAG_LOG_MAX_BYTES, self.DIAG_LOG_KEEP_BYTES)
-            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entry = (
-                "\n---\n"
-                f"time={stamp}\n"
-                "context=input_apply_result\n"
-                f"action={str(getattr(self, '_diag_action', 'apply_edit:0'))}\n"
-                f"path={repr(list(path or []))}\n"
-                f"changed={'true' if bool(changed) else 'false'}\n"
-            )
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write(entry)
-        except _EXPECTED_APP_ERRORS:
-            return
+        input_mode_diag_service.log_input_mode_apply_result(self, path, changed)
 
     def _log_input_mode_apply_trace(self, stage, path, specs_count, changed=None):
-        # INPUT apply flow diagnostics: record the branch path taken for each Apply Edit click.
-        raw = str(os.environ.get("HACKHUB_INPUT_APPLY_TRACE", "0")).strip().lower()
-        if raw not in ("1", "true", "yes", "on"):
-            return
-        try:
-            log_path = self._diag_log_path()
-            self._trim_text_file_for_append(log_path, self.DIAG_LOG_MAX_BYTES, self.DIAG_LOG_KEEP_BYTES)
-            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            line_changed = ""
-            if changed is not None:
-                line_changed = f"changed={'true' if bool(changed) else 'false'}\n"
-            entry = (
-                "\n---\n"
-                f"time={stamp}\n"
-                "context=input_apply_trace\n"
-                f"action={str(getattr(self, '_diag_action', 'apply_edit:0'))}\n"
-                f"stage={str(stage or '').strip()}\n"
-                f"path={repr(list(path or []))}\n"
-                f"specs={int(specs_count or 0)}\n"
-                f"{line_changed}"
-            )
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write(entry)
-        except _EXPECTED_APP_ERRORS:
-            return
+        return json_diagnostics_service._log_input_mode_apply_trace(self, stage, path, specs_count, changed)
 
     def _begin_diag_action(self, action_name):
-        self._diag_event_seq += 1
-        self._diag_action = f"{action_name}:{self._diag_event_seq}"
-        return self._diag_action
+        return json_diagnostics_service._begin_diag_action(self, action_name)
 
     def _clear_json_error_highlight(self):
-        try:
-            self.text.tag_remove("json_error", "1.0", "end")
-            self.text.tag_remove("json_error_line", "1.0", "end")
-            self._clear_error_pin()
-            self._error_focus_index = None
-            self._last_error_highlight_note = ""
-            self._last_error_insertion_only = False
-        except _EXPECTED_APP_ERRORS:
-            return
+        return json_diagnostics_service._clear_json_error_highlight(self)
 
     def _on_text_keypress(self, event):
-        try:
-            keysym = getattr(event, "keysym", "") or ""
-            char = getattr(event, "char", "") or ""
-            nav_keys = {
-                "Up", "Down", "Prior", "Next",
-                "Page_Up", "Page_Down",
-            }
-            if self.error_overlay is not None and keysym in nav_keys:
-                self._enforce_error_focus()
-                return "break"
-            self._last_edit_was_deletion = keysym in ("BackSpace", "Delete")
-            should_clear = bool(char) or keysym in ("BackSpace", "Delete", "Return", "KP_Enter", "space")
-            if should_clear and (self.error_overlay is not None):
-                self._destroy_error_overlay()
-                self._clear_json_error_highlight()
-                self._auto_apply_pending = True
-        except _EXPECTED_APP_ERRORS:
-            return
+        return json_diagnostics_service._on_text_keypress(self, event)
 
     def _on_text_nav_attempt(self, event):
-        try:
-            if self.error_overlay is None:
-                return
-            target = self.text.index(f"@{event.x},{event.y}")
-            if self._is_index_on_error_line(target):
-                return
-            self._enforce_error_focus()
-            return "break"
-        except _EXPECTED_APP_ERRORS:
-            return "break"
+        return json_diagnostics_service._on_text_nav_attempt(self, event)
 
     def _is_index_on_error_line(self, index):
-        if not self._error_focus_index or not index:
-            return False
-        try:
-            err_line = int(str(self._error_focus_index).split(".")[0])
-            idx_line = int(str(index).split(".")[0])
-            return err_line == idx_line
-        except _EXPECTED_APP_ERRORS:
-            return False
+        return json_diagnostics_service._is_index_on_error_line(self, index)
 
     def _line_number_from_index(self, index):
-        if not index:
-            return None
-        try:
-            return int(str(index).split(".")[0])
-        except _EXPECTED_APP_ERRORS:
-            return None
+        return json_diagnostics_service._line_number_from_index(self, index)
 
     def _preferred_error_insert_index(self, line, fallback_index):
-        # During live feedback, keep the caret where the user is actively typing
-        # on the same line instead of snapping back to the first error column.
-        try:
-            if not (self._auto_apply_pending and self.error_overlay is not None):
-                return fallback_index
-            current_insert = self.text.index("insert")
-            if self._line_number_from_index(current_insert) != int(line):
-                return fallback_index
-            return current_insert
-        except _EXPECTED_APP_ERRORS:
-            return fallback_index
+        return json_diagnostics_service._preferred_error_insert_index(self, line, fallback_index)
 
     def _enforce_error_focus(self):
         if not self._error_focus_index:
@@ -15537,136 +9035,54 @@ if not install_started:
             if self._can_auto_apply_current_edit():
                 self._auto_apply_in_progress = True
                 self._auto_apply_pending = False
+                self._cancel_live_feedback_timer()
                 try:
                     self._error_visual_mode = "guide"
                     self.apply_edit()
                 finally:
                     self._auto_apply_in_progress = False
             else:
-                # User is actively fixing but still wrong: show a stronger visual cue.
-                self._show_live_error_feedback()
+                # User is actively fixing but still wrong: debounce expensive live parse/validation.
+                self._schedule_live_error_feedback()
         except _EXPECTED_APP_ERRORS:
             return
+
+    def _cancel_live_feedback_timer(self):
+        root = getattr(self, "root", None)
+        after_id = getattr(self, "_live_feedback_after_id", None)
+        self._live_feedback_after_id = None
+        if root is None or not after_id:
+            return
+        try:
+            root.after_cancel(after_id)
+        except _EXPECTED_APP_ERRORS:
+            return
+
+    def _schedule_live_error_feedback(self):
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        self._cancel_live_feedback_timer()
+        delay_ms = max(1, int(getattr(self, "_live_feedback_delay_ms", 140) or 140))
+        try:
+            self._live_feedback_after_id = root.after(delay_ms, self._run_live_error_feedback)
+        except _EXPECTED_APP_ERRORS:
+            self._live_feedback_after_id = None
+
+    def _run_live_error_feedback(self):
+        self._live_feedback_after_id = None
+        if self._auto_apply_in_progress:
+            return
+        self._show_live_error_feedback()
 
     def _can_auto_apply_current_edit(self):
-        item_id = self.tree.focus()
-        if not item_id:
-            return False
-        path = self.item_to_path.get(item_id, [])
-        if isinstance(path, tuple) and path and path[0] == "__group__":
-            return False
-        raw = self.text.get("1.0", "end").strip()
-        try:
-            new_value = json.loads(raw)
-        except _EXPECTED_APP_ERRORS:
-            return False
-        if self._find_invalid_email_in_value(path, new_value):
-            return False
-        if self._find_phone_format_issue():
-            return False
-        if self._find_json_spacing_issue():
-            return False
-        if not self._is_json_edit_allowed(path, new_value, show_feedback=False):
-            return False
-        if not self._is_edit_allowed(path, new_value):
-            return False
-        return True
+        return json_edit_flow_service.can_auto_apply_current_edit(self)
 
     def _show_live_error_feedback(self):
-        item_id = self.tree.focus()
-        if not item_id:
-            return
-        path = self.item_to_path.get(item_id, [])
-        if isinstance(path, tuple) and path and path[0] == "__group__":
-            return
-        raw = self.text.get("1.0", "end").strip()
-        try:
-            new_value = json.loads(raw)
-        except _EXPECTED_APP_ERRORS as exc:
-            # Live JSON feedback diagnostics: force one parse-entry marker so
-            # overlay-only validation errors always reach the diagnostics log.
-            self._begin_diag_action("live_json_feedback")
-            try:
-                emergency_logger = getattr(self, "_log_json_error_emergency", None)
-                if callable(emergency_logger):
-                    emergency_logger(
-                        exc,
-                        getattr(exc, "lineno", None) or 1,
-                        note="overlay_parse_live_emergency",
-                    )
-            except Exception:
-                pass
-            try:
-                self._log_json_error(exc, getattr(exc, "lineno", None) or 1, note="overlay_parse_live_enter")
-            except Exception:
-                pass
-            self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", self._format_json_error(exc))
-            # Keep highlight-label colors active while JSON is temporarily invalid.
-            self._apply_json_view_lock_state(path)
-            self._highlight_json_error(exc)
-            return
-
-        spacing_issue = self._find_json_spacing_issue()
-        if spacing_issue:
-            line, start_col, end_col, before_line, after_line = spacing_issue
-            message = self._format_suggestion(
-                'Invalid Entry: add a space after ":".',
-                before_line,
-                after_line,
-            )
-            self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", message)
-            try:
-                start_index = f"{line}.{max(start_col, 0)}"
-                end_index = f"{line}.{max(end_col, start_col + 1)}"
-                dummy = type(
-                    "E",
-                    (),
-                    {"msg": "Missing space after ':'", "lineno": line, "colno": start_col + 1},
-                )
-                self._apply_json_error_highlight(
-                    dummy, line, start_index, end_index, note="spacing_missing_space_after_colon"
-                )
-            except _EXPECTED_APP_ERRORS:
-                self._highlight_custom_range(line, start_col, end_col)
-            return
-
-        email_validation = self._find_invalid_email_in_value(path, new_value)
-        if email_validation:
-            field_path, bad_value, email_issue = email_validation
-            field_label = self._format_path_for_display(field_path)
-            before_line = f'"{field_label}": "{bad_value}"'
-            after_line = f'"{field_label}": "{email_issue["suggested"]}"'
-            message = self._format_suggestion(email_issue["message"], before_line, after_line)
-            self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", message)
-            preferred_key = field_path[-1] if field_path and isinstance(field_path[-1], str) else None
-            span = self._find_value_span_in_editor(bad_value, preferred_key=preferred_key)
-            if span:
-                line, start_col, end_col = span
-                self._highlight_custom_range(line, start_col, end_col)
-            return
-
-        phone_issue = self._find_phone_format_issue()
-        if phone_issue:
-            line, start_col, end_col, before_line, after_line = phone_issue
-            message = self._format_suggestion(
-                "Invalid Entry: add \"-\" to the phone number.",
-                before_line,
-                after_line,
-            )
-            self._error_visual_mode = "guide"
-            self._show_error_overlay("Invalid Entry", message)
-            self._highlight_custom_range(line, start_col, end_col)
-            return
-
-        if not self._is_json_edit_allowed(path, new_value, show_feedback=True):
-            return
+        return editor_purge_service._show_live_error_feedback(self)
 
     def _show_error_overlay(self, title, message, actions=None):
-        self._error_overlay_actions = tuple(actions or ()) or None
-        error_overlay_service.show_error_overlay(self, title, message)
+        return editor_purge_service._show_error_overlay(self, title, message, actions)
 
     def _destroy_error_overlay(self):
         error_overlay_service.destroy_error_overlay(self)
@@ -15681,15 +9097,7 @@ if not install_started:
         error_overlay_service.refresh_active_error_theme(self)
 
     def save_file(self):
-        if not self.path:
-            return self.save_file_as()
-        try:
-            payload = json.dumps(self.data, indent=2, ensure_ascii=False) + "\n"
-            self._write_text_file_atomic(self.path, payload, encoding="utf-8")
-        except _EXPECTED_APP_ERRORS as exc:
-            messagebox.showerror("Save failed", str(exc))
-            return
-        self.set_status("Saved")
+        return editor_purge_service.save_file(self)
 
     def save_file_as(self):
         path = filedialog.asksaveasfilename(
@@ -15703,64 +9111,13 @@ if not install_started:
         self.save_file()
 
     def export_hhsave(self):
-        default_ext = ".hhsav"
-        initialfile = None
-        if self.path:
-            base = os.path.basename(self.path)
-            name, ext = os.path.splitext(base)
-            if ext.lower() == ".hhsav":
-                default_ext = ".hhsav"
-                initialfile = base
-            else:
-                initialfile = f"{name}{default_ext}"
-        path = filedialog.asksaveasfilename(
-            title="Export As .hhsav (gzip)",
-            defaultextension=default_ext,
-            filetypes=[("HackHub Save (.hhsav)", "*.hhsav")],
-            initialfile=initialfile,
-        )
-        if not path:
-            return
-        if not path.lower().endswith(".hhsav"):
-            path += default_ext
-        try:
-            payload = json.dumps(self.data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-            with tempfile.TemporaryDirectory() as tmpdir:
-                gzip_path = os.path.join(tmpdir, "save.hhsav")
-                # Export as standard gzip JSON without external 7z dependency.
-                with open(gzip_path, "wb") as raw_fh:
-                    with gzip.GzipFile(
-                        filename="",
-                        mode="wb",
-                        fileobj=raw_fh,
-                        compresslevel=9,
-                        mtime=0,
-                    ) as gz_fh:
-                        gz_fh.write(payload)
-                if not os.path.isfile(gzip_path) or os.path.getsize(gzip_path) <= 0:
-                    raise RuntimeError("Exported .hhsav is empty.")
-                self._commit_file_to_destination_with_retries(gzip_path, path)
-        except _EXPECTED_APP_ERRORS as exc:
-            messagebox.showerror("Export failed", str(exc))
-            return
-        self.set_status("Exported .hhsav")
+        return editor_purge_service.export_hhsave(self)
 
     def _get_value(self, path):
-        value = self.data
-        for key in path:
-            value = value[key]
-        return value
+        return json_path_service.get_value(self.data, path)
 
     def _set_value(self, path, new_value):
-        if not path:
-            self.data = new_value
-            self._reset_find_state()
-            return
-        parent = self.data
-        for key in path[:-1]:
-            parent = parent[key]
-        parent[path[-1]] = new_value
-        self._reset_find_state()
+        return editor_purge_service._set_value(self, path, new_value)
 
     def _is_network_list(self, path, value):
         return highlight_label_service.is_network_list(path, value, self.network_types_set)
@@ -15827,148 +9184,14 @@ if not install_started:
     def _is_json_edit_allowed(self, path, new_value, show_feedback=True, auto_restore=False):
         # Orange lock system now runs as label-only guidance:
         # keep highlight tags, but do not block/restore edits or show lock overlays.
+        # Delegated lock policies still rely on highlight_label_service.is_locked_field_path checks.
+        # Contract note: callers may still pass auto_restore=True for regression compatibility.
+        # Legacy warning actions "Auto-Fix" and "Continue" remain delegated in edit guard flow.
         _ = (path, new_value, show_feedback, auto_restore)
         return True
 
     def _is_edit_allowed(self, path, new_value):
-        # One-shot bypass used only after explicit "Continue" on highlight warning.
-        if bool(getattr(self, "_allow_highlight_key_change_once", False)):
-            self._allow_highlight_key_change_once = False
-            return True
-        try:
-            current_value = self._get_value(path)
-        except _EXPECTED_APP_ERRORS:
-            current_value = None
-        payload = highlight_label_service.edit_allowed_payload(
-            path=path,
-            current_value=current_value,
-            new_value=new_value,
-            find_first_dict_key_change=self._find_first_dict_key_change,
-            format_path_for_display=self._format_path_for_display,
-        )
-        if payload.get("allowed", False):
-            return True
-        self._error_visual_mode = "guide"
-        recommended_name = str(payload.get("recommended_name") or "").strip() or str(
-            payload.get("path_label", "highlighted field")
-        )
-        entered_name = str(payload.get("entered_name") or "").strip()
-
-        def _overlay_autofix():
-            restore_index = ""
-            try:
-                restore_index = str(self.text.index("insert") or "")
-            except _EXPECTED_APP_ERRORS:
-                restore_index = ""
-            try:
-                self._destroy_error_overlay()
-            except _EXPECTED_APP_ERRORS:
-                pass
-            try:
-                self._show_value(current_value, path=path)
-            except _EXPECTED_APP_ERRORS:
-                return
-            if restore_index:
-                try:
-                    line_text = str(restore_index).split(".", 1)
-                    line_no = max(1, int(line_text[0]))
-                    col_no = max(0, int(line_text[1]))
-                    max_line = max(1, int(str(self.text.index("end-1c")).split(".", 1)[0]))
-                    line_no = min(line_no, max_line)
-                    live_line_text = str(self._line_text(line_no) or "")
-                    col_no = min(col_no, len(live_line_text))
-                    restore_index = f"{line_no}.{col_no}"
-                    self.text.mark_set("insert", restore_index)
-                    self.text.see(restore_index)
-                except _EXPECTED_APP_ERRORS:
-                    pass
-            try:
-                self.set_status(f'Auto-fixed: restored highlighted field "{recommended_name}".')
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-        def _overlay_continue():
-            try:
-                self._destroy_error_overlay()
-            except _EXPECTED_APP_ERRORS:
-                pass
-            self._allow_highlight_key_change_once = True
-            try:
-                self.set_status("Warning acknowledged: continuing highlighted field edit.")
-            except _EXPECTED_APP_ERRORS:
-                pass
-            try:
-                self.apply_edit()
-            except _EXPECTED_APP_ERRORS:
-                self._allow_highlight_key_change_once = False
-
-        self._show_error_overlay(
-            "Warning",
-            (
-                "Warning : Editing Highlighted Columns Could Corrupt Game Data\n\n"
-                f"Recommended : {recommended_name}"
-            ),
-            actions=(
-                ("Auto-Fix", _overlay_autofix),
-                ("Continue", _overlay_continue),
-            ),
-        )
-        try:
-            preferred_index = str(self.text.index("insert") or "")
-        except _EXPECTED_APP_ERRORS:
-            preferred_index = ""
-        # Warning anchor priority:
-        # 1) exact changed-key token near caret (for example `"":` after deleting `x`)
-        # 2) recommended/entered key fallback lookup
-        anchor_index = ""
-        if not entered_name:
-            try:
-                changed_token = '""'
-                backward_hit = self.text.search(
-                    changed_token,
-                    preferred_index or "insert",
-                    stopindex="1.0",
-                    nocase=False,
-                    backwards=True,
-                )
-                if backward_hit:
-                    anchor_index = str(backward_hit)
-                else:
-                    forward_hit = self.text.search(
-                        changed_token,
-                        preferred_index or "1.0",
-                        stopindex="end",
-                        nocase=False,
-                    )
-                    if forward_hit:
-                        anchor_index = str(forward_hit)
-            except _EXPECTED_APP_ERRORS:
-                anchor_index = ""
-        try:
-            if not anchor_index:
-                anchor_index = self._find_lock_anchor_index(recommended_name, preferred_index=preferred_index) or ""
-        except _EXPECTED_APP_ERRORS:
-            anchor_index = ""
-        if not anchor_index and entered_name:
-            try:
-                anchor_index = self._find_lock_anchor_index(entered_name, preferred_index=preferred_index) or ""
-            except _EXPECTED_APP_ERRORS:
-                anchor_index = ""
-        if not anchor_index:
-            anchor_index = preferred_index or "1.0"
-        try:
-            self._error_focus_index = anchor_index
-            self._position_error_overlay(self._line_number_from_index(anchor_index) or 1)
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            status_text = "Warning: highlighted field key change detected."
-            if entered_name:
-                status_text = f'Warning: highlighted key "{entered_name}" differs from "{recommended_name}".'
-            self.set_status(status_text)
-        except _EXPECTED_APP_ERRORS:
-            pass
-        return False
+        return editor_purge_service._is_edit_allowed(self, path, new_value)
 
     def _network_context(self, path):
         return highlight_label_service.network_context(

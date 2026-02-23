@@ -1,11 +1,13 @@
 # Core Suite
 
-Last sync: 2026-02-23 (topbar maximize spacing/flow refinements and style-variant cleanup to A/B-only behavior).
+Last sync: 2026-02-23 (topbar maximize spacing behavior reverted to stable no-overlap/no-jitter baseline).
 
 | Module | Purpose |
 | --- | --- |
 | `constants.py` | Defines shared static configuration values used across editor components, including updater/bug-report token env names, bug-report destination, screenshot-upload limits, submit cooldown settings, optional bug-report Discord forum webhook/tag env names, and mode-scoped tree policy category/key sets. |
 | `display_profile.py` | Provides display-scale detection and window/profile geometry helper logic. |
+| `editor_state.py` | Defines grouped runtime state dataclasses (`UIState`, `DocumentState`, `UpdateState`, and related buckets) plus centralized flag routing used by `JsonEditor`. |
+| `exceptions.py` | Defines shared app exception types and expected-error tuples used by service/core modules. |
 | `json_diagnostics.py` | Contains JSON diagnostic parsing and typo/symbol recovery helper rules. |
 | `json_error_diagnostics_core.py` | Provides centralized JSON parse-diagnostic builders/formatters used by editor wrappers. |
 | `json_error_highlight_core.py` | Provides JSON highlight decision flow while delegating UI render/log callbacks to services. |

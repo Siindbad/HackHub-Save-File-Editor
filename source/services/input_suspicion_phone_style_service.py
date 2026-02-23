@@ -7,14 +7,18 @@ single centered editable input field anchored to the image.
 import importlib
 import os
 import tkinter as tk
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
-def is_suspicion_input_path(owner, path):
+def is_suspicion_input_path(owner: Any, path: Any) -> Any:
     normalized = list(path or [])
     return len(normalized) == 1 and owner._input_mode_root_key_for_path(normalized) == "suspicion"
 
 
-def render_suspicion_phone_input(owner, host, normalized_path, value):
+def render_suspicion_phone_input(owner: Any, host: Any, normalized_path: Any, value: Any) -> Any:
     # Suspicion payload is expected to be a scalar root value.
     if not isinstance(value, (str, int, float, bool)) and value is not None:
         return False
@@ -133,7 +137,8 @@ def _load_phone_photo(owner, path, max_width=440):
             ratio = max_width / float(width)
             image = image.resize((max_width, max(1, int(height * ratio))), image_module.LANCZOS)
         photo = image_tk_module.PhotoImage(image)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         try:
             raw = tk.PhotoImage(file=path)
             width = raw.width()
@@ -141,7 +146,8 @@ def _load_phone_photo(owner, path, max_width=440):
                 factor = max(1, int(round(width / float(max_width))))
                 raw = raw.subsample(factor, factor)
             photo = raw
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             photo = None
     cache[key] = photo
     return photo

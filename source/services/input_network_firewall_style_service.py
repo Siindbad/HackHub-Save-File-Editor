@@ -5,6 +5,7 @@ with non-editable identity info and editable per-rule Port/Allowed inputs.
 """
 
 import tkinter as tk
+from typing import Any
 
 
 def _format_input_text(value):
@@ -19,7 +20,7 @@ def _is_false_like(value):
     return str(value).strip().lower() == "false"
 
 
-def is_network_firewall_group_payload(owner, path, value):
+def is_network_firewall_group_payload(owner: Any, path: Any, value: Any) -> Any:
     if not isinstance(path, list) or len(path) != 1:
         return False
     if owner._normalize_root_tree_key(path[0]) != "network":
@@ -29,7 +30,7 @@ def is_network_firewall_group_payload(owner, path, value):
     return all(isinstance(item, dict) and str(item.get("type", "")).upper() == "FIREWALL" for item in value)
 
 
-def collect_firewall_input_rows(owner, normalized_path, firewalls, max_rows=40):
+def collect_firewall_input_rows(owner: Any, normalized_path: Any, firewalls: Any, max_rows: Any=40) -> Any:
     # Map grouped FIREWALL objects back to original Network indices for safe write-back rel_paths.
     full_network = owner._get_value(normalized_path)
     if not isinstance(full_network, list):
@@ -88,7 +89,7 @@ def collect_firewall_input_rows(owner, normalized_path, firewalls, max_rows=40):
     return rows
 
 
-def render_firewall_input_rows(owner, host, normalized_path, row_defs):
+def render_firewall_input_rows(owner: Any, host: Any, normalized_path: Any, row_defs: Any) -> Any:
     # Keep FIREWALL visuals aligned with ROUTER Concept-2 palette and framing.
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()

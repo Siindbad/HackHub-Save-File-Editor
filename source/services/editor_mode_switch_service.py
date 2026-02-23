@@ -2,9 +2,10 @@
 
 Keeps JSON/INPUT mode refresh and tree-rebuild decisions isolated from UI wiring.
 """
+from typing import Any
 
 
-def mode_switch_requires_tree_rebuild(owner, previous_mode, next_mode):
+def mode_switch_requires_tree_rebuild(owner: Any, previous_mode: Any, next_mode: Any) -> Any:
     # Rebuild when mode-dependent visibility policy changes.
     # This includes root-hide lists and INPUT-only hidden Network subgroup buckets.
     prev_hidden = owner._hidden_root_tree_keys_for_mode(previous_mode)
@@ -19,7 +20,7 @@ def mode_switch_requires_tree_rebuild(owner, previous_mode, next_mode):
     return prev_network_hidden != next_network_hidden
 
 
-def can_skip_input_mode_refresh(owner, item_id, target_path):
+def can_skip_input_mode_refresh(owner: Any, item_id: Any, target_path: Any) -> Any:
     # Skip refresh only when item/path are unchanged and no forced refresh is pending.
     if bool(getattr(owner, "_input_mode_force_refresh", False)):
         return False

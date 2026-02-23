@@ -1,8 +1,12 @@
 """Main editor UI build service."""
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 # Editor mode tabs are built in service so editor class stays orchestration-focused.
-def build_editor_mode_toggle(owner, parent, tk):
+def build_editor_mode_toggle(owner: Any, parent: Any, tk: Any) -> Any:
     owner._editor_mode_parent = parent
     theme = getattr(owner, "_theme", {})
     host = tk.Frame(
@@ -31,7 +35,7 @@ def build_editor_mode_toggle(owner, parent, tk):
     owner._update_editor_mode_controls()
 
 
-def build_theme_selector(owner, parent, tk):
+def build_theme_selector(owner: Any, parent: Any, tk: Any) -> Any:
     owner._theme_selector_host = parent
     owner._toolbar_style_labels = {}
     owner._toolbar_style_title_label = None
@@ -113,20 +117,22 @@ def build_theme_selector(owner, parent, tk):
     owner._update_toolbar_style_controls()
 
 
-def build_header_variant_switch(owner, parent, show_title, tk):
+def build_header_variant_switch(owner: Any, parent: Any, show_title: Any, tk: Any) -> Any:
     if parent is None:
         return
     try:
         if not parent.winfo_exists():
             return
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return
     old_host = getattr(owner, "_header_variant_host", None)
     if old_host is not None:
         try:
             if old_host.winfo_exists():
                 old_host.destroy()
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
     if not bool(getattr(owner, "_show_header_variant_controls", False)):
         owner._header_variant_host = None
@@ -186,7 +192,7 @@ def build_header_variant_switch(owner, parent, show_title, tk):
     owner._update_header_variant_controls()
 
 
-def build_input_mode_panel(owner, parent, scroll_style, tk, ttk):
+def build_input_mode_panel(owner: Any, parent: Any, scroll_style: Any, tk: Any, ttk: Any) -> Any:
     theme = getattr(owner, "_theme", {})
     container = tk.Frame(
         parent,
@@ -220,7 +226,8 @@ def build_input_mode_panel(owner, parent, scroll_style, tk, ttk):
         try:
             width = max(120, canvas.winfo_width())
             canvas.itemconfigure(canvas_window, width=width)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
 
     fields_host.bind(
@@ -242,7 +249,7 @@ def build_input_mode_panel(owner, parent, scroll_style, tk, ttk):
 
 # UI composition extraction: owner handles callbacks/state, this service
 # builds and wires the major editor panels.
-def build_ui(owner, tk, ttk):
+def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
     owner._apply_dark_theme()
     owner._set_window_icon()
 
@@ -293,7 +300,8 @@ def build_ui(owner, tk, ttk):
     try:
         tree_inset = 6 if str(getattr(owner, "_tree_style_variant", "B")).upper() == "B" else 0
         owner.tree.configure(padding=(tree_inset, 0, 0, 0))
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         pass
     scroll_style = getattr(owner, "_v_scrollbar_style", "Vertical.TScrollbar")
     tree_scroll = ttk.Scrollbar(
@@ -357,7 +365,8 @@ def build_ui(owner, tk, ttk):
         owner.text.bind("<Control-y>", owner._safe_edit_redo, add="+")
         # Some keyboards/OS use Ctrl+Shift+Z for redo
         owner.text.bind("<Control-Shift-Z>", owner._safe_edit_redo, add="+")
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         # If widget doesn't support undo methods for any reason, ignore.
         pass
 

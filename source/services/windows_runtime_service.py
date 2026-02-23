@@ -4,14 +4,47 @@ import subprocess
 import sys
 import tempfile
 import time
+import ctypes
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
-def ps_escape(value):
+def enable_windows_dpi_awareness() -> Any:
+    """Enable best-available DPI awareness before Tk root creation."""
+    if sys.platform != "win32":
+        return False
+    try:
+        user32 = ctypes.windll.user32
+    except (AttributeError, OSError):
+        return False
+
+    try:
+        if bool(user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))):
+            return True
+    except (AttributeError, OSError, ValueError):
+        pass
+    try:
+        shcore = ctypes.windll.shcore
+        if int(shcore.SetProcessDpiAwareness(2)) == 0:
+            return True
+    except (AttributeError, OSError, ValueError):
+        pass
+    try:
+        if bool(user32.SetProcessDPIAware()):
+            return True
+    except (AttributeError, OSError, ValueError):
+        pass
+    return False
+
+
+def ps_escape(value: Any) -> Any:
     # Single-quote escaping for inline PowerShell literal strings.
     return str(value).replace("'", "''")
 
 
-def is_retryable_file_write_error(exc, platform_name=None):
+def is_retryable_file_write_error(exc: Any, platform_name: Any=None) -> Any:
     if isinstance(exc, PermissionError):
         return True
     if not isinstance(exc, OSError):
@@ -23,14 +56,14 @@ def is_retryable_file_write_error(exc, platform_name=None):
 
 
 def write_text_file_atomic(
-    path,
-    text,
-    encoding="utf-8",
-    retries=5,
-    base_delay=0.08,
-    is_retryable_fn=None,
-    sleep_fn=None,
-):
+    path: Any,
+    text: Any,
+    encoding: Any="utf-8",
+    retries: Any=5,
+    base_delay: Any=0.08,
+    is_retryable_fn: Any=None,
+    sleep_fn: Any=None,
+) -> Any:
     # Write via temp file + os.replace so readers never see partial content.
     target_path = os.path.abspath(path)
     target_dir = os.path.dirname(target_path) or os.getcwd()
@@ -52,15 +85,17 @@ def write_text_file_atomic(
                 fh.flush()
                 try:
                     os.fsync(fh.fileno())
-                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+                except EXPECTED_ERRORS as exc:
+                    _LOG.debug('expected_error', exc_info=exc)
                     pass
             os.replace(temp_path, target_path)
             return
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
+        except EXPECTED_ERRORS as exc:
             try:
                 if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 pass
             if attempt + 1 < retries and retryable(exc):
                 sleeper(base_delay * (attempt + 1))
@@ -69,13 +104,13 @@ def write_text_file_atomic(
 
 
 def commit_file_to_destination_with_retries(
-    source_path,
-    target_path,
-    retries=5,
-    base_delay=0.08,
-    is_retryable_fn=None,
-    sleep_fn=None,
-):
+    source_path: Any,
+    target_path: Any,
+    retries: Any=5,
+    base_delay: Any=0.08,
+    is_retryable_fn: Any=None,
+    sleep_fn: Any=None,
+) -> Any:
     # Copy update payload with retry-on-lock semantics common on Windows.
     source_path = os.path.abspath(source_path)
     target_path = os.path.abspath(target_path)
@@ -97,11 +132,12 @@ def commit_file_to_destination_with_retries(
             shutil.copyfile(source_path, temp_path)
             os.replace(temp_path, target_path)
             return
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
+        except EXPECTED_ERRORS as exc:
             try:
                 if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 pass
             if attempt + 1 < retries and retryable(exc):
                 sleeper(base_delay * (attempt + 1))
@@ -109,7 +145,7 @@ def commit_file_to_destination_with_retries(
             raise
 
 
-def start_hidden_process(args, subprocess_module=None):
+def start_hidden_process(args: Any, subprocess_module: Any=None) -> Any:
     # Launch detached/no-window worker so updater flow stays silent for users.
     subproc = subprocess_module if subprocess_module is not None else subprocess
     startup = None
@@ -130,15 +166,15 @@ def start_hidden_process(args, subprocess_module=None):
 
 
 def install_update(
-    new_path,
-    exe_path,
-    current_pid,
-    asset_name,
-    start_hidden_process_fn,
-    schedule_root_destroy_fn,
-    ps_escape_fn=None,
-    restart_notice_ms=1200,
-):
+    new_path: Any,
+    exe_path: Any,
+    current_pid: Any,
+    asset_name: Any,
+    start_hidden_process_fn: Any,
+    schedule_root_destroy_fn: Any,
+    ps_escape_fn: Any=None,
+    restart_notice_ms: Any=1200,
+) -> Any:
     # Staged self-update: wait for current PID, apply payload (EXE or ZIP), relaunch, then cleanup.
     esc = ps_escape_fn if callable(ps_escape_fn) else ps_escape
     work_dir = tempfile.mkdtemp(prefix="sins_update_run_")
@@ -333,7 +369,8 @@ def install_update(
 
     try:
         start_hidden_process_fn(["wscript.exe", "//nologo", vbs_path])
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         start_hidden_process_fn(
             [
                 "powershell.exe",

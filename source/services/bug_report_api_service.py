@@ -5,6 +5,11 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+from core.exceptions import AppRuntimeError
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 def _assert_https_host_allowed(url_text, allowed_hosts):
@@ -12,16 +17,16 @@ def _assert_https_host_allowed(url_text, allowed_hosts):
     host = (parsed.hostname or "").strip().lower()
     scheme = (parsed.scheme or "").strip().lower()
     if scheme != "https":
-        raise RuntimeError("Refusing non-HTTPS request URL.")
+        raise AppRuntimeError("Refusing non-HTTPS request URL.")
     if not host:
-        raise RuntimeError("Request URL is missing a host.")
+        raise AppRuntimeError("Request URL is missing a host.")
     normalized_allowed = tuple(str(item or "").strip().lower() for item in allowed_hosts or ())
     for allowed in normalized_allowed:
         if not allowed:
             continue
         if host == allowed or host.endswith("." + allowed):
             return
-    raise RuntimeError(f"Request host '{host}' is not allowlisted.")
+    raise AppRuntimeError(f"Request host '{host}' is not allowlisted.")
 
 
 def _open_https_request(req, *, timeout, allowed_hosts):
@@ -31,38 +36,38 @@ def _open_https_request(req, *, timeout, allowed_hosts):
     return opener.open(req, timeout=timeout)
 
 
-def open_bug_report_in_browser(issue_url, open_new_tab_fn):
+def open_bug_report_in_browser(issue_url: Any, open_new_tab_fn: Any) -> Any:
     if not open_new_tab_fn(issue_url):
-        raise RuntimeError("Failed to open browser issue form.")
+        raise AppRuntimeError("Failed to open browser issue form.")
     return issue_url
 
 
 def upload_bug_screenshot(
     *,
-    source_path,
-    summary,
-    token_env_name,
-    owner,
-    repo,
-    branch,
-    validate_file_fn,
-    detect_magic_ext_fn,
-    build_repo_path_fn,
-    prepare_upload_bytes_fn,
-):
+    source_path: Any,
+    summary: Any,
+    token_env_name: Any,
+    owner: Any,
+    repo: Any,
+    branch: Any,
+    validate_file_fn: Any,
+    detect_magic_ext_fn: Any,
+    build_repo_path_fn: Any,
+    prepare_upload_bytes_fn: Any,
+) -> Any:
     # Required for API upload path: token_env_name should point to a PAT/GitHub token env var.
     token = os.getenv(token_env_name, "").strip()
     if not token:
-        raise RuntimeError(f"Missing {token_env_name} token in environment.")
+        raise AppRuntimeError(f"Missing {token_env_name} token in environment.")
 
     validated_source = validate_file_fn(source_path)
     use_owner = str(owner or "").strip()
     use_repo = str(repo or "").strip()
     if not use_owner or not use_repo:
-        raise RuntimeError("Bug report repo is not configured.")
+        raise AppRuntimeError("Bug report repo is not configured.")
     detected_ext = detect_magic_ext_fn(validated_source)
     if not detected_ext:
-        raise RuntimeError("Selected file is not a valid supported image.")
+        raise AppRuntimeError("Selected file is not a valid supported image.")
 
     source_name = os.path.splitext(os.path.basename(validated_source))[0] + detected_ext
     repo_path = build_repo_path_fn(source_name, summary=summary)
@@ -90,16 +95,18 @@ def upload_bug_screenshot(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             detail = str(exc)
-        raise RuntimeError(f"Screenshot upload API error ({exc.code}): {detail}") from exc
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
-        raise RuntimeError(f"Failed to upload screenshot: {exc}") from exc
+        raise AppRuntimeError(f"Screenshot upload API error ({exc.code}): {detail}") from exc
+    except EXPECTED_ERRORS as exc:
+        raise AppRuntimeError(f"Failed to upload screenshot: {exc}") from exc
 
     parsed = {}
     try:
         parsed = json.loads(raw) if raw else {}
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         parsed = {}
     content_block = parsed.get("content") if isinstance(parsed, dict) else {}
     download_url = ""
@@ -116,18 +123,18 @@ def upload_bug_screenshot(
 
 def submit_bug_report_issue(
     *,
-    token_env_name,
-    owner,
-    repo,
-    labels,
-    title,
-    body_markdown,
-    open_browser_fn,
-):
+    token_env_name: Any,
+    owner: Any,
+    repo: Any,
+    labels: Any,
+    title: Any,
+    body_markdown: Any,
+    open_browser_fn: Any,
+) -> Any:
     use_owner = str(owner or "").strip()
     use_repo = str(repo or "").strip()
     if not use_owner or not use_repo:
-        raise RuntimeError("Bug report repo is not configured.")
+        raise AppRuntimeError("Bug report repo is not configured.")
 
     # Optional for issue create API; when missing we fall back to browser-based report flow.
     token = os.getenv(token_env_name, "").strip()
@@ -155,34 +162,36 @@ def submit_bug_report_issue(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             detail = str(exc)
         try:
             return open_browser_fn(title, body_markdown)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as fallback_exc:
-            raise RuntimeError(
+        except EXPECTED_ERRORS as fallback_exc:
+            raise AppRuntimeError(
                 f"GitHub API error ({exc.code}): {detail}. "
                 f"Browser fallback failed: {fallback_exc}"
             ) from exc
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
+    except EXPECTED_ERRORS as exc:
         try:
             return open_browser_fn(title, body_markdown)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as fallback_exc:
-            raise RuntimeError(
+        except EXPECTED_ERRORS as fallback_exc:
+            raise AppRuntimeError(
                 f"Failed to submit issue: {exc}. Browser fallback failed: {fallback_exc}"
             ) from exc
 
     try:
         parsed = json.loads(raw) if raw else {}
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         parsed = {}
     issue_url = str(parsed.get("html_url", "")).strip()
     if not issue_url:
-        raise RuntimeError("Issue was created but no issue URL was returned.")
+        raise AppRuntimeError("Issue was created but no issue URL was returned.")
     return issue_url
 
 
-def parse_discord_forum_tag_ids(raw_tag_ids):
+def parse_discord_forum_tag_ids(raw_tag_ids: Any) -> Any:
     # Forum tags can be configured as comma/space-separated numeric IDs.
     text = str(raw_tag_ids or "").strip()
     if not text:
@@ -203,20 +212,20 @@ def parse_discord_forum_tag_ids(raw_tag_ids):
 
 def submit_bug_report_discord_forum(
     *,
-    webhook_env_name,
-    summary,
-    details,
-    issue_url,
-    app_version,
-    theme_variant,
-    selected_path,
-    last_json_error,
-    last_highlight_note,
-    screenshot_url="",
-    screenshot_filename="",
-    screenshot_note="",
-    forum_tag_ids_raw="",
-):
+    webhook_env_name: Any,
+    summary: Any,
+    details: Any,
+    issue_url: Any,
+    app_version: Any,
+    theme_variant: Any,
+    selected_path: Any,
+    last_json_error: Any,
+    last_highlight_note: Any,
+    screenshot_url: Any="",
+    screenshot_filename: Any="",
+    screenshot_note: Any="",
+    forum_tag_ids_raw: Any="",
+) -> Any:
     # Optional Discord forum mirror for bug reports:
     # - when webhook env var is missing, skip silently (non-blocking);
     # - when configured, create a forum post/thread via thread_name.
@@ -303,7 +312,8 @@ def submit_bug_report_discord_forum(
             parsed = {}
             try:
                 parsed = json.loads(raw) if raw else {}
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 parsed = {}
             return {
                 "sent": True,
@@ -314,8 +324,9 @@ def submit_bug_report_discord_forum(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             detail = str(exc)
-        raise RuntimeError(f"Discord forum webhook error ({exc.code}): {detail}") from exc
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError) as exc:
-        raise RuntimeError(f"Failed to send Discord forum bug report: {exc}") from exc
+        raise AppRuntimeError(f"Discord forum webhook error ({exc.code}): {detail}") from exc
+    except EXPECTED_ERRORS as exc:
+        raise AppRuntimeError(f"Failed to send Discord forum bug report: {exc}") from exc

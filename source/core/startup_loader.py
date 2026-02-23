@@ -1,10 +1,10 @@
-from typing import Callable, Set, Tuple
+from typing import Any, Callable, Set, Tuple
 
 
 VALID_THEME_VARIANTS = ("SIINDBAD", "KAMUE")
 
 
-def normalize_theme_variant(value, default="SIINDBAD") -> str:
+def normalize_theme_variant(value: Any, default: Any="SIINDBAD") -> str:
     variant = str(value or "").upper()
     if variant in VALID_THEME_VARIANTS:
         return variant
@@ -12,7 +12,7 @@ def normalize_theme_variant(value, default="SIINDBAD") -> str:
     return fallback if fallback in VALID_THEME_VARIANTS else "SIINDBAD"
 
 
-def resolve_required_variants(required_variants, active_variant) -> Set[str]:
+def resolve_required_variants(required_variants: Any, active_variant: Any) -> Set[str]:
     required = {
         str(name).upper()
         for name in (required_variants or set())
@@ -23,7 +23,7 @@ def resolve_required_variants(required_variants, active_variant) -> Set[str]:
     return {normalize_theme_variant(active_variant)}
 
 
-def prepare_loader_variants(active_variant, deferred_variants):
+def prepare_loader_variants(active_variant: Any, deferred_variants: Any) -> Any:
     active = normalize_theme_variant(active_variant)
     deferred = {
         str(name).upper()
@@ -38,8 +38,8 @@ def compute_loader_progress(
     elapsed_ms: float,
     timeline_ms: int,
     ready: bool,
-    required_variants,
-    active_variant,
+    required_variants: Any,
+    active_variant: Any,
     variant_progress_getter: Callable[[str], float],
 ) -> Tuple[float, float, float]:
     timeline_ms = max(1000, int(timeline_ms or 0))
@@ -86,7 +86,7 @@ def compute_loader_hide_hold_ms(elapsed_ms: float, timeline_ms: int, min_hold_ms
     return max(int(min_hold_ms), remaining_ms)
 
 
-def normalize_deferred_variants_for_schedule(deferred_variants) -> Tuple[str, ...]:
+def normalize_deferred_variants_for_schedule(deferred_variants: Any) -> Tuple[str, ...]:
     return tuple(
         sorted(
             {
@@ -104,7 +104,7 @@ def prewarm_tick_policy(
     idle_budget_ms: int,
     loader_tick_ms: int,
     idle_tick_ms: int,
-):
+) -> Any:
     if loader_visible:
         budget_ms = max(2, int(loader_budget_ms or 0))
         max_tasks_this_tick = 2

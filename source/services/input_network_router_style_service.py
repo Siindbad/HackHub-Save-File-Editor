@@ -5,6 +5,7 @@ framed sections and editable port/state fields.
 """
 
 import tkinter as tk
+from typing import Any
 
 
 def _format_input_text(value):
@@ -19,7 +20,7 @@ def _is_false_like(value):
     return str(value).strip().lower() == "false"
 
 
-def is_network_router_group_payload(owner, path, value):
+def is_network_router_group_payload(owner: Any, path: Any, value: Any) -> Any:
     if not isinstance(path, list) or len(path) != 1:
         return False
     if owner._normalize_root_tree_key(path[0]) != "network":
@@ -29,7 +30,7 @@ def is_network_router_group_payload(owner, path, value):
     return all(isinstance(item, dict) and str(item.get("type", "")).upper() == "ROUTER" for item in value)
 
 
-def collect_router_input_rows(owner, normalized_path, routers, max_rows=60):
+def collect_router_input_rows(owner: Any, normalized_path: Any, routers: Any, max_rows: Any=60) -> Any:
     # Build editable row definitions with rel_paths mapped to original Network list indices.
     full_network = owner._get_value(normalized_path)
     if not isinstance(full_network, list):
@@ -108,7 +109,7 @@ def collect_router_input_rows(owner, normalized_path, routers, max_rows=60):
     return rows
 
 
-def render_router_input_rows(owner, host, normalized_path, row_defs):
+def render_router_input_rows(owner: Any, host: Any, normalized_path: Any, row_defs: Any) -> Any:
     # Concept-2 layout with framed left identity block and framed editable sections.
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()

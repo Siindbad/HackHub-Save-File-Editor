@@ -5,9 +5,10 @@ so layout iterations do not bloat the main editor module.
 """
 
 import tkinter as tk
+from typing import Any
 
 
-def collect_database_grades_matrix(value, max_rows=40):
+def collect_database_grades_matrix(value: Any, max_rows: Any=40) -> Any:
     # Detect Grades rows from either:
     # 1) direct Database->tables->Grades list, or
     # 2) root Database list containing entries with tables.Grades.
@@ -101,7 +102,7 @@ def _looks_like_grades_rows(rows):
     return isinstance(student_cell, dict) and "value" in student_cell
 
 
-def render_database_grades_matrix(owner, host, normalized_path, matrix_payload):
+def render_database_grades_matrix(owner: Any, host: Any, normalized_path: Any, matrix_payload: Any) -> Any:
     # Render Concept-1 style matrix: only editable=true cells get input boxes.
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()

@@ -1,40 +1,67 @@
 """JSON diagnostic note mapping and log writer service."""
 
+from __future__ import annotations
+
+import logging
 import os
 import tempfile
 from datetime import datetime
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+_LOG = logging.getLogger(__name__)
+
+_LOGGER = logging.getLogger(__name__)
+_EXPECTED_DIAG_ERRORS = (
+    OSError,
+    ValueError,
+    TypeError,
+    RuntimeError,
+    AttributeError,
+    KeyError,
+    IndexError,
+    ImportError,
+)
 
 
-def diag_system_from_note(note, is_symbol_error_note=None):
+def _log_expected_diag_error(stage: str, exc: Exception) -> None:
+    _LOGGER.debug(
+        "json_error_diag.expected_error",
+        extra={"stage": stage, "error_type": type(exc).__name__},
+        exc_info=exc,
+    )
+
+
+def diag_system_from_note(note: object, is_symbol_error_note: Any = None) -> str:
     """Map a diagnostic note string to a stable log system bucket."""
     note_text = str(note or "").strip().lower()
-    if note_text.startswith("locked_"):
-        return "highlight_restore"
-    if note_text.startswith("overlay_"):
-        return "overlay_parse"
-    if note_text.startswith("highlight_failed"):
-        return "highlight_internal"
-    if note_text.startswith("cursor_restore"):
-        return "cursor_restore"
-    if (
-        note_text.startswith("spacing_")
-        or note_text.startswith("missing_phone")
-        or note_text.startswith("invalid_email")
-    ):
-        return "input_validation"
-    if note_text.startswith("symbol_"):
-        return "symbol_recovery"
+    match note_text:
+        case _ if note_text.startswith("locked_"):
+            return "highlight_restore"
+        case _ if note_text.startswith("overlay_"):
+            return "overlay_parse"
+        case _ if note_text.startswith("highlight_failed"):
+            return "highlight_internal"
+        case _ if note_text.startswith("cursor_restore"):
+            return "cursor_restore"
+        case _ if (
+            note_text.startswith("spacing_")
+            or note_text.startswith("missing_phone")
+            or note_text.startswith("invalid_email")
+        ):
+            return "input_validation"
+        case _ if note_text.startswith("symbol_"):
+            return "symbol_recovery"
     # Older symbol diagnostics used `invalid_*`; keep them grouped with symbol recovery.
     if note_text.startswith("invalid_") and callable(is_symbol_error_note):
         try:
             if is_symbol_error_note(note_text):
                 return "symbol_recovery"
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
-            pass
+        except _EXPECTED_DIAG_ERRORS as exc:
+            _log_expected_diag_error("diag_system_from_note", exc)
     return "json_highlight"
 
 
-def log_json_error(owner, exc, target_line, note=""):
+def log_json_error(owner: Any, exc: Exception, target_line: object, note: str = "") -> None:
     """Append a normalized diagnostics entry to the runtime diagnostics log."""
     try:
         log_path = owner._diag_log_path()
@@ -42,8 +69,8 @@ def log_json_error(owner, exc, target_line, note=""):
             log_dir = os.path.dirname(str(log_path or ""))
             if log_dir:
                 os.makedirs(log_dir, exist_ok=True)
-        except Exception:
-            pass
+        except _EXPECTED_DIAG_ERRORS as mkdir_exc:
+            _log_expected_diag_error("ensure_log_dir", mkdir_exc)
         log_path_abs = os.path.abspath(log_path)
         for legacy_name in owner.LEGACY_DIAG_LOG_FILENAMES:
             legacy_path = os.path.join(tempfile.gettempdir(), str(legacy_name))
@@ -52,7 +79,8 @@ def log_json_error(owner, exc, target_line, note=""):
             try:
                 if os.path.isfile(legacy_path):
                     os.remove(legacy_path)
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 pass
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = getattr(exc, "msg", str(exc))
@@ -60,7 +88,7 @@ def log_json_error(owner, exc, target_line, note=""):
         colno = getattr(exc, "colno", None)
         try:
             target_line = int(target_line)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             target_line = int(lineno or 1)
         target_line = max(1, target_line)
         diag_system = diag_system_from_note(
@@ -71,7 +99,8 @@ def log_json_error(owner, exc, target_line, note=""):
         try:
             item_id = owner.tree.focus()
             selected_path = owner.item_to_path.get(item_id, None)
-        except Exception:
+        except _EXPECTED_DIAG_ERRORS as tree_exc:
+            _log_expected_diag_error("resolve_selected_path", tree_exc)
             selected_path = None
         path_text = repr(selected_path)
         context = []
@@ -80,7 +109,8 @@ def log_json_error(owner, exc, target_line, note=""):
         for ln in range(start, end + 1):
             try:
                 text = owner.text.get(f"{ln}.0", f"{ln}.0 lineend")
-            except Exception:
+            except _EXPECTED_DIAG_ERRORS as text_exc:
+                _log_expected_diag_error("collect_context_line", text_exc)
                 text = ""
             context.append(f"{ln}: {text}")
         entry = (
@@ -98,8 +128,8 @@ def log_json_error(owner, exc, target_line, note=""):
                 owner.DIAG_LOG_MAX_BYTES,
                 owner.DIAG_LOG_KEEP_BYTES,
             )
-        except Exception:
-            pass
+        except _EXPECTED_DIAG_ERRORS as trim_exc:
+            _log_expected_diag_error("trim_dated_log", trim_exc)
         with open(log_path, "a", encoding="utf-8") as handle:
             handle.write(entry)
         # Mirror write: keep one stable non-dated diagnostics file for local
@@ -115,11 +145,12 @@ def log_json_error(owner, exc, target_line, note=""):
                             owner.DIAG_LOG_MAX_BYTES,
                             owner.DIAG_LOG_KEEP_BYTES,
                         )
-                    except Exception:
-                        pass
+                    except _EXPECTED_DIAG_ERRORS as trim_exc:
+                        _log_expected_diag_error("trim_canonical_log", trim_exc)
                     with open(canonical_path, "a", encoding="utf-8") as handle:
                         handle.write(entry)
-        except Exception:
-            pass
-    except Exception:
+        except _EXPECTED_DIAG_ERRORS as canonical_exc:
+            _log_expected_diag_error("write_canonical_log", canonical_exc)
+    except _EXPECTED_DIAG_ERRORS as write_exc:
+        _log_expected_diag_error("write_diagnostics_log", write_exc)
         return

@@ -37,6 +37,12 @@ CRASH_LOG_FILENAME = "sins_editor_crash.log"
 CRASH_STATE_FILENAME = "crash_prompt_state.json"
 CRASH_LOG_TAIL_MAX_CHARS = 12000
 
+LIVE_FEEDBACK_DELAY_MS_DEFAULT = 140
+STATUS_LOADED = "Loaded"
+STATUS_SAVED = "Saved"
+STATUS_EXPORTED_HHSAV = "Exported .hhsav"
+EXPORT_HHSAV_DIALOG_TITLE = "Export As .hhsav (gzip)"
+
 DIST_ASSET_SHA256_CANDIDATES = ("sins_editor-onedir.zip.sha256", "sha256.txt", "checksums.txt")
 UPDATE_REQUIRE_SHA256 = True
 UPDATE_VERIFY_AUTHENTICODE = True

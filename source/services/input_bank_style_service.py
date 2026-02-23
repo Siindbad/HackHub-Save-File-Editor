@@ -5,9 +5,10 @@ layout/style iterations do not bloat the main editor module.
 """
 
 import tkinter as tk
+from typing import Any
 
 
-def collect_bank_input_rows(value, max_rows=40):
+def collect_bank_input_rows(value: Any, max_rows: Any=40) -> Any:
     # Bank style-4 view: discover account/provider/balance/IBAN rows and map editable balance rel_paths.
     rows = []
 
@@ -94,7 +95,7 @@ def _draw_rounded(canvas, x1, y1, x2, y2, radius, color, splinesteps=24):
     )
 
 
-def render_bank_input_style_rows(owner, host, normalized_path, row_defs):
+def render_bank_input_style_rows(owner: Any, host: Any, normalized_path: Any, row_defs: Any) -> Any:
     # Render style-4 inspired Bank INPUT rows with provider pill + balance editor.
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     name_fg = "#C8A8FF" if variant == "KAMUE" else "#f2ad5e"

@@ -1,22 +1,27 @@
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 def _to_float(value, default=0.0) -> float:
     # Safe numeric coercion helper for mixed tk/system metric inputs.
     try:
         return float(value)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return float(default)
 
 
 def _to_int(value, default=0) -> int:
     try:
         return int(value)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return int(default)
 
 
-def clamp_display_scale(value, minimum: float = 0.8, maximum: float = 2.5) -> float:
+def clamp_display_scale(value: Any, minimum: float = 0.8, maximum: float = 2.5) -> float:
     # Keep UI scale within supported runtime bounds.
     scale = _to_float(value, default=1.0)
     return max(float(minimum), min(float(maximum), scale))
@@ -45,12 +50,12 @@ def tk_scaling_from_display_scale(display_scale: float) -> float:
 
 
 def compute_window_layout_for_screen(
-    screen_width,
-    screen_height,
-    display_scale=1.0,
-    base_width=1000,
-    base_height=700,
-):
+    screen_width: Any,
+    screen_height: Any,
+    display_scale: Any=1.0,
+    base_width: Any=1000,
+    base_height: Any=700,
+) -> Any:
     # Compute startup window size/min-size centered for the active monitor.
     screen_width = max(640, _to_int(round(_to_float(screen_width, 1280.0)), default=1280))
     screen_height = max(480, _to_int(round(_to_float(screen_height, 720.0)), default=720))
@@ -84,7 +89,7 @@ def compute_window_layout_for_screen(
     }
 
 
-def auto_display_profile_for_screen(screen_width, screen_height, display_scale):
+def auto_display_profile_for_screen(screen_width: Any, screen_height: Any, display_scale: Any) -> Any:
     # Apply low-scale boosts on high-resolution displays to preserve readability.
     width = max(640, _to_int(round(_to_float(screen_width, 1280.0)), default=1280))
     height = max(480, _to_int(round(_to_float(screen_height, 720.0)), default=720))
@@ -122,18 +127,18 @@ def auto_display_profile_for_screen(screen_width, screen_height, display_scale):
 
 
 def compute_centered_toplevel_geometry(
-    screen_width,
-    screen_height,
-    width_px,
-    height_px,
+    screen_width: Any,
+    screen_height: Any,
+    width_px: Any,
+    height_px: Any,
     *,
-    min_width=260,
-    min_height=160,
-    max_width_ratio=0.92,
-    max_height_ratio=0.90,
-    anchor_rect=None,
-    virtual_root_rect=None,
-):
+    min_width: Any=260,
+    min_height: Any=160,
+    max_width_ratio: Any=0.92,
+    max_height_ratio: Any=0.90,
+    anchor_rect: Any=None,
+    virtual_root_rect: Any=None,
+) -> Any:
     # Center popups and clamp them to either anchor rect or monitor bounds.
     screen_width = max(640, _to_int(round(_to_float(screen_width, 1280.0)), default=1280))
     screen_height = max(480, _to_int(round(_to_float(screen_height, 720.0)), default=720))
@@ -174,7 +179,8 @@ def compute_centered_toplevel_geometry(
             max_y = max(vy, (vy + vh) - height)
             x = max(vx, min(max_x, x))
             y = max(vy, min(max_y, y))
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             x = max(0, int(round((screen_width - width) / 2.0)))
             y = max(0, int(round((screen_height - height) / 2.0)))
     else:

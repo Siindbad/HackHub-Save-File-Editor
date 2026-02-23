@@ -1,5 +1,9 @@
 import tkinter as tk
 import tkinter.font as tkfont
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 def _overlay_scale_metrics(owner, title):
@@ -22,7 +26,7 @@ def _overlay_scale_metrics(owner, title):
     }
 
 
-def place_error_pin(owner, index):
+def place_error_pin(owner: Any, index: Any) -> Any:
     # Place a narrow marker at the current fix/insertion index.
     try:
         palette = owner._current_error_palette()
@@ -38,7 +42,8 @@ def place_error_pin(owner, index):
         line_text = owner._line_text(line)
         try:
             col = int(str(index).split(".")[1])
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             col = len(line_text)
         col = max(0, min(col, len(line_text)))
         font = tkfont.Font(font=owner.text.cget("font"))
@@ -52,19 +57,21 @@ def place_error_pin(owner, index):
         owner.error_pin.place(x=x, y=pin_y, width=pin_w, height=pin_h)
         owner.error_pin.lift()
         return True
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return False
 
 
-def clear_error_pin(owner):
+def clear_error_pin(owner: Any) -> Any:
     if owner.error_pin is not None:
         try:
             owner.error_pin.place_forget()
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
 
 
-def show_error_overlay(owner, title, message):
+def show_error_overlay(owner: Any, title: Any, message: Any) -> Any:
     # Build the floating error card and apply error tint to editor content.
     pending_actions = getattr(owner, "_error_overlay_actions", None)
     owner._destroy_error_overlay()
@@ -153,12 +160,13 @@ def show_error_overlay(owner, title, message):
     owner.error_overlay = overlay
 
 
-def destroy_error_overlay(owner):
+def destroy_error_overlay(owner: Any) -> Any:
     # Fully clear overlay + tint + pin state.
     if owner.error_overlay is not None:
         try:
             owner.error_overlay.destroy()
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
         owner.error_overlay = None
     owner._last_error_overlay_message = ""
@@ -168,7 +176,7 @@ def destroy_error_overlay(owner):
     owner._clear_error_pin()
 
 
-def apply_error_tint(owner):
+def apply_error_tint(owner: Any) -> Any:
     try:
         palette = owner._current_error_palette()
         owner.text.tag_remove("error_tint", "1.0", "end")
@@ -176,27 +184,31 @@ def apply_error_tint(owner):
         owner.text.tag_config("error_tint", background=palette["tint_bg"], foreground=palette["tint_fg"])
         owner.text.tag_lower("error_tint")
         owner._apply_text_selection_style(use_error_palette=True)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return
 
 
-def clear_error_tint(owner):
+def clear_error_tint(owner: Any) -> Any:
     try:
         owner.text.tag_remove("error_tint", "1.0", "end")
         owner._apply_text_selection_style(use_error_palette=False)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return
 
 
-def refresh_active_error_theme(owner):
+def refresh_active_error_theme(owner: Any) -> Any:
     # Recolor active error visuals when app theme changes.
     try:
         palette = owner._current_error_palette()
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return
     try:
         has_overlay = bool(owner.error_overlay is not None and owner.error_overlay.winfo_exists())
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         has_overlay = False
     has_tint = owner._tag_has_ranges("error_tint")
     has_line = owner._tag_has_ranges("json_error_line")
@@ -209,12 +221,14 @@ def refresh_active_error_theme(owner):
         try:
             owner.text.tag_config("error_tint", background=palette["tint_bg"], foreground=palette["tint_fg"])
             owner.text.tag_lower("error_tint")
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
     if has_line:
         try:
             owner.text.tag_config("json_error_line", background=palette["line_bg"], foreground="#ffffff")
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
     if has_error:
         try:
@@ -224,7 +238,8 @@ def refresh_active_error_theme(owner):
                 insertion_only=bool(getattr(owner, "_last_error_insertion_only", False)),
             )
             owner.text.tag_config("json_error", background=marker_bg, foreground=marker_fg)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
     try:
         if owner.error_pin is not None and owner.error_pin.winfo_exists():
@@ -234,7 +249,8 @@ def refresh_active_error_theme(owner):
                 insertion_only=bool(getattr(owner, "_last_error_insertion_only", False)),
             )
             owner.error_pin.configure(bg=marker_bg)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         pass
 
     try:
@@ -243,7 +259,8 @@ def refresh_active_error_theme(owner):
         if has_error:
             owner.text.tag_raise("json_error")
         owner.text.tag_raise("sel")
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         pass
 
     if has_overlay:
@@ -281,12 +298,14 @@ def refresh_active_error_theme(owner):
                         widget.configure(bg=overlay_bg)
                     else:
                         widget.configure(bg=overlay_bg)
-                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+                except EXPECTED_ERRORS as exc:
+                    _LOG.debug('expected_error', exc_info=exc)
                     pass
                 try:
                     for child in widget.winfo_children():
                         _refresh_widget(child)
-                except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+                except EXPECTED_ERRORS as exc:
+                    _LOG.debug('expected_error', exc_info=exc)
                     return
             owner.error_overlay.configure(
                 bg=overlay_bg,
@@ -297,21 +316,26 @@ def refresh_active_error_theme(owner):
                 _refresh_widget(child)
             for child in owner.error_overlay.winfo_children():
                 role = str(getattr(child, "_hh_overlay_role", "") or "")
-                if role == "message_label":
-                    child.pack_configure(padx=metrics["pad_x"], pady=(metrics["pad_y"], metrics["pad_y"]))
-                elif role == "button_row":
-                    child.pack_configure(padx=metrics["pad_x"], pady=(0, metrics["pad_y"]))
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+                match role:
+                    case "message_label":
+                        child.pack_configure(padx=metrics["pad_x"], pady=(metrics["pad_y"], metrics["pad_y"]))
+                    case "button_row":
+                        child.pack_configure(padx=metrics["pad_x"], pady=(0, metrics["pad_y"]))
+                    case _:
+                        pass
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
         try:
             line = owner._line_number_from_index(getattr(owner, "_error_focus_index", None))
             if line:
                 owner._position_error_overlay(line)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             pass
 
 
-def position_error_overlay(owner, line):
+def position_error_overlay(owner: Any, line: Any) -> Any:
     # Keep overlay near the active error line without leaving text viewport bounds.
     if owner.error_overlay is None:
         return
@@ -332,19 +356,22 @@ def position_error_overlay(owner, line):
                         break
                 font = tkfont.Font(font=owner.text.cget("font"))
                 return x0 + int(font.measure(line_text[:first_col]))
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 return int(fallback_x)
 
         def _nearest_non_empty_line(line_no):
             try:
                 max_line = int(owner.text.index("end-1c").split(".")[0])
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 max_line = max(int(line_no or 1), 1)
             line_no = max(1, min(int(line_no or 1), max_line))
             try:
                 if owner._line_text(line_no).strip():
                     return line_no
-            except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+            except EXPECTED_ERRORS as exc:
+                _LOG.debug('expected_error', exc_info=exc)
                 pass
             for delta in range(1, 6):
                 up = line_no - delta
@@ -352,28 +379,32 @@ def position_error_overlay(owner, line):
                     try:
                         if owner._line_text(up).strip():
                             return up
-                    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+                    except EXPECTED_ERRORS as exc:
+                        _LOG.debug('expected_error', exc_info=exc)
                         pass
                 down = line_no + delta
                 if down <= max_line:
                     try:
                         if owner._line_text(down).strip():
                             return down
-                    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+                    except EXPECTED_ERRORS as exc:
+                        _LOG.debug('expected_error', exc_info=exc)
                         pass
             return line_no
 
         anchor_index = getattr(owner, "_error_focus_index", None) or f"{line}.0"
         try:
             anchor_line = int(str(anchor_index).split(".")[0])
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             anchor_line = int(line)
         note_text = str(getattr(owner, "_last_error_highlight_note", "") or "")
         preserve_blank_anchor = False
         try:
             if note_text.endswith("_eof") and not owner._line_text(anchor_line).strip():
                 preserve_blank_anchor = True
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             preserve_blank_anchor = False
         if not preserve_blank_anchor:
             anchor_line = _nearest_non_empty_line(anchor_line)
@@ -415,7 +446,8 @@ def position_error_overlay(owner, line):
             anchor_font = tkfont.Font(font=owner.text.cget("font"))
             tab_shift_x = int(anchor_font.measure("    "))
             line_px = int(anchor_font.metrics("linespace"))
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             tab_shift_x = 28
             line_px = 16
         if is_warning_overlay:
@@ -458,5 +490,6 @@ def position_error_overlay(owner, line):
                 ny = max_y
 
         overlay.place_configure(x=nx, y=ny)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return

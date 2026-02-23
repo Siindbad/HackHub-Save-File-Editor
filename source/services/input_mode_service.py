@@ -1,12 +1,16 @@
 import json
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
-def is_input_scalar(value):
+def is_input_scalar(value: Any) -> Any:
     # INPUT mode only renders direct scalar leaves as editable fields.
     return isinstance(value, (str, int, float, bool)) or value is None
 
 
-def format_input_path_label(rel_path):
+def format_input_path_label(rel_path: Any) -> Any:
     # Human-readable path label for row captions (e.g. stats.level, mails[0].to).
     if not rel_path:
         return "(value)"
@@ -23,11 +27,11 @@ def format_input_path_label(rel_path):
     return "".join(parts)
 
 
-def collect_input_field_specs(value, base_path, max_fields=24):
+def collect_input_field_specs(value: Any, base_path: Any, max_fields: Any=24) -> Any:
     # Build a bounded list of editable scalar slots to keep INPUT view fast and stable.
     specs = []
 
-    def add_spec(rel_path, initial):
+    def add_spec(rel_path: Any, initial: Any) -> Any:
         if len(specs) >= max_fields:
             return
         specs.append(
@@ -73,7 +77,7 @@ def collect_input_field_specs(value, base_path, max_fields=24):
     return specs
 
 
-def set_nested_value(container, rel_path, new_value):
+def set_nested_value(container: Any, rel_path: Any, new_value: Any) -> Any:
     # Apply a coerced value back into a nested dict/list path.
     # Raise ValueError for stale/invalid paths so INPUT Apply can show a safe warning.
     if not rel_path:
@@ -121,7 +125,7 @@ def set_nested_value(container, rel_path, new_value):
     raise ValueError(f"path type mismatch at {list(rel_path)!r}")
 
 
-def strip_input_display_prefix(raw):
+def strip_input_display_prefix(raw: Any) -> Any:
     # INPUT entries may include a visual left pad for alignment.
     value = str(raw)
     if value.startswith("  "):
@@ -129,7 +133,7 @@ def strip_input_display_prefix(raw):
     return value
 
 
-def coerce_input_field_value(spec):
+def coerce_input_field_value(spec: Any) -> Any:
     # Convert StringVar input back to the original scalar type for safe write-back.
     expected_type = spec.get("type", str)
     var = spec.get("var")
@@ -157,9 +161,10 @@ def coerce_input_field_value(spec):
     return str(raw)
 
 
-def deep_copy_json_compatible(value):
+def deep_copy_json_compatible(value: Any) -> Any:
     # Avoid mutating live tree data while validating/applying INPUT edits.
     try:
         return json.loads(json.dumps(value, ensure_ascii=False))
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return value

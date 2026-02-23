@@ -1,6 +1,9 @@
 import difflib
 import re
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 LineGetter = Callable[[int], str]
@@ -18,7 +21,8 @@ def expected_closer_before_position(
     try:
         target_line = max(int(target_line), 1)
         target_col = max(int(target_col), 0)
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         return None
 
     stack = []
@@ -36,10 +40,11 @@ def expected_closer_before_position(
                 escape = False
                 continue
             if in_string:
-                if ch == "\\":
-                    escape = True
-                elif ch == '"':
-                    in_string = False
+                match ch:
+                    case "\\":
+                        escape = True
+                    case '"':
+                        in_string = False
                 continue
             if ch == '"':
                 in_string = True
@@ -164,7 +169,7 @@ def find_missing_list_close_before_object_end(
     return None, None, None, None
 
 
-def suggest_json_literal_from_token(token) -> Optional[str]:
+def suggest_json_literal_from_token(token: Any) -> Optional[str]:
     token_l = str(token or "").strip().lower()
     if not token_l:
         return None
@@ -182,7 +187,7 @@ def suggest_json_literal_from_token(token) -> Optional[str]:
     return None
 
 
-def boolean_literal_typo_diagnostic(line_text) -> Optional[dict]:
+def boolean_literal_typo_diagnostic(line_text: Any) -> Optional[dict]:
     if not line_text:
         return None
     raw = str(line_text).rstrip()
@@ -216,21 +221,23 @@ def find_nearby_boolean_literal_typo_line(
     line_getter: LineGetter,
     lineno: int,
     lookback: int = 3,
-):
+) -> Any:
     # Prefer current error line first, then scan nearby non-empty lines.
     if not lineno:
         return None, None, None
     candidates = []
     try:
         candidates.append((lineno, line_getter(lineno)))
-    except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
         pass
     line = max(int(lineno) - 1, 1)
     scanned = 0
     while line >= 1 and scanned < int(max(0, lookback)):
         try:
             txt = line_getter(line)
-        except (OSError, ValueError, TypeError, RuntimeError, AttributeError, KeyError, IndexError, ImportError):
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
             break
         if str(txt or "").strip():
             candidates.append((line, txt))
