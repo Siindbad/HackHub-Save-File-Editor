@@ -20,8 +20,6 @@ def resolve_find_entry_base_width(style: str, search_spec_width: Optional[int] =
     if style == "B":
         width = _to_int(search_spec_width, default=172)
         return max(1, width)
-    if style == "C":
-        return 154
     return 156
 
 
@@ -33,10 +31,15 @@ def compute_mode_spacing(
 ) -> Tuple[Tuple[int, int], Tuple[int, int]]:
     mode_name = str(mode or "").lower()
     style_name = str(style or "").upper()
+    host_pad = tuple(default_host_padx)
+    btn_pad = tuple(default_btn_padx)
+    # In style-B maximize mode, collapse the explicit button-left pad so the
+    # search box and Find Next control stay visually joined.
     if mode_name == "maximized" and style_name == "B":
-        # Pull these controls together only in max mode.
-        return (1, 0), (0, 0)
-    return tuple(default_host_padx), tuple(default_btn_padx)
+        # Slightly overlap frame padding so sprite edges visually touch.
+        host_pad = (1, 0)
+        btn_pad = (-1, 0)
+    return host_pad, btn_pad
 
 
 def compute_search_compaction_target(

@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-22 (updater runtime now handles protected-folder elevation and verifies ZIP-applied EXE hash before relaunch).
+Last sync: 2026-02-23 (toolbar service variant mapping cleaned to A/B-only behavior).
 
 | Module | Purpose |
 | --- | --- |

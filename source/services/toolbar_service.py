@@ -36,14 +36,6 @@ def siindbad_toolbar_button_symbol(style, key):
             "update": "\u27F3",
             "readme": "\u2139",
         },
-        "C": {
-            "open": "\u25E6",
-            "apply": "\u25C7",
-            "export": "\u25BE",
-            "find": "\u25CC",
-            "update": "\u25F4",
-            "readme": "\u25CB",
-        },
     }
     return sets.get(use_style, sets["A"]).get(str(key or ""), "")
 

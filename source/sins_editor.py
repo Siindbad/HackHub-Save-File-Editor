@@ -1496,6 +1496,7 @@ if not install_started:
         self._font_control_host = None
         self._toolbar_center_frame = None
         self._toolbar_layout_mode = None
+        self._toolbar_action_group_flow = None
         self._find_host_default_padx = None
         self._find_button_default_padx = None
         self._find_entry_width_override = None
@@ -1691,6 +1692,7 @@ if not install_started:
             "_startup_loader_progress_after_id",
             "_startup_loader_title_after_id",
             "_topbar_align_after_id",
+            "_topbar_align_settle_after_id",
             "_text_context_menu_pulse_after_id",
             "_bug_report_pulse_after_id",
             "_bug_submit_splash_after_id",
@@ -4948,11 +4950,6 @@ if not install_started:
                 ],
                 self._preferred_mono_family(),
             )
-        elif style == "C":
-            family = self._resolve_font_family(
-                ["Rajdhani SemiBold", "Rajdhani", "Segoe UI Semibold", "Segoe UI"],
-                self._preferred_mono_family(),
-            )
         else:
             family = self._resolve_font_family(
                 ["Segoe UI Semibold", "Segoe UI Bold", "Segoe UI"],
@@ -4962,8 +4959,6 @@ if not install_started:
         if style == "A" and small:
             size = 11
         if style == "A" and not small:
-            size = 10
-        if style == "C" and not small:
             size = 10
         return (family, size, "bold")
 
@@ -5030,7 +5025,7 @@ if not install_started:
             str(os.environ.get("HACKHUB_ENABLE_TOOLBAR_VARIANTS", "0")).strip().lower()
             in ("1", "true", "yes", "on")
         )
-        # Optional forced style lock; keep unset so A/B/C can be switched from UI.
+        # Optional forced style lock; keep unset so A/B can be switched from UI.
         self._siindbad_style_focus = None
         self._toolbar_button_images = {}
         self._toolbar_asset_image_cache = {}
@@ -5044,6 +5039,7 @@ if not install_started:
         self._find_button_default_padx = None
         self._find_entry_width_override = None
         self._topbar_align_after_id = None
+        self._topbar_align_settle_after_id = None
         self._siindbad_button_icons = {}
         self._siindbad_button_icon_signature = None
 
@@ -5342,18 +5338,6 @@ if not install_started:
                 "size_bg": "#11283c",
                 "inner_border": "#72d7ff",
             }
-        if style == "C":
-            return {
-                "button_bg": "#151f2c",
-                "button_fg": "#ebf5ff",
-                "button_active": "#1d2c3e",
-                "button_pressed": "#101a26",
-                "border": "#68a4c1",
-                "border_active": "#b4dff2",
-                "slot_bg": "#0f1926",
-                "size_bg": "#132131",
-                "inner_border": border_inner,
-            }
         return {
             "button_bg": "#102236",
             "button_fg": "#e2f3ff",
@@ -5385,12 +5369,7 @@ if not install_started:
         def shift_poly(points):
             return [(x, y + y_shift) for x, y in points]
 
-        if style == "C":
-            try:
-                draw.rounded_rectangle((0, 0, 15, 15), radius=4, outline=accent, width=1)
-            except _EXPECTED_APP_ERRORS:
-                draw.rectangle((0, 0, 15, 15), outline=accent, width=1)
-        elif style == "B":
+        if style == "B":
             # Bracket frame corners (R5 concept style).
             frame = accent2
             draw.line((1, 1, 5, 1), fill=frame, width=1)
@@ -5519,8 +5498,6 @@ if not install_started:
             if spec:
                 return int(spec.get("width", 172))
             return 172
-        if style == "C":
-            return 154
         return 156
 
     @staticmethod
@@ -5576,9 +5553,8 @@ if not install_started:
         if style == "B":
             palette = self._siindbad_toolbar_style_palette()
             search_spec = self._siindbad_b_search_spec() or {}
-            host_width = int(
-                search_spec.get("width", self._find_entry_target_width()) or self._find_entry_target_width()
-            )
+            # Honor runtime width overrides first (max-mode compaction), then spec/default width.
+            host_width = int(self._find_entry_target_width())
             host_height = int(search_spec.get("height", 32) or 32)
             host_height = min(host_height, self._siindbad_b_button_height("find", default_height=33))
             input_box = search_spec.get("input_box")
@@ -5656,11 +5632,19 @@ if not install_started:
                     y1 = max(3, y1 + 2)
                     x2 = min(draw_width - 4, x2 - 3)
                     y2 = min(draw_height - 3, y2 - 2)
+                    # Clamp placed entry inside host bounds so squeeze events
+                    # cannot render text box over neighboring toolbar controls.
+                    place_x = min(max(3, x1), max(3, draw_width - 7))
+                    place_y = min(max(3, y1), max(3, draw_height - 11))
+                    max_place_w = max(6, (draw_width - 3) - place_x)
+                    max_place_h = max(10, (draw_height - 3) - place_y)
+                    place_w = max(6, min(max_place_w, max(12, x2 - x1)))
+                    place_h = max(10, min(max_place_h, max(14, y2 - y1)))
                     self.find_entry.place(
-                        x=max(3, x1),
-                        y=max(3, y1),
-                        width=max(12, x2 - x1),
-                        height=max(14, y2 - y1),
+                        x=place_x,
+                        y=place_y,
+                        width=place_w,
+                        height=place_h,
                     )
                     inner_edge = getattr(self, "_find_entry_inner_edge_line", None)
                     if squeezed:
@@ -5673,10 +5657,10 @@ if not install_started:
                             )
                             self._find_entry_inner_edge_line = inner_edge
                         inner_edge.place(
-                            x=min(draw_width - 2, max(4, x2 + 1)),
-                            y=max(3, y1 - 1),
+                            x=min(draw_width - 2, max(4, place_x + place_w + 1)),
+                            y=max(3, place_y - 1),
                             width=1,
-                            height=max(14, y2 - y1 + 2),
+                            height=max(10, min(draw_height - max(3, place_y - 1), place_h + 2)),
                         )
                     elif inner_edge and inner_edge.winfo_exists():
                         inner_edge.place_forget()
@@ -5684,11 +5668,17 @@ if not install_started:
                     inner_edge = getattr(self, "_find_entry_inner_edge_line", None)
                     if inner_edge and inner_edge.winfo_exists():
                         inner_edge.place_forget()
+                    place_x = 8
+                    place_y = max(3, (draw_height - 2 - 20) // 2)
+                    if place_x >= draw_width - 3:
+                        place_x = max(3, draw_width - 8)
+                    max_place_w = max(6, (draw_width - 3) - place_x)
+                    max_place_h = max(10, (draw_height - 3) - place_y)
                     self.find_entry.place(
-                        x=8,
-                        y=max(3, (draw_height - 2 - 20) // 2),
-                        width=max(20, draw_width - 16),
-                        height=20,
+                        x=place_x,
+                        y=place_y,
+                        width=max(6, min(max_place_w, max(20, draw_width - 16))),
+                        height=max(10, min(max_place_h, 20)),
                     )
                 self.find_entry.lift()
                 edge = getattr(self, "_find_entry_edge_line", None)
@@ -5734,7 +5724,14 @@ if not install_started:
                 root.after_cancel(existing)
             except _EXPECTED_APP_ERRORS:
                 pass
+        settle_existing = getattr(self, "_topbar_align_settle_after_id", None)
+        if settle_existing:
+            try:
+                root.after_cancel(settle_existing)
+            except _EXPECTED_APP_ERRORS:
+                pass
         self._topbar_align_after_id = None
+        self._topbar_align_settle_after_id = None
         try:
             self._topbar_align_after_id = root.after(
                 max(0, int(delay_ms)),
@@ -5742,6 +5739,19 @@ if not install_started:
             )
         except _EXPECTED_APP_ERRORS:
             self._topbar_align_after_id = None
+        try:
+            # Windows maximize/restore can report stale `zoomed` state for one tick;
+            # run a short settle pass so toolbar mode re-evaluates after state stabilizes.
+            self._topbar_align_settle_after_id = root.after(
+                max(80, int(delay_ms) + 140),
+                self._align_topbar_to_logo_settled,
+            )
+        except _EXPECTED_APP_ERRORS:
+            self._topbar_align_settle_after_id = None
+
+    def _align_topbar_to_logo_settled(self):
+        self._topbar_align_settle_after_id = None
+        self._apply_toolbar_layout_mode(force=True)
 
     @staticmethod
     def _window_is_maximized(window):
@@ -5766,6 +5776,7 @@ if not install_started:
         mode = "maximized" if self._window_is_maximized(getattr(self, "root", None)) else "normal"
         previous_mode = str(getattr(self, "_toolbar_layout_mode", "") or "")
         if (not force) and previous_mode == mode:
+            self._apply_toolbar_action_group_flow(mode)
             self._apply_toolbar_spacing_for_mode(mode)
             # Keep max-mode placement synced to logo center while resizing.
             if mode == "maximized":
@@ -5773,11 +5784,55 @@ if not install_started:
             return
 
         self._toolbar_layout_mode = mode
+        self._apply_toolbar_action_group_flow(mode)
         self._apply_toolbar_spacing_for_mode(mode)
         if mode == "maximized":
             self._apply_toolbar_layout_max(center, host)
         else:
             self._apply_toolbar_layout_normal(center)
+
+    def _apply_toolbar_action_group_flow(self, mode):
+        # In style-B maximize, place right-actions immediately after search host
+        # so Find Next cannot drift away behind an internal center gap.
+        find_btn = (getattr(self, "_toolbar_buttons", None) or {}).get("find")
+        find_host = getattr(self, "_find_entry_host", None)
+        center = getattr(self, "_toolbar_center_frame", None)
+        if find_btn is None or find_host is None or center is None:
+            return
+        try:
+            if not (find_btn.winfo_exists() and find_host.winfo_exists() and center.winfo_exists()):
+                return
+        except _EXPECTED_APP_ERRORS:
+            return
+
+        find_btn_host = getattr(find_btn, "_siindbad_frame_host", find_btn)
+        actions_host = getattr(find_btn_host, "master", None)
+        if actions_host is None:
+            return
+        try:
+            if not (actions_host.winfo_exists() and actions_host.master is center):
+                return
+        except _EXPECTED_APP_ERRORS:
+            return
+
+        style = str(self._siindbad_effective_style()).upper()
+        target_flow = "max_left" if (str(mode).lower() == "maximized" and style == "B") else "normal_right"
+        if getattr(self, "_toolbar_action_group_flow", None) == target_flow:
+            return
+
+        try:
+            actions_host.pack_forget()
+        except _EXPECTED_APP_ERRORS:
+            pass
+
+        try:
+            if target_flow == "max_left":
+                actions_host.pack(side="left", padx=(0, 0), after=find_host)
+            else:
+                actions_host.pack(side="right")
+            self._toolbar_action_group_flow = target_flow
+        except _EXPECTED_APP_ERRORS:
+            return
 
     def _apply_toolbar_spacing_for_mode(self, mode):
         # Guard normal layout: only tighten the search->find gap in maximized mode.
@@ -5842,9 +5897,12 @@ if not install_started:
 
     def _apply_toolbar_layout_normal(self, center):
         # Restore default search width outside maximize mode.
-        if getattr(self, "_find_entry_width_override", None) is not None:
+        had_override = getattr(self, "_find_entry_width_override", None) is not None
+        if had_override:
             self._find_entry_width_override = None
-            self._update_find_entry_layout()
+        # Always refresh style-B find host geometry on restore so stale maximize
+        # host sizing cannot persist until a manual theme toggle.
+        self._update_find_entry_layout()
         try:
             center.place_forget()
         except _EXPECTED_APP_ERRORS:
@@ -5895,16 +5953,8 @@ if not install_started:
         if logo_center_rel is None:
             logo_center_rel = float(host_w) / 2.0
 
-        try:
-            if logo_visual_w and self._apply_max_toolbar_search_compaction(toolbar_w, logo_visual_w):
-                center.update_idletasks()
-                host.update_idletasks()
-                toolbar_w = int(center.winfo_reqwidth() or center.winfo_width() or toolbar_w)
-                toolbar_h = int(center.winfo_reqheight() or center.winfo_height() or toolbar_h)
-                host_w = int(host.winfo_width() or host.winfo_reqwidth() or host_w)
-                host_h = int(host.winfo_height() or host.winfo_reqheight() or host_h)
-        except _EXPECTED_APP_ERRORS:
-            pass
+        # Keep search input geometry stable across maximize/restore.
+        # Max-mode compaction is disabled to avoid visible Find-box shifts.
 
         placement = layout_topbar_core.compute_centered_toolbar_position(
             toolbar_w=toolbar_w,
@@ -5922,7 +5972,9 @@ if not install_started:
         except _EXPECTED_APP_ERRORS:
             pass
         try:
-            center.place(x=x, y=y)
+            # Lock placed wrapper size to content req-size; without this, a stale
+            # packed width can survive and create a visual gap beside Find Next.
+            center.place(x=x, y=y, width=toolbar_w, height=toolbar_h)
         except _EXPECTED_APP_ERRORS:
             pass
 
@@ -6903,8 +6955,8 @@ if not install_started:
     def _make_siindbad_stepper_button(self, parent, symbol, command):
         palette = self._siindbad_toolbar_style_palette()
         style = self._siindbad_effective_style()
-        box_w = 28 if style == "A" else (22 if style == "B" else 24)
-        box_h = 22 if style in ("A", "B") else 20
+        box_w = 28 if style == "A" else 22
+        box_h = 22
         box = tk.Frame(
             parent,
             bg=palette["slot_bg"],
@@ -6926,7 +6978,7 @@ if not install_started:
         )
         symbol_canvas.pack(fill="both", expand=True, padx=1, pady=1)
 
-        stroke = 2 if style in ("A", "B") else 1
+        stroke = 2
         normal_bg = palette["slot_bg"]
         active_bg = palette["button_active"]
         fg = palette["button_fg"]
@@ -6993,7 +7045,7 @@ if not install_started:
             highlightthickness=1,
             highlightbackground=frame_border,
             highlightcolor=frame_border_active,
-            width=136 if style == "A" else (122 if style == "B" else 170),
+            width=136 if style == "A" else 122,
             height=34,
         )
         host.pack_propagate(False)
@@ -7007,7 +7059,7 @@ if not install_started:
 
         label = tk.Label(
             parent_for_controls,
-            text="FONT" if style in ("A", "B") else "Font",
+            text="FONT",
             bg=palette["button_bg"],
             fg=palette["button_fg"],
             font=label_font,
@@ -7018,30 +7070,6 @@ if not install_started:
 
         minus_box = self._make_siindbad_stepper_button(parent_for_controls, "-", self.decrease_font_size)
         minus_box.pack(side="left", padx=(0, 1 if style == "B" else 3), pady=5)
-
-        if style == "C":
-            size_box = tk.Frame(
-                host,
-                bg=palette["size_bg"],
-                bd=0,
-                highlightthickness=1,
-                highlightbackground=frame_border,
-                highlightcolor=frame_border_active,
-                width=30,
-                height=20,
-            )
-            size_box.pack(side="left", padx=0, pady=5)
-            size_box.pack_propagate(False)
-            self._font_size_value_label = tk.Label(
-                size_box,
-                text=str(int(self._font_size)),
-                bg=palette["size_bg"],
-                fg=palette["button_fg"],
-                font=self._toolbar_button_font(small=True),
-                bd=0,
-                highlightthickness=0,
-            )
-            self._font_size_value_label.pack(fill="both", expand=True)
 
         plus_box = self._make_siindbad_stepper_button(parent_for_controls, "+", self.increase_font_size)
         plus_box.pack(side="left", padx=((1 if style == "B" else 3), (0 if style == "B" else 7)), pady=5)
@@ -7485,7 +7513,7 @@ if not install_started:
                 self._toolbar_button_images[target] = image
 
     def _load_siindbad_toolbar_button_images(self):
-        # SIINDBAD A/B/C uses generated native buttons/icons (non-asset-heavy).
+        # SIINDBAD A/B uses generated native buttons/icons (non-asset-heavy).
         self._toolbar_button_images = {}
 
     def _load_toolbar_button_images(self):
