@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-22 (version prep to 1.3.6 plus startup loader teardown hardening for quick-close stability smoke).
+Last sync: 2026-02-22 (version prep to 1.3.7 plus startup loader teardown hardening for quick-close stability smoke).
 
 | Module | Purpose |
 | --- | --- |
