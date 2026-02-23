@@ -1,4 +1,4 @@
-# Session Log Archive (Sources)
+﻿# Session Log Archive (Sources)
 
 Older source development session logs rotated from `README.md`.
 
@@ -32,7 +32,7 @@ Older source development session logs rotated from `README.md`.
 | Network INPUT rerender fix | Fixed FONT-triggered rerender payload resolution so ROUTER/FIREWALL stay on their selected subgroup views. |
 | FIREWALL font render fix | Restored full FIREWALL field rendering by fixing input-size parameter wiring in rule cell renderer. |
 | INPUT cleanup hardening | Removed legacy generic INPUT fallback rows and cleaned unused service locals to reduce dead paths. |
-| Bug report Discord forum mirror | Added optional Discord Forum webhook post on successful bug submit with non-blocking fallback safety. |
+| Bug report Discord forum mirror | Added optional Discord Forum webhook post on successful bug submit with non-blocking fallback guardrail. |
 | Installer release wiring | Added themed installer build path and publish flow for installer, EXE, and fallback zip assets. |
 | Release prep changelog fix | Fixed release prep Python arg handling so changelog apply reliably updates release notes. |
 
@@ -91,7 +91,7 @@ Older source development session logs rotated from `README.md`.
 | Runtime modularization | Extracted update, startup loader, UI build, and JSON diagnostics/highlight flows into modules. |
 | Cleanup verification | Removed unreachable legacy wrapper bodies and validated with full tests plus suite README checks. |
 | Bandit editor tuning | Added VS Code Bandit threshold args and repo skip config to reduce low-noise warnings. |
-| Safety dependency gate | Added Safety CLI checks across start-day, safe checks, hooks, CI, and docs. |
+| Dependency gate | Added pip-audit checks across start-day, safe checks, hooks, CI, and docs. |
 | Release AV hardening | Disabled UPX and added automatic onedir zip fallback publish asset flow. |
 | Security report clarity | Updated security report with git metadata, gate summaries, and shipped asset hashes. |
 | Commit helper workflow | Added `commit_ready.ps1` to auto-stage suite READMEs before committing. |
@@ -144,7 +144,7 @@ Older source development session logs rotated from `README.md`.
 | Windows update messaging | Added clearer Windows-friendly update errors for access denied, file lock, checksum, and signature cases. |
 | Manual update fallback | Added browser fallback prompt to open direct update download page when install/update fails. |
 | Update diagnostics logging | Added structured update failure logging with exception-chain details to daily diagnostics log file. |
-| Registry safety regression | Added test guard to enforce read-only Windows registry usage for long-path checks. |
+| Registry regression | Added test guard to enforce read-only Windows registry usage for long-path checks. |
 | INPUT lock gate default | Enabled INPUT mode lock gate by default unless explicitly unlocked by environment flag. |
 | INPUT lock notice styling | Updated lock-gate notice typography to Bahnschrift bold with white text for readability. |
 | Release workflow hardening | Added worktree-aware publish preflight and removed destructive dist handoff cleanup behavior. |
@@ -214,7 +214,7 @@ Older source development session logs rotated from `README.md`.
 | Bug report quality gates | Added screenshot-focused tests and revalidated full suite plus README policy validators. |
 | Token scope confirmation | Verified bug-reporter token includes public repo issues and contents write access. |
 | Screenshot security hardening | Added magic-byte format verification and blocked extension/content mismatch uploads. |
-| Metadata safety pass | Re-encoded selected screenshots before upload to strip metadata and normalize payloads. |
+| Metadata pass | Re-encoded selected screenshots before upload to strip metadata and normalize payloads. |
 | Screenshot regression tests | Added tests for mismatch rejection and sanitized image upload-byte generation. |
 | Security controls rollout | Applied image validation and metadata sanitization safeguards for public bug report uploads. |
 | Upload cleanup automation | Added scheduled cleanup workflow and validated dry-run plus real-delete execution paths. |
@@ -230,9 +230,9 @@ Older source development session logs rotated from `README.md`.
 | Tree refactor validation | Re-ran full pytest and suite validators after tree service extraction updates. |
 | Theme service extraction | Moved SIINDBAD/KAMUE palette and chip mapping helpers into `services/theme_service.py` for centralized theme logic. |
 | Theme asset service extraction | Moved theme asset path helpers into `services/theme_asset_service.py` and delegated resource/sprite path methods. |
-| Theme and loader safety check | Re-ran full pytest and suite validators after theme-service delegation to confirm no loader/theme regressions. |
+| Theme and loader check | Re-ran full pytest and suite validators after theme-service delegation to confirm no loader/theme regressions. |
 | Toolbar service extraction | Moved toolbar style resolution, button symbol/label mapping, and width presets into `services/toolbar_service.py`. |
-| Toolbar safety verification | Re-ran full pytest and suite validators after toolbar helper delegation to confirm no DPI/layout regressions. |
+| Toolbar verification | Re-ran full pytest and suite validators after toolbar helper delegation to confirm no DPI/layout regressions. |
 | Footer service extraction | Moved bottom-footer style variant and visual spacing spec helpers into `services/footer_service.py`. |
 | Footer extraction verification | Re-ran full pytest and suite validators after footer service delegation updates. |
 | Loader service extraction | Moved startup loader statement/title/fill helper logic into `services/loader_service.py`. |
@@ -241,7 +241,7 @@ Older source development session logs rotated from `README.md`.
 | Error refactor verification | Added error service tests and re-ran full pytest plus suite README validators successfully. |
 | Global suite registry policy | Added registry-driven guardrails to enforce suite onboarding rules for new team folders. |
 | Registry enforcement wiring | Wired suite registry validator into hooks, CI, start-day checks, docs, and policy tests. |
-| Parsing hybrid safety rollout | Added parser-specific regression gate, mutation tests, fuzz invariants, bug corpus, and note-contract checks. |
+| Parsing hybrid rollout | Added parser-specific regression gate, mutation tests, fuzz invariants, bug corpus, and note-contract checks. |
 | Parsing strict control wiring | Enforced parsing test-touch policy and wired parsing regression gate into hooks, CI, and start-day checks. |
 | Update UI service extraction | Moved themed update dialog and update overlay lifecycle helpers into `services/update_ui_service.py`. |
 | Label format service extraction | Moved tree label-format and dict key-change detection helpers into `services/label_format_service.py`. |
@@ -439,7 +439,7 @@ Contributors (source-only): Siindbad
 | Session bootstrap baseline | Verified clean `main` working tree and ran startup checks: `pytest -q` passing (`44 passed`), no `TODO/FIXME` markers in `sins_editor.py`. |
 | Known email-domain coverage | Scanned `hackhub-save-2026-02-12_20-46-51.hhsav` for email fields, added missing domains to `assets/known_email_domains.json`, and re-verified with `pytest -q` plus save re-scan (no remaining unknown-domain email issues). |
 | Bug-prevention engine hardening | Upgraded quality guardrails with stricter pytest config (`pytest.ini`), new coverage gate config (`.coveragerc`, 25% threshold), and expanded CI to test a Windows+Ubuntu Python matrix plus a dedicated coverage job. |
-| Dependency and fuzz safety checks | Added automated dependency review (`.github/workflows/dependency-review.yml`), weekly Dependabot updates (`.github/dependabot.yml`), and new Hypothesis property tests for email/domain validation edge cases. |
+| Dependency and fuzz checks | Added automated dependency review (`.github/workflows/dependency-review.yml`), weekly Dependabot updates (`.github/dependabot.yml`), and new Hypothesis property tests for email/domain validation edge cases. |
 | BOM-safe domain loading regression fix | Hardened known-domain loading to accept UTF-8 BOM (`utf-8-sig`) and added regression coverage so accidental BOM writes no longer disable domain validation. |
 | Bug workflow standardization | Added a short post-change smoke checklist and a compact bug-fix log template in `CONTRIBUTING.md` so both collaborators follow a consistent reproduce-fix-test loop with low overhead. |
 | Header branding refresh | Switched app header branding to the new `assets/logo2.png`, removed legacy `logo.png` usage from source lookup, and deleted obsolete `assets/logo.png` from the project. |
@@ -474,7 +474,7 @@ Contributors (source-only): Siindbad
 | ReadMe popup theming | Updated ReadMe popup to follow active theme title-bar colors, panel background, and text colors; reduced oversized empty space with tighter adaptive sizing; and added themed horizontal scrollbar styling. |
 | Theme-specific ReadMe headers | Added runtime ASCII header replacement per theme (new SIINDBAD and KAMUE banner variants) with centered rendering in the popup while keeping `assets/Readme.txt` as shared source content. |
 | ReadMe content refresh | Updated shared ReadMe metadata lines to `FOR GAME : Hackhub - Ultimate Hacker Simulator` and `ENGINEERS : SIINDBAD & KAMUE`, and tightened spacing above `[ USAGE ]` for cleaner presentation in both themes. |
-| Windows reliability and release perf gate | Hardened updater thread-safety for Tk UI calls, switched update EXE download to streamed writes with signature validation, capped diagnostics log growth, and added `tools/perf_smoke.py` as a strict pre-release gate wired into `tools/release_build.ps1` (with regression tests). |
+| Windows reliability and release perf gate | Hardened updater thread-guard for Tk UI calls, switched update EXE download to streamed writes with signature validation, capped diagnostics log growth, and added `tools/perf_smoke.py` as a strict pre-release gate wired into `tools/release_build.ps1` (with regression tests). |
 
 ## Development Session Log (2026-02-11)
 
@@ -503,4 +503,5 @@ Contributors (source-only): Siindbad, Kamue
 | Usage details | Dropdown supports 6/8/10/12/14/16/18/20/24/28/32 pt; keyboard shortcuts: `Ctrl`+`+`/`Ctrl`+`=` to increase and `Ctrl`+`-` to decrease; font setting persists in `~/.sins_editor_settings.json`; overlay uses selected font size. |
 
 <!-- SOURCE_SESSION_LOG_ARCHIVE_END -->
+
 

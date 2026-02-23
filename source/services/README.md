@@ -12,7 +12,7 @@ Last sync: 2026-02-22 (updater runtime now handles protected-folder elevation an
 | `error_overlay_service.py` | Provides error-overlay UI helpers for pin placement, tint lifecycle, overlay teardown, and theme refresh behavior. |
 | `error_service.py` | Provides error-system helper logic for before/after suggestion parsing, overlay payload shaping, marker color rules, and theme-aware error palettes. |
 | `footer_service.py` | Provides bottom-footer style and visual spec helpers used by badge/chip layout rendering. |
-| `highlight_label_service.py` | Provides edit-safety helpers for network list/context detection, key-rename guard payload shaping, and global JSON key/value label-policy detection/restore/highlight rules. |
+| `highlight_label_service.py` | Provides edit-guard helpers for network list/context detection, key-rename guard payload shaping, and global JSON key/value label-policy detection/restore/highlight rules. |
 | `input_bank_style_service.py` | Provides Bank-specific Input-mode row discovery and themed style rendering (account/IBAN labels, provider pill, rounded balance input) with editor FONT-linked size scaling support. |
 | `input_database_style_service.py` | Provides Database Grades Input-mode matrix detection/rendering with editability-aware cells (editable inputs vs centered read-only values) and editor FONT-linked size scaling support. |
 | `input_mode_service.py` | Provides Input-mode helper logic for scalar detection, field-spec collection, value coercion, and nested path writes. |

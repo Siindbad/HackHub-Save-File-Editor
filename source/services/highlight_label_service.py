@@ -51,7 +51,7 @@ def edit_allowed_payload(path, current_value, new_value, find_first_dict_key_cha
     if not recommended_name and added:
         recommended_name = str(added[0] or "").strip()
     if issue.get("type_changed"):
-        detail = "Object structure changed. Renaming/removing object keys is blocked for safety."
+        detail = "Object structure changed. Renaming/removing object keys is blocked to protect structure."
     else:
         parts = []
         if missing:

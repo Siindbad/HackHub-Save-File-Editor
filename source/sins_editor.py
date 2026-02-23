@@ -11991,7 +11991,7 @@ if not install_started:
         # Lock handoff must be anchored to the actively edited line.
         if insert_line and diag_line and int(insert_line) != int(diag_line):
             return False
-        # Parse-lock safety gate:
+        # Parse-lock guard gate:
         # only auto-restore when the parse diagnostic is near the user's active edit location.
         if insert_line and diag_line and abs(int(insert_line) - int(diag_line)) > 1:
             return False

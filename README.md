@@ -30,7 +30,7 @@
 
 | <img align="left" alt="VERIFICATION SUITE" src="https://img.shields.io/badge/VERIFICATION%20SUITE-0F172A?style=for-the-badge&labelColor=0F172A"> |
 |---|
-| - `pytest`: regression tests<br>- `ruff`: quality lint checks<br>- `semgrep`: static security analysis<br>- `trufflehog`: secret scanning<br>- `bandit`: Python security scan<br>- `safety`: dependency vulnerability scan<br>- `Microsoft Defender CLI`: preflight for release artifacts<br>- `VirusTotal`: release evidence (hash-first with upload fallback)<br>- Published `SHA256` checksum + `security-report.txt` release artifact evidence<br><br>We run these checks to reduce risk, but false positive reports could still happen. |
+| - `pytest`: regression tests<br>- `ruff`: quality lint checks<br>- `semgrep`: static security analysis<br>- `trufflehog`: secret scanning<br>- `bandit`: Python security scan<br>- `pip-audit`: dependency vulnerability scan<br>- `Microsoft Defender CLI`: preflight for release artifacts<br>- `VirusTotal`: release evidence (hash-first with upload fallback)<br>- Published `SHA256` checksum + `security-report.txt` release artifact evidence<br><br>We run these checks to reduce risk, but false positive reports could still happen. |
 
 | <img align="left" alt="LICENSE" src="https://img.shields.io/badge/LICENSE-MIT-8B0000?style=for-the-badge&labelColor=0F172A"> |
 |---|
