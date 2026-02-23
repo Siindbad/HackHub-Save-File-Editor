@@ -11,8 +11,17 @@ ASSETS_DIR = PROJECT_ROOT / "assets"
 
 
 def _build_asset_datas():
-    excluded_exact = {"session-log-archive.md"}
-    excluded_prefixes = ("readme-backups/",)
+    # Runtime packaging allowlist-by-exclusion:
+    # - Keep app/runtime assets, drop dev-only docs/previews/templates from dist payloads.
+    excluded_exact = {
+        "session-log-archive.md",
+        "readme-layout-preview.html",
+    }
+    excluded_prefixes = (
+        "readme-backups/",
+        "previews/",
+        "readme-template/",
+    )
     datas = []
     for file_path in sorted(ASSETS_DIR.rglob("*")):
         if not file_path.is_file():
