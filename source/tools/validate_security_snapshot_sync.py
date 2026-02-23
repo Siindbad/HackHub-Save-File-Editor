@@ -35,7 +35,6 @@ def _parse_args() -> argparse.Namespace:
 def _normalize_gate_label(label: str) -> str:
     normalized = label.strip().upper()
     aliases = {
-        "SAFETY": "SAFETY STATUS",
         "DEFENDER": "MICROSOFT DEFENDER",
         "VIRUSTOTAL": "VIRUS TOTAL",
     }
@@ -88,7 +87,7 @@ def _expected_statuses(report_map: dict[str, str]) -> dict[str, str]:
         "SEMGREP": _resolve_gate_result(report_map.get("semgrep_status", "")),
         "TRUFFLEHOG": _resolve_gate_result(report_map.get("trufflehog_status", "")),
         "BANDIT": _resolve_gate_result(report_map.get("bandit_status", "")),
-        "SAFETY STATUS": _resolve_gate_result(report_map.get("safety_status", "")),
+        "PIP AUDIT": _resolve_gate_result(report_map.get("pip_audit_status", "")),
         "MICROSOFT DEFENDER": _resolve_gate_result(report_map.get("defender_status", "")),
         "VIRUS TOTAL": _resolve_gate_result(report_map.get("virustotal_status", "")),
         "SHA256": sha_status,
