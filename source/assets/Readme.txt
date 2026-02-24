@@ -60,11 +60,21 @@ there HackTheCube web address if they deleted the email.
 =================================================================================
 
 [ CHANGE LOGS ]
-[ Version 1.3.6 ]
+[ Version 1.3.8 ]
 =================================================================================
 
+- Updated diagnostics to daily files and retained only today and yesterday logs.
+- Added browser fallback prompt to open direct update download page.
+- Added structured update failure logging with details to diagnostics logs.
+- HOTFIX: Added clear download/install/restart status and persistent update overlay.
+- HOTFIX: Updated version/changelog/disclaimer to include missed 1.3.2 items.
 - Fixed JSON Find Next to cycle global value matches across categories and include.
-- Updated JSON Find Next to collapse the previous top-level category.
+- Fixed protected-folder updates by adding admin elevation retry and silent ZIP apply.
+- Fixed style-B maximize toolbar flow.
+- HOTFIX: Updater verification.
+- Added delegation contracts and roadmap status updates to lock Phase 4 boundaries.
+- Added Phase 6 delegation contracts and roadmap status updates for next-phase handoff.
+- Added session and uptime diagnostics with sanitized exception-chain and hashed.
 
 [ DISCLAIMER ]
 =================================================================================
