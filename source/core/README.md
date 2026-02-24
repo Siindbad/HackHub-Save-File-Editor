@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-24 (tree-label routing moved to tree engine service ownership).
+Last sync: 2026-02-24 (domain implementation extraction sync: tree markers, toolbar max layout, README/text-context UI, JSON find orchestration).
 
 | Module | Purpose |
 | --- | --- |

@@ -969,49 +969,32 @@ if button._siindbad_base_image is None:
                     continue
                 child.destroy()
         if self._is_input_mode_category_disabled(normalized_path):
-            variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-            fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
-            disabled = tk.Label(
+            input_mode_service.show_input_mode_notice(
+                self,
                 host,
-                text=self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
-                bg=panel_bg,
-                fg=fg,
-                anchor="w",
-                justify="left",
-                padx=12,
-                pady=12,
-                font=(self._credit_name_font()[0], self._input_mode_font_size(11, min_size=8, max_size=20), "bold"),
+                panel_bg,
+                self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
+                font_size=11,
+                tk_module=tk,
             )
-            disabled.pack(fill="x", expand=False)
-            self._input_mode_no_fields_label = disabled
-            # Track last rendered selection for disabled roots too; otherwise
-            # returning to a previously-rendered category can be incorrectly skipped.
-            self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-            self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-            self._input_mode_force_refresh = False
+            # Track disabled roots too; otherwise revisits can be incorrectly skipped.
+            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
             return
         if len(normalized_path) == 0:
-            variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-            fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
             has_data = getattr(self, "data", None) is not None
             message = (
                 "No direct value fields here. Select a specific item node to edit."
                 if has_data
                 else "No File Loaded. Open A .HHSAV File Before Continuing."
             )
-            empty = tk.Label(
+            input_mode_service.show_input_mode_notice(
+                self,
                 host,
-                text=message,
-                bg=panel_bg,
-                fg=fg,
-                anchor="w",
-                justify="left",
-                padx=12,
-                pady=12,
-                font=(self._credit_name_font()[0], self._input_mode_font_size(9, min_size=8, max_size=18), "bold"),
+                panel_bg,
+                message,
+                font_size=9,
+                tk_module=tk,
             )
-            empty.pack(fill="x", expand=False)
-            self._input_mode_no_fields_label = empty
             return
         if (
             len(normalized_path) == 1
@@ -1022,24 +1005,15 @@ if button._siindbad_base_image is None:
             if is_network_router_payload or is_network_device_payload or is_network_firewall_payload:
                 pass
             else:
-                variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-                fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
-                empty = tk.Label(
+                input_mode_service.show_input_mode_notice(
+                    self,
                     host,
-                    text="Select A Sub Category To View Input Fields",
-                    bg=panel_bg,
-                    fg=fg,
-                    anchor="w",
-                    justify="left",
-                    padx=12,
-                    pady=12,
-                    font=(self._credit_name_font()[0], self._input_mode_font_size(11, min_size=8, max_size=20), "bold"),
+                    panel_bg,
+                    "Select A Sub Category To View Input Fields",
+                    font_size=11,
+                    tk_module=tk,
                 )
-                empty.pack(fill="x", expand=False)
-                self._input_mode_no_fields_label = empty
-                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-                self._input_mode_force_refresh = False
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
         if self._is_bank_input_style_path(normalized_path):
             bank_rows = self._collect_bank_input_rows(value)
@@ -1047,9 +1021,7 @@ if button._siindbad_base_image is None:
                 self._render_bank_input_style_rows(host, normalized_path, bank_rows)
                 self._refresh_input_mode_bool_widget_colors()
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-                self._input_mode_force_refresh = False
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
         if self._is_database_input_style_path(normalized_path):
             grades_matrix = self._collect_database_grades_matrix(value)
@@ -1057,17 +1029,13 @@ if button._siindbad_base_image is None:
                 self._render_database_grades_input_matrix(host, normalized_path, grades_matrix)
                 self._refresh_input_mode_bool_widget_colors()
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-                self._input_mode_force_refresh = False
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
         if self._is_suspicion_input_style_path(normalized_path):
             if self._render_suspicion_phone_input(host, normalized_path, value):
                 self._refresh_input_mode_bool_widget_colors()
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-                self._input_mode_force_refresh = False
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
         if is_network_router_payload:
             router_rows = self._collect_network_router_input_rows(normalized_path, value)
@@ -1083,9 +1051,7 @@ if button._siindbad_base_image is None:
                 self._clear_router_virtual_state()
                 self._refresh_input_mode_bool_widget_colors()
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-                self._input_mode_force_refresh = False
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
         if is_network_firewall_payload:
             firewall_rows = self._collect_network_firewall_input_rows(normalized_path, value)
@@ -1093,50 +1059,30 @@ if button._siindbad_base_image is None:
                 self._render_network_firewall_input_rows(host, normalized_path, firewall_rows)
                 self._refresh_input_mode_bool_widget_colors()
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-                self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-                self._input_mode_force_refresh = False
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
         if is_network_device_payload:
-            variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-            fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
-            disabled = tk.Label(
+            input_mode_service.show_input_mode_notice(
+                self,
                 host,
-                text=self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
-                bg=panel_bg,
-                fg=fg,
-                anchor="w",
-                justify="left",
-                padx=12,
-                pady=12,
-                font=(self._credit_name_font()[0], self._input_mode_font_size(11, min_size=8, max_size=20), "bold"),
+                panel_bg,
+                self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
+                font_size=11,
+                tk_module=tk,
             )
-            disabled.pack(fill="x", expand=False)
-            self._input_mode_no_fields_label = disabled
-            self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-            self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-            self._input_mode_force_refresh = False
+            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
             return
         # Generic INPUT fallback rows are retired; unsupported paths should
         # consistently show the development template until a custom layout is added.
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
-        disabled = tk.Label(
+        input_mode_service.show_input_mode_notice(
+            self,
             host,
-            text=self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
-            bg=panel_bg,
-            fg=fg,
-            anchor="w",
-            justify="left",
-            padx=12,
-            pady=12,
-            font=(self._credit_name_font()[0], self._input_mode_font_size(11, min_size=8, max_size=20), "bold"),
+            panel_bg,
+            self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
+            font_size=11,
+            tk_module=tk,
         )
-        disabled.pack(fill="x", expand=False)
-        self._input_mode_no_fields_label = disabled
-        self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
-        self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
-        self._input_mode_force_refresh = False
+        input_mode_service.mark_input_mode_render_complete(self, normalized_path)
         return
 
     def _input_mode_path_key(self, path):
@@ -3124,110 +3070,11 @@ if button._siindbad_base_image is None:
         self._style_text_context_menu()
 
     def _build_text_context_menu(self):
-        self._destroy_text_context_menu()
-        try:
-            scale = self._text_context_menu_scale()
-            def _s(value, min_value=1):
-                return max(min_value, int(round(float(value) * scale)))
-
-            popup = tk.Toplevel(self.root)
-            popup.withdraw()
-            popup.overrideredirect(True)
-            try:
-                popup.attributes("-topmost", True)
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-            anchor = tk.Frame(popup, bd=0, highlightthickness=1)
-            anchor.pack(fill="both", expand=True)
-            frame = tk.Frame(anchor, bd=0, highlightthickness=1)
-            frame.pack(fill="both", expand=True, padx=1, pady=1)
-            panel = tk.Frame(frame, bd=0, highlightthickness=1)
-            panel.pack(fill="both", expand=True, padx=_s(3), pady=(_s(3), _s(2)))
-            body = tk.Frame(panel, bd=0, highlightthickness=0)
-            body.pack(fill="both", expand=True, padx=_s(2), pady=(_s(2), _s(1)))
-
-            items = {}
-            widget_actions = {}
-            menu_layout = (
-                ("undo", "Undo", "Ctrl+Z"),
-                ("redo", "Redo", "Ctrl+Y"),
-                ("copy", "Copy", "Ctrl+C"),
-                ("paste", "Paste", "Ctrl+V"),
-                ("autofix", "Auto-Fix", ""),
-            )
-            total_items = len(menu_layout)
-            for item_idx, (action, label, shortcut) in enumerate(menu_layout):
-                if action == "copy":
-                    separator = tk.Frame(body, bd=0, height=1)
-                    separator.pack(fill="x", padx=_s(7), pady=_s(5))
-                    self._text_context_menu_separator = separator
-                elif action == "autofix":
-                    separator = tk.Frame(body, bd=0, height=1)
-                    separator.pack(fill="x", padx=_s(7), pady=_s(5))
-                row = tk.Frame(body, bd=0, highlightthickness=1, cursor="hand2")
-                row_bottom = _s(0 if item_idx == (total_items - 1) else 1)
-                row.pack(fill="x", padx=_s(2), pady=(_s(1), row_bottom))
-                title = tk.Label(row, text=str(label).upper(), anchor="w")
-                shortcut_label = tk.Label(row, text=shortcut, anchor="e")
-                if action == "autofix":
-                    title.configure(anchor="center", justify="center")
-                    title.grid(
-                        row=0,
-                        column=0,
-                        columnspan=2,
-                        padx=_s(6),
-                        pady=_s(4),
-                        sticky="nsew",
-                    )
-                    row.grid_columnconfigure(0, weight=1)
-                    row.grid_columnconfigure(1, weight=1)
-                else:
-                    title.grid(row=0, column=0, padx=(_s(11), _s(10)), pady=_s(4), sticky="w")
-                    shortcut_label.grid(row=0, column=1, padx=(0, _s(7)), pady=_s(4), sticky="e")
-                    row.grid_columnconfigure(0, weight=1)
-                    row.grid_columnconfigure(1, weight=0)
-                for widget in (row, title, shortcut_label):
-                    widget_actions[widget] = action
-                    widget.bind("<Motion>", self._on_text_context_menu_motion, add="+")
-                for widget in (title, shortcut_label):
-                    widget.bind(
-                        "<Button-1>",
-                        lambda _evt, key=action: self._on_text_context_menu_click(key),
-                        add="+",
-                    )
-                row.bind(
-                    "<Button-1>",
-                    lambda _evt, key=action: self._on_text_context_menu_click(key),
-                    add="+",
-                )
-                items[action] = {
-                    "row": row,
-                    "title": title,
-                    "shortcut": shortcut_label,
-                }
-                if action in ("copy", "autofix"):
-                    try:
-                        self._text_context_menu_separators.append(separator)
-                    except _EXPECTED_APP_ERRORS:
-                        pass
-
-            popup.bind("<Escape>", self._on_text_context_menu_escape, add="+")
-            popup.bind("<Button-1>", lambda _evt: "break", add="+")
-            popup.bind("<Motion>", self._on_text_context_menu_motion, add="+")
-
-            self._text_context_menu = popup
-            self._text_context_menu_anchor = anchor
-            self._text_context_menu_frame = frame
-            self._text_context_menu_panel = panel
-            self._text_context_menu_body = body
-            self._text_context_menu_items = items
-            self._text_context_menu_widget_actions = widget_actions
-            self._text_context_menu_item_states = {key: True for key in items}
-            self._text_context_menu_hover_action = None
-            self._style_text_context_menu()
-        except _EXPECTED_APP_ERRORS:
-            self._destroy_text_context_menu()
+        return text_context_manager.TEXT_CONTEXT.text_context_menu_service.build_text_context_menu(
+            self,
+            tk=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _text_context_menu_palette(self):
         theme = getattr(self, "_theme", {}) or {}
@@ -3280,94 +3127,10 @@ if button._siindbad_base_image is None:
         return 0.8
 
     def _style_text_context_menu(self):
-        popup = getattr(self, "_text_context_menu", None)
-        if popup is None:
-            return
-        try:
-            if not popup.winfo_exists():
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        palette = self._text_context_menu_palette()
-        scale = self._text_context_menu_scale()
-        title_size = max(8, int(round(11 * scale)))
-        small_size = max(7, int(round(9 * scale)))
-        font_family = self._resolve_font_family(
-            ["Tektur", "Oxanium", "Orbitron", "Rajdhani", "Share Tech Mono", "Segoe UI Semibold", "Segoe UI"],
-            self._preferred_mono_family(),
+        return text_context_manager.TEXT_CONTEXT.text_context_menu_service.style_text_context_menu(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
         )
-        try:
-            popup.configure(bg=palette["frame_bg"])
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-        anchor = getattr(self, "_text_context_menu_anchor", None)
-        frame = getattr(self, "_text_context_menu_frame", None)
-        panel = getattr(self, "_text_context_menu_panel", None)
-        body = getattr(self, "_text_context_menu_body", None)
-        separator = getattr(self, "_text_context_menu_separator", None)
-        separators = list(getattr(self, "_text_context_menu_separators", []) or [])
-
-        if anchor is not None:
-            try:
-                anchor.configure(
-                    bg=palette["bg"],
-                    highlightbackground=palette["border"],
-                    highlightcolor=palette["border"],
-                )
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if frame is not None:
-            try:
-                frame.configure(
-                    bg=palette["bg"],
-                    highlightbackground=palette["inset_border"],
-                    highlightcolor=palette["inset_border"],
-                )
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if panel is not None:
-            try:
-                panel.configure(
-                    bg=palette["panel_bg"],
-                    highlightbackground=palette["panel_border"],
-                    highlightcolor=palette["panel_border"],
-                )
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if body is not None:
-            try:
-                body.configure(bg=palette["bg"])
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if separator is not None:
-            try:
-                separator.configure(bg=palette["separator"])
-            except _EXPECTED_APP_ERRORS:
-                pass
-        for sep in separators:
-            try:
-                if sep is not None and sep.winfo_exists():
-                    sep.configure(bg=palette["separator"])
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-        self._style_text_context_menu_rows(
-            palette=palette,
-            font_family=font_family,
-            shortcut_font_family=self._preferred_mono_family(),
-            title_size=title_size,
-            small_size=small_size,
-            apply_fonts=True,
-        )
-        self._text_context_menu_row_style = {
-            "palette": palette,
-            "font_family": font_family,
-            "shortcut_font_family": self._preferred_mono_family(),
-            "title_size": title_size,
-            "small_size": small_size,
-        }
 
     def _style_text_context_menu_rows(
         self,
@@ -3422,90 +3185,17 @@ if button._siindbad_base_image is None:
         small_size=None,
         apply_fonts=False,
     ):
-        parts = getattr(self, "_text_context_menu_items", {}).get(action)
-        if not parts:
-            return
-        cached = getattr(self, "_text_context_menu_row_style", None)
-        if palette is None and isinstance(cached, dict):
-            palette = cached.get("palette")
-        if font_family is None and isinstance(cached, dict):
-            font_family = cached.get("font_family")
-        if shortcut_font_family is None and isinstance(cached, dict):
-            shortcut_font_family = cached.get("shortcut_font_family")
-        if title_size is None and isinstance(cached, dict):
-            title_size = cached.get("title_size")
-        if small_size is None and isinstance(cached, dict):
-            small_size = cached.get("small_size")
-        if palette is None:
-            palette = self._text_context_menu_palette()
-        if font_family is None:
-            font_family = self._preferred_mono_family()
-        if shortcut_font_family is None:
-            shortcut_font_family = self._preferred_mono_family()
-        scale = self._text_context_menu_scale()
-        if title_size is None:
-            title_size = max(8, int(round(11 * scale)))
-        if small_size is None:
-            small_size = max(7, int(round(9 * scale)))
-
-        row = parts["row"]
-        title = parts["title"]
-        shortcut = parts["shortcut"]
-        enabled = bool(getattr(self, "_text_context_menu_item_states", {}).get(action, True))
-        hovered = bool(action == getattr(self, "_text_context_menu_hover_action", None) and enabled)
-        if hovered:
-            row_bg = palette["active_bg"]
-            row_fg = palette["active_fg"]
-            row_border = palette["active_border"]
-            shortcut_fg = palette["active_fg"]
-        else:
-            row_bg = palette["bg"]
-            row_fg = palette["fg"] if enabled else palette["disabled_fg"]
-            row_border = palette["inset_border"]
-            shortcut_fg = palette["shortcut_fg"] if enabled else palette["disabled_fg"]
-        cursor = "hand2" if enabled else "arrow"
-        try:
-            row.configure(
-                bg=row_bg,
-                highlightbackground=row_border,
-                highlightcolor=row_border,
-                cursor=cursor,
-            )
-        except _EXPECTED_APP_ERRORS:
-            pass
-        for widget in (title, shortcut):
-            try:
-                widget.configure(bg=row_bg)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        try:
-            if action == "autofix":
-                title_kwargs = {
-                    "fg": row_fg,
-                    "cursor": cursor,
-                    "anchor": "center",
-                    "justify": "center",
-                }
-            else:
-                title_kwargs = {
-                    "fg": row_fg,
-                    "cursor": cursor,
-                }
-            if apply_fonts:
-                title_kwargs["font"] = (font_family, title_size, "bold")
-            title.configure(**title_kwargs)
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            shortcut_kwargs = {
-                "fg": shortcut_fg,
-                "cursor": cursor,
-            }
-            if apply_fonts:
-                shortcut_kwargs["font"] = (shortcut_font_family, small_size)
-            shortcut.configure(**shortcut_kwargs)
-        except _EXPECTED_APP_ERRORS:
-            pass
+        return text_context_manager.TEXT_CONTEXT.text_context_menu_service.style_text_context_menu_row(
+            self,
+            action,
+            palette=palette,
+            font_family=font_family,
+            shortcut_font_family=shortcut_font_family,
+            title_size=title_size,
+            small_size=small_size,
+            apply_fonts=apply_fonts,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _has_text_selection(self):
         return text_context_state_service.has_text_selection(self.text, _EXPECTED_APP_ERRORS)
@@ -3942,145 +3632,11 @@ if button._siindbad_base_image is None:
         return True
 
     def _show_text_context_menu(self, event=None):
-        self._input_context_target_widget = None
-        self._input_context_target_allow_paste = False
-        popup = getattr(self, "_text_context_menu", None)
-        if popup is None:
-            self._build_text_context_menu()
-            popup = getattr(self, "_text_context_menu", None)
-        if popup is None:
-            return "break"
-        try:
-            self.text.focus_set()
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-        anchor_index = "insert"
-        if event is not None and hasattr(event, "x") and hasattr(event, "y"):
-            try:
-                idx = self.text.index(f"@{event.x},{event.y}")
-                anchor_index = idx
-                if not self._has_text_selection():
-                    self.text.mark_set("insert", idx)
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-        self._set_text_context_menu_item_state("undo", self._text_can_undo())
-        self._set_text_context_menu_item_state("redo", self._text_can_redo())
-        self._set_text_context_menu_item_state("copy", self._has_text_selection())
-        self._set_text_context_menu_item_state("paste", self._clipboard_has_text())
-        self._set_text_context_menu_item_state("autofix", self._can_context_autofix())
-        self._text_context_menu_hover_action = None
-
-        menu_req_h = 0
-        vroot_top = 2
-        vroot_bottom = 0
-        text_bottom = None
-        root_bottom = None
-        try:
-            popup.update_idletasks()
-            menu_req_h = max(1, int(popup.winfo_reqheight()))
-            vroot_y = int(self.root.winfo_vrooty())
-            vroot_h = max(menu_req_h + 2, int(self.root.winfo_vrootheight()))
-            vroot_top = vroot_y + 2
-            vroot_bottom = vroot_y + vroot_h
-            try:
-                text_bottom = int(self.text.winfo_rooty()) + int(self.text.winfo_height())
-            except _EXPECTED_APP_ERRORS:
-                text_bottom = None
-            try:
-                root_bottom = int(self.root.winfo_rooty()) + int(self.root.winfo_height())
-            except _EXPECTED_APP_ERRORS:
-                root_bottom = None
-        except _EXPECTED_APP_ERRORS:
-            menu_req_h = 0
-            vroot_top = 2
-            vroot_bottom = 0
-            text_bottom = None
-            root_bottom = None
-
-        def _resolve_menu_y(preferred_y, anchor_top=None):
-            try:
-                y = int(preferred_y)
-            except _EXPECTED_APP_ERRORS:
-                return preferred_y
-            if menu_req_h <= 0:
-                return y
-            container_bottom = int(vroot_bottom)
-            if container_bottom <= 0:
-                try:
-                    container_bottom = max(menu_req_h + 2, int(self.root.winfo_screenheight()))
-                except _EXPECTED_APP_ERRORS:
-                    container_bottom = menu_req_h + 2
-            try:
-                if text_bottom is not None and int(text_bottom) > 0:
-                    container_bottom = min(container_bottom, int(text_bottom))
-            except _EXPECTED_APP_ERRORS:
-                pass
-            try:
-                if root_bottom is not None and int(root_bottom) > 0:
-                    container_bottom = min(container_bottom, int(root_bottom))
-            except _EXPECTED_APP_ERRORS:
-                pass
-            bottom_limit = container_bottom - menu_req_h - 2
-            if y > bottom_limit and anchor_top is not None:
-                try:
-                    above_y = int(anchor_top) - menu_req_h - 2
-                    if above_y >= int(vroot_top):
-                        return above_y
-                except _EXPECTED_APP_ERRORS:
-                    pass
-            if y > bottom_limit:
-                y = max(int(vroot_top), bottom_limit)
-            if y < int(vroot_top):
-                y = int(vroot_top)
-            return y
-
-        popup_x = None
-        popup_y = None
-        if event is not None and hasattr(event, "x_root"):
-            try:
-                popup_x = int(event.x_root)
-            except _EXPECTED_APP_ERRORS:
-                popup_x = None
-        try:
-            box = self.text.bbox(anchor_index)
-            if box:
-                # Anchor menu below the active line highlight for consistent placement.
-                anchor_top = self.text.winfo_rooty() + int(box[1])
-                popup_y = _resolve_menu_y(anchor_top + int(box[3]) + 2, anchor_top=anchor_top)
-                if popup_x is None:
-                    popup_x = self.text.winfo_rootx() + int(box[0]) + 6
-        except _EXPECTED_APP_ERRORS:
-            popup_y = None
-        if popup_x is None or popup_y is None:
-            try:
-                box = self.text.bbox("insert")
-                if box:
-                    popup_x = self.text.winfo_rootx() + int(box[0]) + 6
-                    anchor_top = self.text.winfo_rooty() + int(box[1])
-                    popup_y = _resolve_menu_y(anchor_top + int(box[3]) + 2, anchor_top=anchor_top)
-            except _EXPECTED_APP_ERRORS:
-                popup_x = None
-                popup_y = None
-        if (popup_x is None or popup_y is None) and event is not None and hasattr(event, "x_root") and hasattr(event, "y_root"):
-            try:
-                popup_x = int(event.x_root)
-                popup_y = _resolve_menu_y(int(event.y_root), anchor_top=int(event.y_root))
-            except _EXPECTED_APP_ERRORS:
-                popup_x = None
-                popup_y = None
-        if popup_x is None or popup_y is None:
-            try:
-                popup_x = self.root.winfo_rootx() + 40
-                popup_y = self.root.winfo_rooty() + 40
-            except _EXPECTED_APP_ERRORS:
-                return "break"
-
-        self._hide_text_context_menu()
-        self._text_context_menu_hover_action = None
-        self._show_text_context_menu_popup(popup_x, popup_y)
-        return "break"
+        return text_context_manager.TEXT_CONTEXT.text_context_menu_service.show_text_context_menu(
+            self,
+            event,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _on_context_copy(self):
         target_widget = getattr(self, "_input_context_target_widget", None)
@@ -5215,214 +4771,11 @@ if button._siindbad_base_image is None:
         return toolbar_service.siindbad_toolbar_label_text(style, key, text)
 
     def _update_find_entry_layout(self):
-        host = getattr(self, "_find_entry_host", None)
-        if not host or not host.winfo_exists():
-            return
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        style = self._siindbad_effective_style()
-        if variant == "KAMUE" and style == "A":
-            try:
-                host.pack_configure(fill="x", expand=True, padx=(3, 2))
-                host.pack_propagate(True)
-                self.find_entry.pack_configure(fill="x", expand=True, padx=(2, 2), pady=0, ipady=2)
-            except _EXPECTED_APP_ERRORS:
-                return
-            return
-        if style == "A":
-            try:
-                slot = getattr(self, "_find_entry_slot", None)
-                if slot and slot.winfo_exists():
-                    slot.place_forget()
-                edge = getattr(self, "_find_entry_edge_line", None)
-                if edge and edge.winfo_exists():
-                    edge.place_forget()
-                inner_edge = getattr(self, "_find_entry_inner_edge_line", None)
-                if inner_edge and inner_edge.winfo_exists():
-                    inner_edge.place_forget()
-                self.find_entry.place_forget()
-                host.pack_configure(fill="x", expand=True, padx=(4, 2))
-                host.configure(height=34)
-                host.pack_propagate(False)
-                self.find_entry.configure(
-                    width=20,
-                    relief="flat",
-                    bd=0,
-                    highlightthickness=1,
-                )
-                self.find_entry.pack_configure(
-                    fill="none",
-                    expand=False,
-                    padx=0,
-                    pady=(5, 3),
-                    ipady=1,
-                    anchor="center",
-                )
-            except _EXPECTED_APP_ERRORS:
-                return
-            return
-        if style == "B":
-            palette = self._siindbad_toolbar_style_palette()
-            search_spec = self._siindbad_b_search_spec() or {}
-            # Honor runtime width overrides first (max-mode compaction), then spec/default width.
-            host_width = int(self._find_entry_target_width())
-            host_height = int(search_spec.get("height", 32) or 32)
-            host_height = min(host_height, self._siindbad_b_button_height("find", default_height=33))
-            input_box = search_spec.get("input_box")
-            try:
-                slot = getattr(self, "_find_entry_slot", None)
-                host.pack_configure(fill="none", expand=False, padx=(2, 0))
-                host.configure(width=host_width, height=host_height, bg=palette.get("button_bg", "#0f2439"))
-                host.pack_propagate(False)
-                try:
-                    host.update_idletasks()
-                except _EXPECTED_APP_ERRORS:
-                    pass
-                actual_host_width = int(host.winfo_width() or 0)
-                actual_host_height = int(host.winfo_height() or 0)
-                draw_width = int(max(1, min(host_width, actual_host_width if actual_host_width > 1 else host_width)))
-                draw_height = int(max(1, min(host_height, actual_host_height if actual_host_height > 1 else host_height)))
-                squeezed = draw_width < host_width or draw_height < host_height
-                search_sprite = self._siindbad_b_search_sprite_image(draw_width, draw_height)
-                if search_sprite is not None:
-                    if slot is None or not slot.winfo_exists() or slot.master is not host:
-                        slot = tk.Label(
-                            host,
-                            bg=palette.get("button_bg", "#0f2439"),
-                            bd=0,
-                            highlightthickness=0,
-                            relief="flat",
-                        )
-                        self._find_entry_slot = slot
-                    slot.configure(image=search_sprite)
-                    slot.image = search_sprite
-                    slot.place(x=0, y=0, width=draw_width, height=draw_height)
-                    slot.lower()
-                    host.configure(highlightthickness=0)
-                else:
-                    if slot and slot.winfo_exists():
-                        slot.place_forget()
-                    host.configure(
-                        highlightthickness=1,
-                        highlightbackground=palette.get("border", "#349fc7"),
-                        highlightcolor=palette.get("border_active", "#a9ddf0"),
-                    )
-                edge = getattr(self, "_find_entry_edge_line", None)
-                if squeezed:
-                    if edge is None or not edge.winfo_exists() or edge.master is not host:
-                        edge = tk.Frame(host, bg=palette.get("border", "#349fc7"), bd=0, highlightthickness=0)
-                        self._find_entry_edge_line = edge
-                    edge.place(x=max(0, draw_width - 1), y=0, width=1, height=draw_height)
-                elif edge and edge.winfo_exists():
-                    edge.place_forget()
-                self.find_entry.configure(
-                    width=max(10, draw_width // 8),
-                    bg=palette.get("slot_bg", "#091727"),
-                    fg=palette.get("button_fg", "#dff8ff"),
-                    insertbackground=palette.get("button_fg", "#dff8ff"),
-                    highlightbackground=palette.get("slot_bg", "#091727"),
-                    highlightcolor=palette.get("slot_bg", "#091727"),
-                    selectbackground=palette.get("button_active", "#13304a"),
-                    selectforeground="#ffffff",
-                    relief="flat",
-                    bd=0,
-                    highlightthickness=0,
-                )
-                self.find_entry.pack_forget()
-                if isinstance(input_box, (tuple, list)) and len(input_box) == 4:
-                    x1, y1, x2, y2 = [int(v) for v in input_box]
-                    # Keep the search text box aligned to the sprite's true drawable size.
-                    scale_x = float(draw_width) / float(max(1, host_width))
-                    scale_y = float(draw_height) / float(max(1, host_height))
-                    x1 = int(round(x1 * scale_x))
-                    y1 = int(round(y1 * scale_y))
-                    x2 = int(round(x2 * scale_x))
-                    y2 = int(round(y2 * scale_y))
-                    # Draw border from sprite only; keep entry text area inset.
-                    x1 = max(3, x1 + 2)
-                    y1 = max(3, y1 + 2)
-                    x2 = min(draw_width - 4, x2 - 3)
-                    y2 = min(draw_height - 3, y2 - 2)
-                    # Clamp placed entry inside host bounds so squeeze events
-                    # cannot render text box over neighboring toolbar controls.
-                    place_x = min(max(3, x1), max(3, draw_width - 7))
-                    place_y = min(max(3, y1), max(3, draw_height - 11))
-                    max_place_w = max(6, (draw_width - 3) - place_x)
-                    max_place_h = max(10, (draw_height - 3) - place_y)
-                    place_w = max(6, min(max_place_w, max(12, x2 - x1)))
-                    place_h = max(10, min(max_place_h, max(14, y2 - y1)))
-                    self.find_entry.place(
-                        x=place_x,
-                        y=place_y,
-                        width=place_w,
-                        height=place_h,
-                    )
-                    inner_edge = getattr(self, "_find_entry_inner_edge_line", None)
-                    if squeezed:
-                        if inner_edge is None or not inner_edge.winfo_exists() or inner_edge.master is not host:
-                            inner_edge = tk.Frame(
-                                host,
-                                bg=palette.get("border_active", "#a9ddf0"),
-                                bd=0,
-                                highlightthickness=0,
-                            )
-                            self._find_entry_inner_edge_line = inner_edge
-                        inner_edge.place(
-                            x=min(draw_width - 2, max(4, place_x + place_w + 1)),
-                            y=max(3, place_y - 1),
-                            width=1,
-                            height=max(10, min(draw_height - max(3, place_y - 1), place_h + 2)),
-                        )
-                    elif inner_edge and inner_edge.winfo_exists():
-                        inner_edge.place_forget()
-                else:
-                    inner_edge = getattr(self, "_find_entry_inner_edge_line", None)
-                    if inner_edge and inner_edge.winfo_exists():
-                        inner_edge.place_forget()
-                    place_x = 8
-                    place_y = max(3, (draw_height - 2 - 20) // 2)
-                    if place_x >= draw_width - 3:
-                        place_x = max(3, draw_width - 8)
-                    max_place_w = max(6, (draw_width - 3) - place_x)
-                    max_place_h = max(10, (draw_height - 3) - place_y)
-                    self.find_entry.place(
-                        x=place_x,
-                        y=place_y,
-                        width=max(6, min(max_place_w, max(20, draw_width - 16))),
-                        height=max(10, min(max_place_h, 20)),
-                    )
-                self.find_entry.lift()
-                edge = getattr(self, "_find_entry_edge_line", None)
-                if edge and edge.winfo_exists():
-                    edge.lift()
-                inner_edge = getattr(self, "_find_entry_inner_edge_line", None)
-                if inner_edge and inner_edge.winfo_exists():
-                    inner_edge.lift()
-            except _EXPECTED_APP_ERRORS:
-                return
-            return
-        width_px = self._find_entry_target_width()
-        try:
-            slot = getattr(self, "_find_entry_slot", None)
-            if slot and slot.winfo_exists():
-                slot.place_forget()
-            edge = getattr(self, "_find_entry_edge_line", None)
-            if edge and edge.winfo_exists():
-                edge.place_forget()
-            inner_edge = getattr(self, "_find_entry_inner_edge_line", None)
-            if inner_edge and inner_edge.winfo_exists():
-                inner_edge.place_forget()
-            self.find_entry.place_forget()
-            host.pack_configure(fill="none", expand=False, padx=(4, 2))
-            host.configure(width=width_px, height=34)
-            host.pack_propagate(False)
-            self.find_entry.configure(
-                relief="flat",
-                bd=0,
-                highlightthickness=1,
-            )
-            self.find_entry.pack_configure(fill="x", expand=True, padx=(2, 2), pady=0, ipady=1)
-        except _EXPECTED_APP_ERRORS:
-            return
+        return toolbar_service.update_find_entry_layout(
+            self,
+            tk_module=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _schedule_topbar_alignment(self, delay_ms=35):
         root = getattr(self, "root", None)
@@ -5559,64 +4912,13 @@ if button._siindbad_base_image is None:
             pass
 
     def _apply_toolbar_layout_max(self, center, host):
-        # Max mode has its own wrapper positioning only; button dimensions stay
-        # untouched so normal layout cannot be affected by maximize tuning.
-        try:
-            center.update_idletasks()
-            host.update_idletasks()
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        try:
-            toolbar_w = int(center.winfo_reqwidth() or center.winfo_width() or 0)
-            toolbar_h = int(center.winfo_reqheight() or center.winfo_height() or 0)
-            host_w = int(host.winfo_width() or host.winfo_reqwidth() or 0)
-            host_h = int(host.winfo_height() or host.winfo_reqheight() or 0)
-        except _EXPECTED_APP_ERRORS:
-            return
-        if toolbar_w <= 0 or host_w <= 0:
-            return
-
-        logo_widget = getattr(self, "logo_frame", None) or getattr(self, "logo_label", None)
-        logo_center_rel = None
-        logo_visual_w = None
-        try:
-            if logo_widget is not None and logo_widget.winfo_exists():
-                logo_widget.update_idletasks()
-                logo_visual_w = float(max(1, int(logo_widget.winfo_width())))
-                logo_center_rel = (
-                    float(logo_widget.winfo_rootx())
-                    + (logo_visual_w / 2.0)
-                    - float(host.winfo_rootx())
-                )
-        except _EXPECTED_APP_ERRORS:
-            logo_center_rel = None
-            logo_visual_w = None
-        if logo_center_rel is None:
-            logo_center_rel = float(host_w) / 2.0
-
-        # Keep max-mode search geometry stable; avoid dynamic compaction during
-        # configure ticks because repeated width recalculation can cause jitter.
-
-        placement = layout_topbar_core.compute_centered_toolbar_position(
-            toolbar_w=toolbar_w,
-            toolbar_h=toolbar_h,
-            host_w=host_w,
-            host_h=host_h,
-            logo_center_rel=logo_center_rel,
+        return toolbar_service.apply_toolbar_layout_max(
+            self,
+            center,
+            host,
+            expected_errors=_EXPECTED_APP_ERRORS,
+            compute_centered_toolbar_position=layout_topbar_core.compute_centered_toolbar_position,
         )
-        if placement is None:
-            return
-        x, y = placement
-
-        try:
-            center.pack_forget()
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            center.place(x=x, y=y, width=toolbar_w, height=toolbar_h)
-        except _EXPECTED_APP_ERRORS:
-            pass
 
     def _align_topbar_to_logo(self):
         self._topbar_align_after_id = None
@@ -7941,245 +7243,18 @@ if button._siindbad_base_image is None:
 
     @staticmethod
     def _format_readme_content(content, wrap_width):
-        """Wrap readable prose while preserving section/divider formatting."""
-        width = max(56, int(wrap_width or 0))
-        out_lines = []
-        in_change_logs = False
-        for raw_line in str(content or "").splitlines():
-            line = raw_line.rstrip()
-            # Preserve centered/indented ASCII lines exactly as generated.
-            if line and (len(line) - len(line.lstrip(" ")) > 0):
-                out_lines.append(line)
-                continue
-            stripped = line.strip()
-            if not stripped:
-                out_lines.append("")
-                continue
-            if re.fullmatch(r"=+", stripped):
-                # Normalize divider length to current README viewport width.
-                out_lines.append("=" * width)
-                continue
-
-            if stripped.upper() == "[ CHANGE LOGS ]":
-                in_change_logs = True
-                out_lines.append(stripped)
-                continue
-            if stripped.startswith("[") and stripped.endswith("]"):
-                # Keep changelog scope active for the version marker only.
-                if in_change_logs and not re.match(r"^\[\s*Version\b.*\]$", stripped, re.IGNORECASE):
-                    in_change_logs = False
-                out_lines.append(stripped)
-                continue
-
-            num_match = re.match(r"^(\s*\d+\.\s+)(.+)$", line)
-            bullet_match = re.match(r"^(\s*-\s+)(.+)$", line)
-            if num_match or bullet_match:
-                match = num_match or bullet_match
-                prefix = match.group(1)
-                body = match.group(2).strip()
-                if in_change_logs and bullet_match:
-                    # Keep changelog bullets single-line so release notes stay aligned.
-                    out_lines.append(prefix + body)
-                    continue
-                body_width = max(24, width - len(prefix))
-                wrapped = textwrap.wrap(
-                    body,
-                    width=body_width,
-                    break_long_words=False,
-                    break_on_hyphens=False,
-                )
-                if not wrapped:
-                    out_lines.append(prefix.rstrip())
-                    continue
-                out_lines.append(prefix + wrapped[0])
-                continuation_prefix = " " * len(prefix)
-                out_lines.extend(continuation_prefix + chunk for chunk in wrapped[1:])
-                continue
-
-            wrapped = textwrap.wrap(
-                stripped,
-                width=width,
-                break_long_words=False,
-                break_on_hyphens=False,
-            )
-            if wrapped:
-                out_lines.extend(wrapped)
-            else:
-                out_lines.append("")
-        return "\n".join(out_lines)
+        return editor_ui_core.EDITOR_UI.readme_ui_service.format_readme_content(content, wrap_width)
 
     def show_readme(self, position_hint=None):
-        theme = getattr(self, "_theme", None)
-        base_dir = self._resource_base_dir()
-        readme_path = os.path.join(base_dir, "assets", "Readme.txt")
-        content = ""
-        if os.path.isfile(readme_path):
-            try:
-                with open(readme_path, "r", encoding="utf-8") as handle:
-                    content = handle.read()
-            except _EXPECTED_APP_ERRORS as exc:
-                messagebox.showerror("ReadMe", f"Failed to load README.md: {exc}")
-                return
-        else:
-            content = "Readme.txt not found in assets."
-
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-
-        existing = getattr(self, "_readme_window", None)
-        if existing is not None:
-            try:
-                if existing.winfo_exists():
-                    existing.destroy()
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-
-        window = tk.Toplevel(self.root)
-        self._readme_window = window
-        window.title("ReadMe")
-        window.transient(self.root)
-        window.bind(
-            "<Destroy>",
-            lambda _evt, win=window: setattr(self, "_readme_window", None)
-            if getattr(self, "_readme_window", None) is win
-            else None,
-            add="+",
+        return editor_ui_core.EDITOR_UI.readme_ui_service.show_readme(
+            self,
+            position_hint=position_hint,
+            tk_module=tk,
+            ttk_module=ttk,
+            tkfont_module=tkfont,
+            messagebox_module=messagebox,
+            expected_errors=_EXPECTED_APP_ERRORS,
         )
-        if theme:
-            window.configure(bg=theme["bg"])
-            try:
-                self._apply_windows_titlebar_theme(
-                    bg=theme.get("title_bar_bg"),
-                    fg=theme.get("title_bar_fg"),
-                    border=theme.get("title_bar_border"),
-                    window_widget=window,
-                )
-                window.after(
-                    0,
-                    lambda win=window, th=theme: self._apply_windows_titlebar_theme(
-                        bg=th.get("title_bar_bg"),
-                        fg=th.get("title_bar_fg"),
-                        border=th.get("title_bar_border"),
-                        window_widget=win,
-                    ),
-                )
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-
-        frame = ttk.Frame(window)
-        frame.pack(fill="both", expand=True, padx=8, pady=8)
-
-        mono = self._readme_font_for_theme()
-        lines = content.splitlines() or [""]
-        trimmed_lengths = [len(line.rstrip()) for line in lines if line.rstrip()]
-        if trimmed_lengths:
-            sorted_lengths = sorted(trimmed_lengths)
-            p90_index = max(0, int((len(sorted_lengths) - 1) * 0.90))
-            target_chars = sorted_lengths[p90_index] + 2
-        else:
-            target_chars = 80
-        # Keep README wider so changelog bullets do not need forced formatter wraps.
-        target_chars = max(78, min(118, target_chars + 8))
-        if variant == "KAMUE":
-            content = self._apply_kamue_readme_header(content, center_width=target_chars)
-            lines = content.splitlines() or [""]
-        elif variant == "SIINDBAD":
-            content = self._apply_siindbad_readme_header(content, center_width=target_chars)
-            lines = content.splitlines() or [""]
-        # Keep content compact while avoiding awkward single-word wraps on long lines.
-        readme_wrap_chars = max(72, target_chars - 1)
-        # Small right-side gutter so content does not hug the final visible column.
-        readme_view_chars = readme_wrap_chars + 2
-        content = self._format_readme_content(content, wrap_width=readme_wrap_chars)
-        lines = content.splitlines() or [""]
-
-        if variant == "KAMUE":
-            readme_bg = theme.get("panel", "#0d061c") if theme else "#0d061c"
-            readme_fg = "#efe5ff"
-            readme_border = readme_bg
-            readme_highlight = 0
-        else:
-            readme_bg = theme.get("panel", "#161b24") if theme else "#161b24"
-            readme_fg = "#dce8f4"
-            readme_border = theme.get("panel", "#161b24") if theme else "#161b24"
-            readme_highlight = 1
-
-        text = tk.Text(frame, wrap="none", font=mono, width=readme_view_chars)
-        text.pack(fill="both", expand=True, side="left")
-        v_scroll_style = getattr(self, "_v_scrollbar_style", "Vertical.TScrollbar")
-        v_scroll = ttk.Scrollbar(frame, orient="vertical", command=text.yview, style=v_scroll_style)
-        v_scroll.pack(fill="y", side="right")
-        h_scroll_style = getattr(self, "_h_scrollbar_style", "Horizontal.TScrollbar")
-        h_scroll = ttk.Scrollbar(frame, orient="horizontal", command=text.xview, style=h_scroll_style)
-        h_scroll.pack(fill="x", side="bottom")
-        text.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
-        if theme:
-            text.configure(
-                bg=readme_bg,
-                fg=readme_fg,
-                insertbackground=readme_fg,
-                selectbackground=theme["select_bg"],
-                selectforeground=theme["select_fg"],
-                relief="flat",
-                highlightthickness=readme_highlight,
-                highlightbackground=readme_border,
-                highlightcolor=readme_border,
-            )
-        text.insert("1.0", content)
-        text.configure(state="disabled")
-        try:
-            font = tkfont.Font(font=mono)
-            char_w = font.measure("M")
-            line_h = font.metrics("linespace")
-            width_px = char_w * readme_view_chars + 56
-            height_px = min(680, max(360, line_h * min(len(lines) + 2, 38)))
-            popup_scale = max(0.9, min(1.2, float(getattr(self, "_display_scale", 1.0) or 1.0)))
-            self._apply_centered_toplevel_geometry(
-                window,
-                width_px=int(round(width_px * popup_scale)),
-                height_px=int(round(height_px * popup_scale)),
-                min_width=640,
-                min_height=360,
-                max_width_ratio=0.92,
-                max_height_ratio=0.90,
-            )
-            if position_hint is not None:
-                try:
-                    window.update_idletasks()
-                    w = max(220, int(window.winfo_width()))
-                    h = max(140, int(window.winfo_height()))
-                    screen_w, screen_h = self._screen_size()
-                    px, py = int(position_hint[0]), int(position_hint[1])
-                    max_x = max(0, int(screen_w) - w)
-                    max_y = max(0, int(screen_h) - h)
-                    px = max(0, min(max_x, px))
-                    py = max(0, min(max_y, py))
-                    window.geometry(f"{w}x{h}+{px}+{py}")
-                except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
-                    pass
-        except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
-            self._apply_centered_toplevel_geometry(
-                window,
-                width_px=760,
-                height_px=520,
-                min_width=640,
-                min_height=360,
-                max_width_ratio=0.92,
-                max_height_ratio=0.90,
-            )
-            if position_hint is not None:
-                try:
-                    window.update_idletasks()
-                    w = max(220, int(window.winfo_width()))
-                    h = max(140, int(window.winfo_height()))
-                    screen_w, screen_h = self._screen_size()
-                    px, py = int(position_hint[0]), int(position_hint[1])
-                    max_x = max(0, int(screen_w) - w)
-                    max_y = max(0, int(screen_h) - h)
-                    px = max(0, min(max_x, px))
-                    py = max(0, min(max_y, py))
-                    window.geometry(f"{w}x{h}+{px}+{py}")
-                except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
-                    pass
 
     def set_status(self, msg):
         if self.status is not None:
@@ -8245,76 +7320,14 @@ if button._siindbad_base_image is None:
         return self._tree_marker_integrity_ok
 
     def _load_tree_marker_icon(self, kind, selected=False, expandable=False, expanded=False):
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        key = (variant, str(kind), bool(selected), bool(expandable), bool(expanded))
-        cache = getattr(self, "_tree_marker_icon_cache", None)
-        if not isinstance(cache, dict):
-            cache = {}
-            self._tree_marker_icon_cache = cache
-        cached = cache.get(key)
-        if cached is not None:
-            return cached
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            draw_module = importlib.import_module("PIL.ImageDraw")
-            palette = self._tree_marker_palette(variant)
-            style_variant = str(getattr(self, "_tree_style_variant", "B")).upper()
-            if style_variant == "B":
-                self._check_tree_marker_integrity()
-                theme_slug = "kamue" if variant == "KAMUE" else "siindbad"
-                arrow_state = "leaf"
-                if expandable:
-                    arrow_state = "expanded" if expanded else "collapsed"
-                if str(kind) == "main":
-                    icon_name = f"b2-main-{arrow_state}-{theme_slug}.png"
-                else:
-                    sel = "on" if selected else "off"
-                    icon_name = f"b2-sub-{sel}-{arrow_state}-{theme_slug}.png"
-                icon_path = os.path.join(self._resource_base_dir(), "assets", "buttons", "tree-b2", icon_name)
-                if os.path.isfile(icon_path):
-                    with image_module.open(icon_path) as icon_file:
-                        icon = icon_file.convert("RGBA")
-                    if str(kind) == "main":
-                        icon = self._nudge_marker_image_y(icon, delta_y=-1)
-                    else:
-                        icon = self._nudge_marker_image_y(icon, delta_y=-0.5)
-                    photo = self._pil_to_photo(icon)
-                    self._bounded_cache_put(cache, key, photo, max_items=128)
-                    return photo
-
-            if str(kind) == "main":
-                # Locked asset path: do not procedurally replace main-square style.
-                icon_name = self.TREE_MAIN_MARKER_FILES.get(variant, self.TREE_MAIN_MARKER_FILES["SIINDBAD"])
-                icon_path = os.path.join(self._resource_base_dir(), "assets", "buttons", icon_name)
-                self._check_tree_marker_integrity()
-                if os.path.isfile(icon_path):
-                    with image_module.open(icon_path) as icon_file:
-                        icon = icon_file.convert("RGBA")
-                    if style_variant == "B":
-                        icon = self._nudge_marker_image_y(icon, delta_y=-1)
-                    photo = self._pil_to_photo(icon)
-                    self._bounded_cache_put(cache, key, photo, max_items=64)
-                    return photo
-                self._bounded_cache_put(cache, key, None, max_items=64)
-                return None
-            else:
-                canvas = image_module.new("RGBA", (10, 10), (0, 0, 0, 0))
-                draw = draw_module.Draw(canvas)
-                fill = palette["sub_fill"] if selected else None
-                draw.ellipse(
-                    (1, 1, 8, 8),
-                    fill=fill,
-                    outline=palette["sub_edge"],
-                    width=1,
-                )
-                if style_variant == "B":
-                    canvas = self._nudge_marker_image_y(canvas, delta_y=-0.5)
-            photo = self._pil_to_photo(canvas)
-            self._bounded_cache_put(cache, key, photo, max_items=64)
-            return photo
-        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
-            self._bounded_cache_put(cache, key, None, max_items=64)
-            return None
+        return tree_engine_service.load_tree_marker_icon(
+            self,
+            kind,
+            selected=selected,
+            expandable=expandable,
+            expanded=expanded,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     @staticmethod
     def _nudge_marker_image_y(image, delta_y=-1):
@@ -8635,78 +7648,10 @@ if button._siindbad_base_image is None:
         return _find_group_item()
 
     def find_next(self, event=None):
-        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
-            self._find_next_input_mode()
-            return
-        query = self.find_entry.get().strip()
-        if not query:
-            self.set_status("Find: enter text to search")
-            return
-
-        query_lower = query.lower()
-        if query_lower != self.last_find_query:
-            build_matches_fn = getattr(self, "_build_json_find_matches", None)
-            if callable(build_matches_fn):
-                self.find_matches = build_matches_fn(query_lower)
-            else:
-                # Backward-compatible fallback for lightweight test doubles.
-                if not self._find_search_entries:
-                    self._find_search_entries = self._build_find_search_index()
-                self.find_matches = [entry[0] for entry in self._find_search_entries if query_lower in entry[1]]
-            self.find_index = 0
-            self.last_find_query = query_lower
-
-        if not self.find_matches:
-            self.set_status(f'Find: no matches for "{query}"')
-            return
-
-        item_id = None
-        total_matches = len(self.find_matches)
-        attempts = total_matches
-        while attempts > 0:
-            match_ref = self.find_matches[self.find_index]
-            self.find_index = (self.find_index + 1) % total_matches
-            if isinstance(match_ref, tuple) and len(match_ref) == 3 and match_ref[0] == "__group__":
-                item_id = self._ensure_tree_group_item_loaded(match_ref[1], match_ref[2])
-            else:
-                item_id = self._ensure_tree_item_for_path(match_ref)
-            if item_id is not None:
-                break
-            attempts -= 1
-        if item_id is None:
-            self.set_status(f'Find: no accessible matches for "{query}"')
-            self._reset_find_state()
-            return
-        if str(getattr(self, "_editor_mode", "JSON")).upper() == "JSON":
-            collapse_fn = getattr(self, "_collapse_previous_find_root_if_category_changed", None)
-            if callable(collapse_fn):
-                collapse_fn(item_id)
-        self._open_to_item(item_id)
-        tree_widget = getattr(self, "tree", None)
-        if tree_widget is not None:
-            try:
-                focus_fn = getattr(tree_widget, "focus", None)
-                if callable(focus_fn):
-                    focus_fn(item_id)
-            except _EXPECTED_APP_ERRORS:
-                pass
-            try:
-                select_fn = getattr(tree_widget, "selection_set", None)
-                if callable(select_fn):
-                    select_fn(item_id)
-            except _EXPECTED_APP_ERRORS:
-                pass
-            try:
-                see_fn = getattr(tree_widget, "see", None)
-                if callable(see_fn):
-                    see_fn(item_id)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        self.on_select(None)
-        focus_match_fn = getattr(self, "_focus_json_find_match", None)
-        if callable(focus_match_fn):
-            focus_match_fn(query)
-        self.set_status(f'Find: {self.find_index}/{len(self.find_matches)}')
+        return json_view_manager.JSON_VIEW.json_find_orchestrator_service.find_next(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _collapse_previous_find_root_if_category_changed(self, next_item_id):
         json_find_nav_service.collapse_previous_find_root_if_category_changed(self, next_item_id)
