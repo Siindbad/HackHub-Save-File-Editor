@@ -15,6 +15,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 VT_API_BASE = "https://www.virustotal.com/api/v3"
+VT_ALLOWED_HOSTS = {"www.virustotal.com", "virustotal.com"}
 DEFAULT_TARGET = ROOT / "dist" / "sins_editor-onedir.zip"
 
 
@@ -117,6 +118,26 @@ def _api_key() -> str:
     return str(os.getenv("VT_API_KEY", "")).strip()
 
 
+def _resolve_repo_file_path(path_value: str, *, arg_name: str) -> Path:
+    # Reject traversal tokens from CLI path input but allow absolute paths for CI temp dirs.
+    candidate = Path(path_value).expanduser()
+    if any(part == ".." for part in candidate.parts):
+        raise ValueError(f"{arg_name} must not include parent traversal segments.")
+    if not candidate.is_absolute():
+        candidate = ROOT / candidate
+    return candidate.resolve()
+
+
+def _sanitize_vt_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(str(url or "").strip())
+    host = str(parsed.hostname or "").strip().lower()
+    if parsed.scheme != "https" or host not in VT_ALLOWED_HOSTS:
+        raise ValueError(f"Unexpected VirusTotal URL host: {url}")
+    if not parsed.path:
+        raise ValueError(f"Unexpected VirusTotal URL path: {url}")
+    return urllib.parse.urlunparse(parsed._replace(fragment=""))
+
+
 def _http_json(
     method: str,
     url: str,
@@ -125,7 +146,11 @@ def _http_json(
     timeout_seconds: int,
     payload: bytes | None = None,
 ) -> tuple[int, dict[str, Any] | None, str]:
-    request = urllib.request.Request(url=url, data=payload, method=method)
+    try:
+        safe_url = _sanitize_vt_url(url)
+    except ValueError as exc:
+        return 0, None, str(exc)
+    request = urllib.request.Request(url=safe_url, data=payload, method=method)
     for name, value in headers.items():
         request.add_header(name, value)
     try:
@@ -251,7 +276,10 @@ def _upload_file(
         large_url = _get_upload_url(headers=headers, timeout_seconds=timeout_seconds)
         if not large_url:
             return 0, None, "Failed to resolve VirusTotal large-file upload URL."
-        upload_url = large_url
+        try:
+            upload_url = _sanitize_vt_url(large_url)
+        except ValueError as exc:
+            return 0, None, str(exc)
 
     boundary = f"----HackHubBoundary{int(time.time() * 1000)}"
     body = _multipart_file_payload(path, boundary=boundary)
@@ -293,9 +321,11 @@ def main() -> int:
     poll_interval_seconds = max(1.0, float(args.poll_interval_seconds))
     timeout_seconds = max(5, int(args.timeout_seconds))
 
-    target_path = Path(args.file)
-    if not target_path.is_absolute():
-        target_path = ROOT / target_path
+    try:
+        target_path = _resolve_repo_file_path(args.file, arg_name="--file")
+    except ValueError as exc:
+        print(f"VirusTotal gate failed: {exc}")
+        return 1
     if not target_path.exists():
         print(f"VirusTotal gate failed: target file not found: {target_path}")
         return 1

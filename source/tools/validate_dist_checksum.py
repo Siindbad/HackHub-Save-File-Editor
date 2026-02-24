@@ -8,7 +8,6 @@ import hashlib
 import pathlib
 import re
 
-
 def _parse_checksum_text(text: str, asset_name: str) -> str | None:
     asset_name = (asset_name or "").strip().lower()
     single_hash_re = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -38,6 +37,28 @@ def _sha256_file(path: pathlib.Path) -> str:
     return h.hexdigest().lower()
 
 
+def _resolve_dist_paths(dist_dir_raw: str, exe_name: str, checksum_name: str) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
+    # Restrict artifact names to flat file names; no path separators from CLI input.
+    dist_dir = pathlib.Path(dist_dir_raw).expanduser()
+    dist_dir = dist_dir.resolve()
+
+    for arg_name, file_name in (("--exe-name", exe_name), ("--checksum-name", checksum_name)):
+        parsed_name = pathlib.Path(str(file_name or "").strip())
+        if (
+            not parsed_name.name
+            or parsed_name.name != str(file_name or "").strip()
+            or parsed_name.is_absolute()
+            or any(part == ".." for part in parsed_name.parts)
+        ):
+            raise ValueError(f"{arg_name} must be a file name without path separators.")
+
+    exe_path = (dist_dir / exe_name).resolve()
+    checksum_path = (dist_dir / checksum_name).resolve()
+    if not exe_path.is_relative_to(dist_dir) or not checksum_path.is_relative_to(dist_dir):
+        raise ValueError("Artifact paths must resolve under --dist-dir.")
+    return dist_dir, exe_path, checksum_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dist-dir", default="dist")
@@ -50,9 +71,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    dist_dir = pathlib.Path(args.dist_dir)
-    exe_path = dist_dir / args.exe_name
-    checksum_path = dist_dir / args.checksum_name
+    try:
+        _, exe_path, checksum_path = _resolve_dist_paths(args.dist_dir, args.exe_name, args.checksum_name)
+    except ValueError as exc:
+        print(f"Checksum validation failed: {exc}")
+        return 1
 
     if not exe_path.is_file():
         if args.require:

@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 BADGE_RE = re.compile(
     r"https://img\.shields\.io/badge/([^-\)]+)-([^-\)\?]+)-[^)\s]+",
@@ -127,10 +129,24 @@ def _validate_virustotal_line(security_body: str, permalink: str) -> str | None:
     return None
 
 
+def _resolve_repo_path(path_value: str, *, arg_name: str) -> Path:
+    # Reject traversal tokens from CLI path input but allow absolute paths for CI temp dirs.
+    candidate = Path(path_value).expanduser()
+    if any(part == ".." for part in candidate.parts):
+        raise ValueError(f"{arg_name} must not include parent traversal segments.")
+    if not candidate.is_absolute():
+        candidate = ROOT / candidate
+    return candidate.resolve()
+
+
 def main() -> int:
     args = _parse_args()
-    report_path = Path(args.report).resolve()
-    security_md_path = Path(args.security_md).resolve()
+    try:
+        report_path = _resolve_repo_path(args.report, arg_name="--report")
+        security_md_path = _resolve_repo_path(args.security_md, arg_name="--security-md")
+    except ValueError as exc:
+        print(f"Security snapshot sync check failed: {exc}")
+        return 1
 
     if not security_md_path.exists():
         print(f"SECURITY.md not found: {security_md_path}")
