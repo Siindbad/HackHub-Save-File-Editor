@@ -1,0 +1,93 @@
+﻿name: Windows Binary Hardening
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "source/**"
+      - ".github/workflows/windows-binary-hardening.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "35 9 * * 1"
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  binskim:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            source/requirements-dev.txt
+            source/requirements-build.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r source/requirements-build.txt
+          pip install -r source/requirements-dev.txt
+
+      - name: Build Windows onedir artifact
+        shell: pwsh
+        run: |
+          Push-Location source
+          try {
+            python -m PyInstaller --clean sins_editor.spec
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Install BinSkim
+        shell: pwsh
+        run: |
+          $binskimVersion = "4.4.6"
+          $packagePath = "$env:RUNNER_TEMP\binskim.nupkg"
+          $extractPath = "$env:RUNNER_TEMP\binskim"
+          Invoke-WebRequest -Uri ("https://www.nuget.org/api/v2/package/Microsoft.CodeAnalysis.BinSkim/" + $binskimVersion) -OutFile $packagePath
+          Expand-Archive -Path $packagePath -DestinationPath $extractPath -Force
+          $binskimExe = Get-ChildItem -Path $extractPath -Recurse -Filter binskim.exe | Select-Object -First 1
+          if ($null -eq $binskimExe) {
+            throw "BinSkim executable not found after package extraction."
+          }
+          "BINSKIM_EXE=$($binskimExe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run BinSkim scan
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts\binskim -Force | Out-Null
+          $targetExe = "source\dist\sins_editor-onedir\sins_editor.exe"
+          if (-not (Test-Path $targetExe)) {
+            throw "Expected build output not found: $targetExe"
+          }
+          & $env:BINSKIM_EXE analyze $targetExe --verbose --output artifacts\binskim\binskim.sarif
+          if (($LASTEXITCODE -ne 0) -and ($LASTEXITCODE -ne 1)) {
+            throw ("BinSkim scan failed with unexpected exit code " + $LASTEXITCODE)
+          }
+
+      - name: Upload BinSkim artifact
+        id: upload_binskim
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: binskim-results
+          path: artifacts/binskim
+          if-no-files-found: error
+
+      - name: Attest BinSkim artifact
+        if: always() && steps.upload_binskim.outputs.artifact-digest != ''
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: binskim-results
+          subject-digest: ${{ steps.upload_binskim.outputs.artifact-digest }}

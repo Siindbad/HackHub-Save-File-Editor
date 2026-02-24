@@ -267,7 +267,7 @@ jobs:
               repo = (os.getenv("GH_REPO") or "").strip()
               token = (os.getenv("GH_TOKEN") or "").strip()
               if not repo or not token:
-                  return "SKIP", "missing_github_context"
+                  return "FAIL", "missing_github_context"
               url = (
                   f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/runs"
                   f"?branch={branch}&status=completed&per_page=1"
@@ -286,10 +286,10 @@ jobs:
                   with urllib.request.urlopen(req, timeout=20) as resp:
                       payload = json.loads(resp.read().decode("utf-8", "replace") or "{}")
               except Exception:
-                  return "UNKNOWN", "api_error"
+                  return "FAIL", "api_error"
               runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
               if not isinstance(runs, list) or not runs:
-                  return "UNKNOWN", "no_runs"
+                  return "FAIL", "no_runs"
               conclusion = str((runs[0] or {}).get("conclusion", "")).strip().lower()
               return _workflow_conclusion_to_status(conclusion), (conclusion or "unknown")
 
@@ -877,6 +877,13 @@ jobs:
               sbom_status = "FAIL"
               if not sbom_output.exists():
                   sbom_output.write_text("{\"bomFormat\":\"CycloneDX\",\"specVersion\":\"1.6\",\"components\":[]}\n", encoding="utf-8")
+
+          if codeql_status != "PASS":
+              raise SystemExit(f"CodeQL gate must be PASS before release publish (latest={codeql_conclusion}).")
+          if binskim_status != "PASS":
+              raise SystemExit(f"BinSkim gate must be PASS before release publish (latest={binskim_conclusion}).")
+          if sbom_status != "PASS":
+              raise SystemExit("SBOM gate must be PASS before release publish.")
 
           lines = [
               "HackHub Release Security Report",
