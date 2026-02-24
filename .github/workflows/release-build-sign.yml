@@ -792,6 +792,47 @@ jobs:
           if pip_audit_status == "FAIL":
               raise SystemExit("pip-audit strict mode: vulnerabilities detected.")
 
+          # SBOM (CycloneDX)
+          sbom_status = "SKIPPED"
+          sbom_format = "CycloneDX-JSON"
+          sbom_components = 0
+          sbom_output = dist / "sbom.cdx.json"
+          sbom_input = dist / "sbom-requirements.txt"
+          try:
+              merged_requirements = []
+              for req_file in (src_root / "requirements-dev.txt", src_root / "requirements-dev-tools.txt"):
+                  if req_file.exists():
+                      merged_requirements.append(req_file.read_text(encoding="utf-8", errors="replace").strip())
+              sbom_input.write_text("\n".join([chunk for chunk in merged_requirements if chunk]) + "\n", encoding="utf-8")
+
+              rc, _, _ = run_cmd([os.sys.executable, "-m", "pip", "install", "cyclonedx-bom>=4,<5"])
+              if rc != 0:
+                  raise RuntimeError("failed to install cyclonedx-bom")
+
+              rc, out, err = run_cmd(
+                  [
+                      "cyclonedx-py",
+                      "requirements",
+                      str(sbom_input),
+                      "--of",
+                      "JSON",
+                      "-o",
+                      str(sbom_output),
+                      "--no-validate",
+                  ]
+              )
+              if rc != 0 or not sbom_output.exists():
+                  raise RuntimeError((err or out or "SBOM generation failed").strip())
+
+              sbom_payload = json.loads(sbom_output.read_text(encoding="utf-8", errors="replace"))
+              components = sbom_payload.get("components", []) if isinstance(sbom_payload, dict) else []
+              sbom_components = len(components) if isinstance(components, list) else 0
+              sbom_status = "PASS"
+          except Exception:
+              sbom_status = "FAIL"
+              if not sbom_output.exists():
+                  sbom_output.write_text("{\"bomFormat\":\"CycloneDX\",\"specVersion\":\"1.6\",\"components\":[]}\n", encoding="utf-8")
+
           lines = [
               "HackHub Release Security Report",
               "report_format: v2",
@@ -871,6 +912,15 @@ jobs:
               f"pip_audit_status: {pip_audit_status}",
               f"pip_audit_dependencies_scanned: {pip_audit_dependencies}",
               f"pip_audit_vulnerabilities_found: {pip_audit_vuln}",
+              "",
+              "-------------------------------------------------------------",
+              "",
+              "[ SBOM ]",
+              "",
+              f"sbom_status: {sbom_status}",
+              f"sbom_format: {sbom_format}",
+              f"sbom_components: {sbom_components}",
+              f"sbom_path: {sbom_output.as_posix()}",
               "",
               "-------------------------------------------------------------",
               "",
@@ -1464,6 +1514,7 @@ jobs:
             dist/sins_editor-installer.exe
             dist/sins_editor-onedir.zip
             dist/sins_editor-onedir.zip.sha256
+            dist/sbom.cdx.json
             dist/version.txt
             dist/security-report.txt
             dist/sigstore-proofs.zip
