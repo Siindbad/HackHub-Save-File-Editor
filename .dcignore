@@ -1,0 +1,7 @@
+# Keep IDE Snyk scans quiet in this mirror workspace.
+.venv/**
+.venv-clean/**
+build/**
+dist/**
+source/tools/**
+source/tests/**

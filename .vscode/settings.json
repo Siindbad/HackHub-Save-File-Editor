@@ -1,0 +1,8 @@
+{
+    "snyk.advanced.organization": "26c026a1-ff9c-494a-8350-f46099295075",
+    "snyk.advanced.autoSelectOrganization": true,
+    "snyk.features.codeSecurity": false,
+    "snyk.features.openSourceSecurity": false,
+    "snyk.scanningMode": "manual",
+    "snyk.advanced.autoScanOpenSourceSecurity": false
+}
