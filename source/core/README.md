@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-23 (input sanitization limits/constants added for paste and apply-edit guardrails).
+Last sync: 2026-02-24 (domain-implementation namespace consolidation sync).
 
 | Module | Purpose |
 | --- | --- |

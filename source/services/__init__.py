@@ -1,2 +1,1 @@
-"""Service-layer modules used by editor entrypoints."""
-
+"""Service domain modules."""

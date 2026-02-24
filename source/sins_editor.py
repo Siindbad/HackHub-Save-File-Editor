@@ -19,90 +19,18 @@ from collections import deque
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
-from services import bug_report_api_service
-from services import bug_report_browser_service
-from services import bug_report_context_service
-from services import bug_report_cooldown_service
-from services import bug_report_service
-from services import bug_report_ui_service
-from services import clipboard_service
-from services import crash_logging_service
-from services import crash_offer_service
-from services import crash_report_service
-from services import diag_log_housekeeping_service
-from services import document_io_service
-from services import editor_mode_switch_service
-from services import editor_purge_service
-from services import error_hook_service
-from services import error_overlay_service
-from services import error_service
-from services import footer_service
-from services import highlight_label_service
-from services import input_bank_style_service
-from services import input_database_style_service
-from services import input_mode_diag_service
-from services import input_mode_find_service
-from services import input_mode_service
-from services import input_network_firewall_style_service
-from services import input_network_router_style_service
-from services import input_suspicion_phone_style_service
-from services import json_apply_commit_service
-from services import json_closer_symbol_service
-from services import json_colon_comma_service
-from services import json_diagnostics_service
-from services import json_edit_flow_service
-from services import json_error_diag_service
-from services import json_error_highlight_render_service
-from services import json_find_nav_service
-from services import json_find_service
-from services import json_nearby_line_service
-from services import json_open_symbol_service
-from services import json_parse_feedback_service
-from services import json_path_service
-from services import json_property_key_rule_service
-from services import json_quoted_item_tail_service
-from services import json_repair_service
-from services import json_scalar_tail_service
-from services import json_text_find_service
-from services import json_top_level_close_service
-from services import json_validation_feedback_service
-from services import json_view_render_service
-from services import json_view_service
-from services import label_format_service
-from services import loader_service
-from services import runtime_log_service
-from services import runtime_paths_service
-from services import startup_loader_ui_service
-from services import text_context_action_service
-from services import text_context_pointer_service
-from services import text_context_state_service
-from services import text_context_widget_service
-from services import theme_asset_service
-from services import theme_service
-from services import token_env_service
-from services import toolbar_service
-from services import tree_engine_service
-from services import tree_mode_service
-from services import tree_policy_service
-from services import tree_view_service
-from services import ui_build_service
-from services import ui_dispatch_service
-from services import update_asset_service
-from services import update_checksum_service
-from services import update_diag_service
-from services import update_download_service
-from services import update_fallback_service
-from services import update_headers_service
-from services import update_orchestrator_service
-from services import update_release_info_service
-from services import update_service
-from services import update_signature_service
-from services import update_ui_service
-from services import update_url_service
-from services import update_version_service
-from services import validation_service
-from services import version_format_service
-from services import windows_runtime_service
+from services import bug_report_manager
+from services import document_service
+from services import editor_ui_core
+from services import input_mode_manager
+from services import json_engine
+from services import json_view_manager
+from services import runtime_service
+from services import text_context_manager
+from services import theme_manager
+from services import tree_manager
+from services import update_orchestrator
+from services import validation_engine
 from core import constants as app_constants
 from core import display_profile as display_profile_core
 from core.editor_state import EditorState
@@ -111,6 +39,92 @@ from core import json_error_diagnostics_core
 from core import json_error_highlight_core
 from core import layout_topbar as layout_topbar_core
 from core import startup_loader as startup_loader_core
+
+# Domain compatibility aliases keep existing call sites stable while imports are consolidated.
+bug_report_api_service = bug_report_manager.BUG_REPORT.bug_report_api_service
+bug_report_browser_service = bug_report_manager.BUG_REPORT.bug_report_browser_service
+bug_report_context_service = bug_report_manager.BUG_REPORT.bug_report_context_service
+bug_report_cooldown_service = bug_report_manager.BUG_REPORT.bug_report_cooldown_service
+bug_report_service = bug_report_manager.BUG_REPORT.bug_report_service
+bug_report_ui_service = bug_report_manager.BUG_REPORT.bug_report_ui_service
+clipboard_service = bug_report_manager.BUG_REPORT.clipboard_service
+crash_logging_service = bug_report_manager.BUG_REPORT.crash_logging_service
+crash_offer_service = bug_report_manager.BUG_REPORT.crash_offer_service
+crash_report_service = bug_report_manager.BUG_REPORT.crash_report_service
+diag_log_housekeeping_service = bug_report_manager.BUG_REPORT.diag_log_housekeeping_service
+error_hook_service = bug_report_manager.BUG_REPORT.error_hook_service
+error_overlay_service = bug_report_manager.BUG_REPORT.error_overlay_service
+error_service = bug_report_manager.BUG_REPORT.error_service
+document_io_service = document_service.DOCUMENT.document_io_service
+editor_mode_switch_service = document_service.DOCUMENT.editor_mode_switch_service
+editor_purge_service = document_service.DOCUMENT.editor_purge_service
+footer_service = editor_ui_core.EDITOR_UI.footer_service
+loader_service = editor_ui_core.EDITOR_UI.loader_service
+startup_loader_ui_service = editor_ui_core.EDITOR_UI.startup_loader_ui_service
+toolbar_service = editor_ui_core.EDITOR_UI.toolbar_service
+ui_build_service = editor_ui_core.EDITOR_UI.ui_build_service
+ui_dispatch_service = editor_ui_core.EDITOR_UI.ui_dispatch_service
+input_mode_diag_service = input_mode_manager.INPUT_MODE.input_mode_diag_service
+input_mode_find_service = input_mode_manager.INPUT_MODE.input_mode_find_service
+input_mode_service = input_mode_manager.INPUT_MODE.input_mode_service
+json_apply_commit_service = json_engine.JSON_ENGINE.json_apply_commit_service
+json_closer_symbol_service = json_engine.JSON_ENGINE.json_closer_symbol_service
+json_colon_comma_service = json_engine.JSON_ENGINE.json_colon_comma_service
+json_diagnostics_service = json_engine.JSON_ENGINE.json_diagnostics_service
+json_edit_flow_service = json_engine.JSON_ENGINE.json_edit_flow_service
+json_error_diag_service = json_engine.JSON_ENGINE.json_error_diag_service
+json_error_highlight_render_service = json_engine.JSON_ENGINE.json_error_highlight_render_service
+json_nearby_line_service = json_engine.JSON_ENGINE.json_nearby_line_service
+json_open_symbol_service = json_engine.JSON_ENGINE.json_open_symbol_service
+json_parse_feedback_service = json_engine.JSON_ENGINE.json_parse_feedback_service
+json_path_service = json_engine.JSON_ENGINE.json_path_service
+json_property_key_rule_service = json_engine.JSON_ENGINE.json_property_key_rule_service
+json_quoted_item_tail_service = json_engine.JSON_ENGINE.json_quoted_item_tail_service
+json_repair_service = json_engine.JSON_ENGINE.json_repair_service
+json_scalar_tail_service = json_engine.JSON_ENGINE.json_scalar_tail_service
+json_top_level_close_service = json_engine.JSON_ENGINE.json_top_level_close_service
+json_validation_feedback_service = json_engine.JSON_ENGINE.json_validation_feedback_service
+json_find_nav_service = json_view_manager.JSON_VIEW.json_find_nav_service
+json_find_service = json_view_manager.JSON_VIEW.json_find_service
+json_text_find_service = json_view_manager.JSON_VIEW.json_text_find_service
+json_view_render_service = json_view_manager.JSON_VIEW.json_view_render_service
+json_view_service = json_view_manager.JSON_VIEW.json_view_service
+runtime_log_service = runtime_service.RUNTIME.runtime_log_service
+runtime_paths_service = runtime_service.RUNTIME.runtime_paths_service
+token_env_service = runtime_service.RUNTIME.token_env_service
+windows_runtime_service = runtime_service.RUNTIME.windows_runtime_service
+text_context_action_service = text_context_manager.TEXT_CONTEXT.text_context_action_service
+text_context_pointer_service = text_context_manager.TEXT_CONTEXT.text_context_pointer_service
+text_context_state_service = text_context_manager.TEXT_CONTEXT.text_context_state_service
+text_context_widget_service = text_context_manager.TEXT_CONTEXT.text_context_widget_service
+input_bank_style_service = theme_manager.THEME.input_bank_style_service
+input_database_style_service = theme_manager.THEME.input_database_style_service
+input_network_firewall_style_service = theme_manager.THEME.input_network_firewall_style_service
+input_network_router_style_service = theme_manager.THEME.input_network_router_style_service
+input_suspicion_phone_style_service = theme_manager.THEME.input_suspicion_phone_style_service
+theme_asset_service = theme_manager.THEME.theme_asset_service
+theme_service = theme_manager.THEME.theme_service
+tree_engine_service = tree_manager.TREE.tree_engine_service
+tree_mode_service = tree_manager.TREE.tree_mode_service
+tree_policy_service = tree_manager.TREE.tree_policy_service
+tree_view_service = tree_manager.TREE.tree_view_service
+update_asset_service = update_orchestrator.UPDATE.update_asset_service
+update_checksum_service = update_orchestrator.UPDATE.update_checksum_service
+update_diag_service = update_orchestrator.UPDATE.update_diag_service
+update_download_service = update_orchestrator.UPDATE.update_download_service
+update_fallback_service = update_orchestrator.UPDATE.update_fallback_service
+update_headers_service = update_orchestrator.UPDATE.update_headers_service
+update_orchestrator_service = update_orchestrator.UPDATE.update_orchestrator_service
+update_release_info_service = update_orchestrator.UPDATE.update_release_info_service
+update_service = update_orchestrator.UPDATE.update_service
+update_signature_service = update_orchestrator.UPDATE.update_signature_service
+update_ui_service = update_orchestrator.UPDATE.update_ui_service
+update_url_service = update_orchestrator.UPDATE.update_url_service
+update_version_service = update_orchestrator.UPDATE.update_version_service
+highlight_label_service = validation_engine.VALIDATION.highlight_label_service
+label_format_service = validation_engine.VALIDATION.label_format_service
+validation_service = validation_engine.VALIDATION.validation_service
+version_format_service = validation_engine.VALIDATION.version_format_service
 
 _LOG = logging.getLogger(__name__)
 
@@ -634,6 +648,7 @@ if button._siindbad_base_image is None:
                 return "break"
             units = -1 if delta > 0 else 1
             canvas.yview_scroll(units, "units")
+            self._maybe_render_more_router_rows(force_prefetch=True, origin="wheel")
             return "break"
         except (tk.TclError, RuntimeError, TypeError, ValueError):
             return
@@ -646,6 +661,7 @@ if button._siindbad_base_image is None:
             return
         try:
             canvas.yview_scroll(-1, "units")
+            self._maybe_render_more_router_rows(force_prefetch=True, origin="wheel")
             return "break"
         except (tk.TclError, RuntimeError):
             return
@@ -658,9 +674,52 @@ if button._siindbad_base_image is None:
             return
         try:
             canvas.yview_scroll(1, "units")
+            self._maybe_render_more_router_rows(force_prefetch=True, origin="wheel")
             return "break"
         except (tk.TclError, RuntimeError):
             return
+
+    def _on_input_mode_canvas_scrollbar(self, *args):
+        canvas = getattr(self, "_input_mode_canvas", None)
+        if canvas is None:
+            return
+        try:
+            canvas.yview(*args)
+        except (tk.TclError, RuntimeError, TypeError, ValueError):
+            return
+        return
+
+    def _on_input_mode_scrollbar_release(self, _event=None):
+        self._clear_input_mode_scroll_drag_active()
+        self._schedule_router_settle_barrier(delay_ms=30)
+
+    def _cancel_pending_input_mode_scroll_drag_clear(self):
+        after_id = getattr(self, "_input_mode_scroll_drag_after_id", None)
+        self._input_mode_scroll_drag_after_id = None
+        if not after_id:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.after_cancel(after_id)
+        except (tk.TclError, RuntimeError, ValueError):
+            return
+
+    def _clear_input_mode_scroll_drag_active(self):
+        self._cancel_pending_input_mode_scroll_drag_clear()
+        self._input_mode_scroll_drag_active = False
+
+    def _mark_input_mode_scroll_drag_active(self):
+        self._input_mode_scroll_drag_active = True
+        self._cancel_pending_input_mode_scroll_drag_clear()
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            self._input_mode_scroll_drag_after_id = root.after(120, self._clear_input_mode_scroll_drag_active)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            self._input_mode_scroll_drag_after_id = None
 
     @staticmethod
     def _is_input_scalar(value):
@@ -837,12 +896,24 @@ if button._siindbad_base_image is None:
             max_rows=max_rows,
         )
 
-    def _render_network_router_input_rows(self, host, normalized_path, row_defs):
+    def _render_network_router_input_rows(
+        self,
+        host,
+        normalized_path,
+        row_defs,
+        *,
+        start_index=0,
+        finalize=False,
+        total_rows=None,
+    ):
         input_network_router_style_service.render_router_input_rows(
             self,
             host,
             normalized_path,
             row_defs,
+            start_index=start_index,
+            finalize=bool(finalize),
+            total_rows=total_rows,
         )
 
     def _refresh_input_mode_fields(self, path, value):
@@ -850,9 +921,9 @@ if button._siindbad_base_image is None:
         if host is None:
             return
         self._cancel_pending_router_input_batches()
+        self._clear_router_virtual_state()
+        self._cancel_pending_input_mode_layout_finalize()
         self._input_mode_render_token = int(getattr(self, "_input_mode_render_token", 0) or 0) + 1
-        for child in host.winfo_children():
-            child.destroy()
         self._input_mode_field_specs = []
         self._input_mode_current_path = list(path or [])
         self._input_mode_no_fields_label = None
@@ -863,6 +934,40 @@ if button._siindbad_base_image is None:
         is_network_router_payload = self._is_network_router_input_style_payload(normalized_path, value)
         is_network_device_payload = self._is_network_device_input_style_payload(normalized_path, value)
         is_network_firewall_payload = self._is_network_firewall_input_style_payload(normalized_path, value)
+        is_database_payload = self._is_database_input_style_path(normalized_path)
+        if is_network_router_payload:
+            input_network_router_style_service.prepare_router_render_host(
+                self,
+                host,
+                reset_pool=False,
+            )
+            keep_database_children = input_database_style_service.suspend_database_render_host(self, host)
+            pool_children = {
+                row_slot.get("row_frame")
+                for row_slot in list(getattr(self, "_input_mode_router_row_pool", []) or [])
+                if isinstance(row_slot, dict)
+            }
+            for child in list(host.winfo_children()):
+                if child in pool_children or child in keep_database_children:
+                    continue
+                try:
+                    child.destroy()
+                except (tk.TclError, RuntimeError, AttributeError):
+                    continue
+        elif is_database_payload:
+            keep_router_children = input_network_router_style_service.suspend_router_render_host(self, host)
+            keep_database_children = input_database_style_service.database_pool_children(self, host)
+            for child in host.winfo_children():
+                if child in keep_router_children or child in keep_database_children:
+                    continue
+                child.destroy()
+        else:
+            keep_router_children = input_network_router_style_service.suspend_router_render_host(self, host)
+            keep_database_children = input_database_style_service.suspend_database_render_host(self, host)
+            for child in host.winfo_children():
+                if child in keep_router_children or child in keep_database_children:
+                    continue
+                child.destroy()
         if self._is_input_mode_category_disabled(normalized_path):
             variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
             fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
@@ -941,14 +1046,7 @@ if button._siindbad_base_image is None:
             if bank_rows:
                 self._render_bank_input_style_rows(host, normalized_path, bank_rows)
                 self._refresh_input_mode_bool_widget_colors()
-                host.update_idletasks()
-                canvas = getattr(self, "_input_mode_canvas", None)
-                if canvas is not None:
-                    try:
-                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-                        canvas.yview_moveto(0.0)
-                    except (tk.TclError, RuntimeError, AttributeError):
-                        pass
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
                 self._input_mode_force_refresh = False
@@ -958,14 +1056,7 @@ if button._siindbad_base_image is None:
             if grades_matrix:
                 self._render_database_grades_input_matrix(host, normalized_path, grades_matrix)
                 self._refresh_input_mode_bool_widget_colors()
-                host.update_idletasks()
-                canvas = getattr(self, "_input_mode_canvas", None)
-                if canvas is not None:
-                    try:
-                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-                        canvas.yview_moveto(0.0)
-                    except (tk.TclError, RuntimeError, AttributeError):
-                        pass
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
                 self._input_mode_force_refresh = False
@@ -973,14 +1064,7 @@ if button._siindbad_base_image is None:
         if self._is_suspicion_input_style_path(normalized_path):
             if self._render_suspicion_phone_input(host, normalized_path, value):
                 self._refresh_input_mode_bool_widget_colors()
-                host.update_idletasks()
-                canvas = getattr(self, "_input_mode_canvas", None)
-                if canvas is not None:
-                    try:
-                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-                        canvas.yview_moveto(0.0)
-                    except (tk.TclError, RuntimeError, AttributeError):
-                        pass
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
                 self._input_mode_force_refresh = False
@@ -988,28 +1072,17 @@ if button._siindbad_base_image is None:
         if is_network_router_payload:
             router_rows = self._collect_network_router_input_rows(normalized_path, value)
             if router_rows:
-                # Progressive render keeps category-click latency low on large ROUTER datasets.
-                first_chunk_size = 10
-                first_chunk = router_rows[:first_chunk_size]
-                remaining = router_rows[first_chunk_size:]
-                self._render_network_router_input_rows(host, normalized_path, first_chunk)
-                if remaining:
-                    self._schedule_router_input_render_batches(
-                        host,
-                        normalized_path,
-                        remaining,
-                        render_token=self._input_mode_render_token,
-                        chunk_size=8,
-                    )
+                self._render_network_router_input_rows(
+                    host,
+                    normalized_path,
+                    router_rows,
+                    start_index=0,
+                    finalize=True,
+                    total_rows=len(router_rows),
+                )
+                self._clear_router_virtual_state()
                 self._refresh_input_mode_bool_widget_colors()
-                host.update_idletasks()
-                canvas = getattr(self, "_input_mode_canvas", None)
-                if canvas is not None:
-                    try:
-                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-                        canvas.yview_moveto(0.0)
-                    except (tk.TclError, RuntimeError, AttributeError):
-                        pass
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
                 self._input_mode_force_refresh = False
@@ -1019,14 +1092,7 @@ if button._siindbad_base_image is None:
             if firewall_rows:
                 self._render_network_firewall_input_rows(host, normalized_path, firewall_rows)
                 self._refresh_input_mode_bool_widget_colors()
-                host.update_idletasks()
-                canvas = getattr(self, "_input_mode_canvas", None)
-                if canvas is not None:
-                    try:
-                        canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-                        canvas.yview_moveto(0.0)
-                    except (tk.TclError, RuntimeError, AttributeError):
-                        pass
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 self._input_mode_last_render_path_key = self._input_mode_path_key(normalized_path)
                 self._input_mode_last_render_item = self.tree.focus() if getattr(self, "tree", None) is not None else None
                 self._input_mode_force_refresh = False
@@ -1119,6 +1185,55 @@ if button._siindbad_base_image is None:
         except (tk.TclError, RuntimeError, ValueError):
             return
 
+    def _cancel_pending_input_mode_layout_finalize(self):
+        after_id = getattr(self, "_input_mode_layout_finalize_after_id", None)
+        self._input_mode_layout_finalize_after_id = None
+        if not after_id:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.after_cancel(after_id)
+        except (tk.TclError, RuntimeError, ValueError):
+            return
+
+    def _run_input_mode_layout_finalize(self):
+        self._input_mode_layout_finalize_after_id = None
+        host = getattr(self, "_input_mode_fields_host", None)
+        canvas = getattr(self, "_input_mode_canvas", None)
+        reset_scroll = bool(getattr(self, "_input_mode_layout_finalize_reset_scroll", False))
+        self._input_mode_layout_finalize_reset_scroll = False
+        if host is None:
+            return
+        try:
+            host.update_idletasks()
+        except (tk.TclError, RuntimeError, AttributeError):
+            pass
+        if canvas is None:
+            return
+        try:
+            canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
+            if reset_scroll:
+                canvas.yview_moveto(0.0)
+        except (tk.TclError, RuntimeError, AttributeError):
+            return
+
+    def _schedule_input_mode_layout_finalize(self, reset_scroll=False):
+        self._input_mode_layout_finalize_reset_scroll = bool(
+            getattr(self, "_input_mode_layout_finalize_reset_scroll", False) or bool(reset_scroll)
+        )
+        self._cancel_pending_input_mode_layout_finalize()
+        root = getattr(self, "root", None)
+        if root is None:
+            self._run_input_mode_layout_finalize()
+            return
+        try:
+            self._input_mode_layout_finalize_after_id = root.after_idle(self._run_input_mode_layout_finalize)
+        except (tk.TclError, RuntimeError, AttributeError):
+            self._input_mode_layout_finalize_after_id = None
+            self._run_input_mode_layout_finalize()
+
     def _cancel_pending_router_input_batches(self):
         after_id = getattr(self, "_input_mode_router_batch_after_id", None)
         self._input_mode_router_batch_after_id = None
@@ -1132,7 +1247,225 @@ if button._siindbad_base_image is None:
         except (tk.TclError, RuntimeError, ValueError):
             return
 
-    def _schedule_router_input_render_batches(self, host, normalized_path, pending_rows, render_token, chunk_size=10):
+    def _cancel_pending_router_input_prewarm(self):
+        after_id = getattr(self, "_input_mode_router_prewarm_after_id", None)
+        self._input_mode_router_prewarm_after_id = None
+        if not after_id:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.after_cancel(after_id)
+        except (tk.TclError, RuntimeError, ValueError, AttributeError):
+            return
+
+    def _run_router_input_prewarm(self):
+        self._input_mode_router_prewarm_after_id = None
+        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+            return
+        host = getattr(self, "_input_mode_fields_host", None)
+        if host is None:
+            return
+        data = getattr(self, "data", None)
+        if not isinstance(data, dict):
+            return
+        network = data.get("Network")
+        if not isinstance(network, list) or not network:
+            return
+        routers = [
+            item for item in network
+            if isinstance(item, dict) and str(item.get("type", "")).upper() == "ROUTER"
+        ]
+        if not routers:
+            return
+        rows = self._collect_network_router_input_rows(["Network"], routers)
+        if not rows:
+            return
+        input_network_router_style_service.prepare_router_render_host(self, host, reset_pool=True)
+        self._render_network_router_input_rows(
+            host,
+            ["Network"],
+            rows,
+            start_index=0,
+            finalize=True,
+            total_rows=len(rows),
+        )
+        input_network_router_style_service.suspend_router_render_host(self, host)
+        self._input_mode_field_specs = []
+        self._input_mode_router_virtual_rows = []
+        self._input_mode_router_virtual_next_index = 0
+        self._input_mode_router_virtual_total_rows = 0
+
+    def _schedule_router_input_prewarm(self):
+        self._cancel_pending_router_input_prewarm()
+        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            self._run_router_input_prewarm()
+            return
+        try:
+            after_idle = getattr(root, "after_idle", None)
+            if callable(after_idle):
+                self._input_mode_router_prewarm_after_id = after_idle(self._run_router_input_prewarm)
+                return
+            self._input_mode_router_prewarm_after_id = root.after(0, self._run_router_input_prewarm)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            self._input_mode_router_prewarm_after_id = None
+
+    def _cancel_pending_router_virtual_check(self):
+        after_id = getattr(self, "_input_mode_router_virtual_after_id", None)
+        self._input_mode_router_virtual_after_id = None
+        if not after_id:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.after_cancel(after_id)
+        except (tk.TclError, RuntimeError, ValueError):
+            return
+
+    def _clear_router_virtual_state(self):
+        self._cancel_pending_router_virtual_check()
+        self._cancel_pending_router_settle_barrier()
+        self._clear_input_mode_scroll_drag_active()
+        self._input_mode_router_virtual_rows = []
+        self._input_mode_router_virtual_next_index = 0
+        self._input_mode_router_virtual_total_rows = 0
+
+    def _schedule_router_virtual_check(self, delay_ms=30):
+        self._cancel_pending_router_virtual_check()
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            self._input_mode_router_virtual_after_id = root.after(
+                max(0, int(delay_ms)),
+                self._maybe_render_more_router_rows,
+            )
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            self._input_mode_router_virtual_after_id = None
+
+    def _cancel_pending_router_settle_barrier(self):
+        after_id = getattr(self, "_input_mode_router_settle_after_id", None)
+        self._input_mode_router_settle_after_id = None
+        if not after_id:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.after_cancel(after_id)
+        except (tk.TclError, RuntimeError, ValueError):
+            return
+
+    def _schedule_router_settle_barrier(self, delay_ms=24):
+        self._cancel_pending_router_settle_barrier()
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            self._input_mode_router_settle_after_id = root.after(
+                max(0, int(delay_ms)),
+                self._run_router_settle_barrier,
+            )
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            self._input_mode_router_settle_after_id = None
+
+    def _run_router_settle_barrier(self):
+        self._input_mode_router_settle_after_id = None
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return
+        start_time = time.perf_counter()
+        budget_seconds = 0.12
+        while (time.perf_counter() - start_time) < budget_seconds:
+            progressed = self._maybe_render_more_router_rows(force_prefetch=True, origin="settle")
+            if not progressed:
+                break
+        if int(getattr(self, "_input_mode_router_virtual_next_index", 0) or 0) < int(
+            getattr(self, "_input_mode_router_virtual_total_rows", 0) or 0
+        ):
+            self._schedule_router_virtual_check(delay_ms=20)
+
+    def _router_virtual_backlog(self):
+        next_index = int(getattr(self, "_input_mode_router_virtual_next_index", 0) or 0)
+        total_rows = int(getattr(self, "_input_mode_router_virtual_total_rows", 0) or 0)
+        return max(0, total_rows - next_index)
+
+    def _router_virtual_prefetch_threshold(self, force_prefetch=False):
+        if bool(force_prefetch) or bool(getattr(self, "_input_mode_scroll_drag_active", False)):
+            return 0.45
+        return 0.72
+
+    def _router_virtual_chunk_size(self, backlog):
+        pending = max(0, int(backlog or 0))
+        if bool(getattr(self, "_input_mode_scroll_drag_active", False)):
+            if pending > 24:
+                return 14
+            return 10
+        if pending > 32:
+            return 14
+        if pending > 16:
+            return 10
+        return 8
+
+    def _maybe_render_more_router_rows(self, force_prefetch=False, origin="idle"):
+        self._input_mode_router_virtual_after_id = None
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return False
+        host = getattr(self, "_input_mode_fields_host", None)
+        canvas = getattr(self, "_input_mode_canvas", None)
+        if host is None or canvas is None:
+            return False
+        rows = list(getattr(self, "_input_mode_router_virtual_rows", []) or [])
+        next_index = int(getattr(self, "_input_mode_router_virtual_next_index", 0) or 0)
+        total_rows = int(getattr(self, "_input_mode_router_virtual_total_rows", 0) or 0)
+        if not rows or next_index >= total_rows:
+            return False
+        try:
+            _y0, y1 = canvas.yview()
+        except (tk.TclError, RuntimeError, ValueError, TypeError, AttributeError):
+            y1 = 1.0
+        # Keep a prefetch band so wheel/drag scroll does not outrun row materialization.
+        if y1 < self._router_virtual_prefetch_threshold(force_prefetch=bool(force_prefetch)):
+            return False
+        backlog = max(0, total_rows - next_index)
+        chunk_size = self._router_virtual_chunk_size(backlog)
+        chunk = rows[next_index : next_index + chunk_size]
+        if not chunk:
+            return False
+        final_index = next_index + len(chunk)
+        self._render_network_router_input_rows(
+            host,
+            self._input_mode_current_path,
+            chunk,
+            start_index=next_index,
+            finalize=final_index >= total_rows,
+            total_rows=total_rows,
+        )
+        self._schedule_input_mode_layout_finalize(reset_scroll=False)
+        self._input_mode_router_virtual_next_index = final_index
+        if final_index < total_rows:
+            next_delay = 12 if bool(getattr(self, "_input_mode_scroll_drag_active", False)) else 24
+            if str(origin).lower() == "settle":
+                next_delay = 8
+            self._schedule_router_virtual_check(delay_ms=next_delay)
+            return True
+        self._clear_router_virtual_state()
+        return True
+
+    def _schedule_router_input_render_batches(
+        self,
+        host,
+        normalized_path,
+        pending_rows,
+        render_token,
+        chunk_size=10,
+        start_index=0,
+        total_rows=None,
+    ):
         if not pending_rows:
             return
         root = getattr(self, "root", None)
@@ -1150,7 +1483,14 @@ if button._siindbad_base_image is None:
                 return
             chunk = rows[:chunk_size]
             rest = rows[chunk_size:]
-            self._render_network_router_input_rows(host, normalized_path, chunk)
+            self._render_network_router_input_rows(
+                host,
+                normalized_path,
+                chunk,
+                start_index=start_index,
+                finalize=not bool(rest),
+                total_rows=total_rows,
+            )
             if rest and render_token == int(getattr(self, "_input_mode_render_token", 0) or 0):
                 self._schedule_router_input_render_batches(
                     host,
@@ -1158,20 +1498,13 @@ if button._siindbad_base_image is None:
                     rest,
                     render_token,
                     chunk_size=chunk_size,
+                    start_index=start_index + len(chunk),
+                    total_rows=total_rows,
                 )
                 return
             # Finalize once at the end to avoid repeated full-host relayout cost.
             self._refresh_input_mode_bool_widget_colors()
-            try:
-                host.update_idletasks()
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-            canvas = getattr(self, "_input_mode_canvas", None)
-            if canvas is not None:
-                try:
-                    canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-                except (tk.TclError, RuntimeError, AttributeError):
-                    pass
+            self._schedule_input_mode_layout_finalize(reset_scroll=False)
 
         try:
             self._input_mode_router_batch_after_id = root.after_idle(_run_next_batch)
@@ -1267,6 +1600,8 @@ if button._siindbad_base_image is None:
         try:
             self._cancel_pending_input_mode_refresh()
             self._cancel_pending_router_input_batches()
+            self._clear_router_virtual_state()
+            self._cancel_pending_input_mode_layout_finalize()
             input_container.pack_forget()
         except (tk.TclError, RuntimeError, AttributeError):
             pass
@@ -1623,6 +1958,11 @@ if button._siindbad_base_image is None:
             "_bug_submit_splash_after_id",
             "_crash_report_offer_after_id",
             "_live_feedback_after_id",
+            "_input_mode_router_prewarm_after_id",
+            "_input_mode_router_virtual_after_id",
+            "_input_mode_router_settle_after_id",
+            "_input_mode_scroll_drag_after_id",
+            "_input_mode_layout_finalize_after_id",
         ):
             after_id = getattr(self, attr, None)
             if after_id:
@@ -1643,6 +1983,7 @@ if button._siindbad_base_image is None:
         self._shutdown_cleanup_done = True
         self._close_bug_report_dialog()
         self._destroy_text_context_menu()
+        self._destroy_input_context_menu()
         self._cancel_scheduled_after_callbacks()
         # Enforce diagnostics day-file retention on app shutdown.
         self._purge_diag_logs_for_new_session()
@@ -3601,6 +3942,8 @@ if button._siindbad_base_image is None:
         return True
 
     def _show_text_context_menu(self, event=None):
+        self._input_context_target_widget = None
+        self._input_context_target_allow_paste = False
         popup = getattr(self, "_text_context_menu", None)
         if popup is None:
             self._build_text_context_menu()
@@ -3740,6 +4083,10 @@ if button._siindbad_base_image is None:
         return "break"
 
     def _on_context_copy(self):
+        target_widget = getattr(self, "_input_context_target_widget", None)
+        if target_widget is not None and target_widget is not getattr(self, "text", None):
+            self._on_input_context_copy()
+            return
         if not self._has_text_selection():
             return
         try:
@@ -3775,6 +4122,10 @@ if button._siindbad_base_image is None:
             return
 
     def _on_context_paste(self):
+        target_widget = getattr(self, "_input_context_target_widget", None)
+        if target_widget is not None and target_widget is not getattr(self, "text", None):
+            self._on_input_context_paste()
+            return
         try:
             pasted = self.root.clipboard_get()
         except _EXPECTED_APP_ERRORS:
@@ -3800,6 +4151,143 @@ if button._siindbad_base_image is None:
             self.text.insert("insert", safe_text)
             self.text.see("insert")
             self._auto_apply_pending = True
+        except _EXPECTED_APP_ERRORS:
+            return
+
+    def _destroy_input_context_menu(self):
+        menu = getattr(self, "_input_context_menu", None)
+        self._input_context_target_widget = None
+        self._input_context_target_allow_paste = False
+        if menu is None:
+            return
+        try:
+            menu.destroy()
+        except _EXPECTED_APP_ERRORS:
+            pass
+        self._input_context_menu = None
+
+    def _bind_input_context_widget(self, widget, *, allow_paste=True):
+        if widget is None:
+            return
+        try:
+            widget._hh_input_allow_paste = bool(allow_paste)
+        except _EXPECTED_APP_ERRORS:
+            return
+        try:
+            widget.bind("<Button-3>", self._show_input_context_with_text_menu, add="+")
+        except _EXPECTED_APP_ERRORS:
+            return
+
+    @staticmethod
+    def _input_widget_has_selection(widget):
+        try:
+            return bool(widget.selection_present())
+        except _EXPECTED_APP_ERRORS:
+            return False
+
+    def _show_input_context_menu(self, event=None):
+        return self._show_input_context_with_text_menu(event)
+
+    def _show_widget_context_with_text_menu(self, event=None, *, allow_paste=True):
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            return None
+        self._input_context_target_widget = widget
+        self._input_context_target_allow_paste = bool(allow_paste)
+        popup = getattr(self, "_text_context_menu", None)
+        if popup is None:
+            self._build_text_context_menu()
+            popup = getattr(self, "_text_context_menu", None)
+        if popup is None:
+            return "break"
+        can_copy = self._input_widget_has_selection(widget)
+        can_paste = bool(bool(allow_paste) and self._clipboard_has_text())
+        self._set_text_context_menu_item_state("undo", False)
+        self._set_text_context_menu_item_state("redo", False)
+        self._set_text_context_menu_item_state("copy", can_copy)
+        self._set_text_context_menu_item_state("paste", can_paste)
+        self._set_text_context_menu_item_state("autofix", False)
+        self._text_context_menu_hover_action = None
+        try:
+            if hasattr(widget, "focus_set"):
+                widget.focus_set()
+        except _EXPECTED_APP_ERRORS:
+            pass
+        x_root = getattr(event, "x_root", None)
+        y_root = getattr(event, "y_root", None)
+        if x_root is None or y_root is None:
+            try:
+                x_root = int(self.root.winfo_rootx()) + 20
+                y_root = int(self.root.winfo_rooty()) + 20
+            except _EXPECTED_APP_ERRORS:
+                return "break"
+        self._hide_text_context_menu()
+        self._text_context_menu_hover_action = None
+        self._show_text_context_menu_popup(int(x_root), int(y_root))
+        return "break"
+
+    def _show_input_context_with_text_menu(self, event=None):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return None
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            return None
+        allow_paste = bool(getattr(widget, "_hh_input_allow_paste", False))
+        return self._show_widget_context_with_text_menu(event, allow_paste=allow_paste)
+
+    def _show_find_entry_context_menu(self, event=None):
+        return self._show_widget_context_with_text_menu(event, allow_paste=True)
+
+    def _on_input_context_copy(self):
+        widget = getattr(self, "_input_context_target_widget", None)
+        if widget is None:
+            return
+        if not self._input_widget_has_selection(widget):
+            return
+        try:
+            copied = widget.selection_get()
+        except _EXPECTED_APP_ERRORS:
+            return
+        if copied is None:
+            return
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(copied)
+        except _EXPECTED_APP_ERRORS:
+            return
+
+    def _on_input_context_paste(self):
+        widget = getattr(self, "_input_context_target_widget", None)
+        if widget is None:
+            return
+        if not bool(getattr(self, "_input_context_target_allow_paste", False)):
+            return
+        try:
+            pasted = self.root.clipboard_get()
+        except _EXPECTED_APP_ERRORS:
+            return
+        if pasted is None:
+            return
+        is_valid, safe_text, reason = clipboard_service.validate_clipboard_paste_payload(
+            pasted,
+            validation_service.validate_editor_text_payload,
+        )
+        if not is_valid:
+            self._show_error_overlay("Invalid Entry", reason)
+            return
+        try:
+            state = str(widget.cget("state")).lower()
+        except _EXPECTED_APP_ERRORS:
+            state = "normal"
+        if state in ("readonly", "disabled"):
+            return
+        try:
+            if self._input_widget_has_selection(widget):
+                widget.delete("sel.first", "sel.last")
+        except _EXPECTED_APP_ERRORS:
+            pass
+        try:
+            widget.insert("insert", safe_text)
         except _EXPECTED_APP_ERRORS:
             return
 
@@ -4462,6 +4950,9 @@ if button._siindbad_base_image is None:
         self._text_context_menu_global_bindings = []
         self._text_context_menu_pulse_after_id = None
         self._text_context_menu_pulse_tick = 0
+        self._input_context_menu = None
+        self._input_context_target_widget = None
+        self._input_context_target_allow_paste = False
         self.font_size_combo = None
         self.font_size_var = None
         self._font_stepper_source_size = (1028, 253)
@@ -4624,6 +5115,16 @@ if button._siindbad_base_image is None:
         self._input_mode_force_refresh = True
         self._input_mode_render_token = 0
         self._input_mode_router_batch_after_id = None
+        self._input_mode_router_prewarm_after_id = None
+        self._input_mode_router_virtual_after_id = None
+        self._input_mode_router_settle_after_id = None
+        self._input_mode_scroll_drag_after_id = None
+        self._input_mode_scroll_drag_active = False
+        self._input_mode_router_virtual_rows = []
+        self._input_mode_router_virtual_next_index = 0
+        self._input_mode_router_virtual_total_rows = 0
+        self._input_mode_layout_finalize_after_id = None
+        self._input_mode_layout_finalize_reset_scroll = False
         self._input_mode_refresh_after_id = None
         self._input_mode_pending_item_id = None
 
