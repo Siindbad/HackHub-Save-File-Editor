@@ -50,7 +50,7 @@ jobs:
       - name: Install BinSkim
         shell: pwsh
         run: |
-          $binskimVersion = "4.4.6"
+          $binskimVersion = "4.4.9.2"
           $packagePath = "$env:RUNNER_TEMP\binskim.nupkg"
           $extractPath = "$env:RUNNER_TEMP\binskim"
           Invoke-WebRequest -Uri ("https://www.nuget.org/api/v2/package/Microsoft.CodeAnalysis.BinSkim/" + $binskimVersion) -OutFile $packagePath
