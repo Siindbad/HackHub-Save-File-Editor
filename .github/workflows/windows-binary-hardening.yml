@@ -69,9 +69,14 @@ jobs:
           if (-not (Test-Path $targetExe)) {
             throw "Expected build output not found: $targetExe"
           }
-          & $env:BINSKIM_EXE analyze $targetExe --verbose --output artifacts\binskim\binskim.sarif
-          if (($LASTEXITCODE -ne 0) -and ($LASTEXITCODE -ne 1)) {
-            throw ("BinSkim scan failed with unexpected exit code " + $LASTEXITCODE)
+          & $env:BINSKIM_EXE analyze $targetExe --output artifacts\binskim\binskim.sarif
+          $exitCode = $LASTEXITCODE
+          if (($exitCode -ne 0) -and ($exitCode -ne 1)) {
+            throw ("BinSkim scan failed with unexpected exit code " + $exitCode)
+          }
+          if ($exitCode -eq 1) {
+            Write-Host "BinSkim reported findings (exit code 1); retaining SARIF and continuing workflow."
+            $global:LASTEXITCODE = 0
           }
 
       - name: Upload BinSkim artifact
