@@ -12,6 +12,39 @@ import logging
 _LOG = logging.getLogger(__name__)
 
 
+def _build_multipart_form_data(parts: list[dict[str, Any]]) -> tuple[bytes, str]:
+    """Build multipart/form-data payload for Discord webhook file uploads."""
+    boundary = "----sins-editor-" + os.urandom(12).hex()
+    chunks: list[bytes] = []
+    for part in parts:
+        name = str(part.get("name", "")).strip()
+        if not name:
+            continue
+        filename = str(part.get("filename", "")).strip()
+        content_type = str(part.get("content_type", "")).strip()
+        data = part.get("data", b"")
+        if isinstance(data, str):
+            body_bytes = data.encode("utf-8")
+        elif isinstance(data, bytes):
+            body_bytes = data
+        else:
+            body_bytes = str(data).encode("utf-8")
+
+        chunks.append(f"--{boundary}\r\n".encode("utf-8"))
+        disposition = f'Content-Disposition: form-data; name="{name}"'
+        if filename:
+            disposition += f'; filename="{filename}"'
+        chunks.append((disposition + "\r\n").encode("utf-8"))
+        if content_type:
+            chunks.append((f"Content-Type: {content_type}\r\n").encode("utf-8"))
+        chunks.append(b"\r\n")
+        chunks.append(body_bytes)
+        chunks.append(b"\r\n")
+
+    chunks.append(f"--{boundary}--\r\n".encode("utf-8"))
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
 def _assert_https_host_allowed(url_text, allowed_hosts):
     parsed = urllib.parse.urlparse(str(url_text or "").strip())
     host = (parsed.hostname or "").strip().lower()
@@ -221,6 +254,13 @@ def submit_bug_report_discord_forum(
     selected_path: Any,
     last_json_error: Any,
     last_highlight_note: Any,
+    now_text: Any="",
+    python_version: Any="",
+    platform_text: Any="",
+    include_diag: Any=False,
+    diag_tail: Any="",
+    crash_tail: Any="",
+    discord_contact: Any="",
     screenshot_url: Any="",
     screenshot_filename: Any="",
     screenshot_note: Any="",
@@ -251,21 +291,46 @@ def submit_bug_report_discord_forum(
     note_text = str(last_highlight_note or "").strip() or "none"
     app_ver = str(app_version or "").strip() or "unknown"
     theme_text = str(theme_variant or "").strip() or "unknown"
+    timestamp_text = str(now_text or "").strip() or "unknown"
+    py_text = str(python_version or "").strip() or "unknown"
+    os_text = str(platform_text or "").strip() or "unknown"
+    discord_text = str(discord_contact or "").strip() or "none"
+    include_diag_flag = bool(include_diag)
+    diag_text = str(diag_tail or "").strip()
+    crash_text = str(crash_tail or "").strip()
+
+    def _clip(value: str, limit: int) -> str:
+        text = str(value or "").strip()
+        if len(text) <= limit:
+            return text
+        return text[: max(0, limit - 3)] + "..."
+
+    runtime_context = "\n".join(
+        [
+            f"Time: {_clip(timestamp_text, 100)}",
+            f"App Version: {app_ver[:100]}",
+            f"Theme: {theme_text[:100]}",
+            f"Selected Path: {_clip(path_text, 300)}",
+            f"Last JSON Error: {_clip(error_text, 300)}",
+            f"Last Highlight Note: {_clip(note_text, 300)}",
+            f"Python: {_clip(py_text, 100)}",
+            f"Platform: {_clip(os_text, 160)}",
+            f"Discord: {_clip(discord_text, 100)}",
+        ]
+    )
 
     payload = {
         "thread_name": thread_name,
         "embeds": [
             {
                 "title": use_summary[:250],
-                "description": details_text,
+                "description": "",
                 "color": 757408,
                 "fields": [
                     {"name": "Issue", "value": issue_link[:1024], "inline": False},
-                    {"name": "Version", "value": app_ver[:100], "inline": True},
-                    {"name": "Theme", "value": theme_text[:100], "inline": True},
-                    {"name": "Path", "value": path_text[:1024], "inline": False},
-                    {"name": "Last JSON Error", "value": error_text[:1024], "inline": False},
-                    {"name": "Last Highlight Note", "value": note_text[:1024], "inline": False},
+                    {"name": "Summary", "value": _clip(use_summary, 1024), "inline": False},
+                    {"name": "Reporter Notes", "value": _clip(details_text, 1024), "inline": False},
+                    {"name": "Runtime Context", "value": runtime_context[:1024], "inline": False},
                 ],
             }
         ],
@@ -281,20 +346,55 @@ def submit_bug_report_discord_forum(
         payload["embeds"][0]["fields"].append(
             {"name": "Screenshot Note", "value": screenshot_note_text[:1024], "inline": False}
         )
-
+    attachment_parts: list[dict[str, Any]] = []
+    if include_diag_flag and diag_text:
+        payload["embeds"][0]["fields"].append(
+            {"name": "Diagnostics Tail", "value": "Attached: diagnostics-tail.txt", "inline": False}
+        )
+        attachment_parts.append(
+            {
+                "name": "files[0]",
+                "filename": "diagnostics-tail.txt",
+                "content_type": "text/plain; charset=utf-8",
+                "data": diag_text,
+            }
+        )
+    if crash_text:
+        payload["embeds"][0]["fields"].append(
+            {"name": "Crash Tail", "value": "Attached: crash-tail.txt", "inline": False}
+        )
+        attachment_parts.append(
+            {
+                "name": f"files[{len(attachment_parts)}]",
+                "filename": "crash-tail.txt",
+                "content_type": "text/plain; charset=utf-8",
+                "data": crash_text,
+            }
+        )
     tag_ids = parse_discord_forum_tag_ids(forum_tag_ids_raw)
     if tag_ids:
         payload["applied_tags"] = tag_ids
 
-    body = json.dumps(payload).encode("utf-8")
+    headers = {
+        "User-Agent": "sins-editor-bug-report-discord-forum",
+        "Accept": "application/json",
+    }
+    if attachment_parts:
+        payload_json = json.dumps(payload, ensure_ascii=False)
+        parts = [{"name": "payload_json", "data": payload_json}]
+        parts.extend(attachment_parts)
+        body, content_type = _build_multipart_form_data(
+            parts
+        )
+        headers["Content-Type"] = content_type
+    else:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
     req = urllib.request.Request(
         webhook,
         data=body,
-        headers={
-            "User-Agent": "sins-editor-bug-report-discord-forum",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
+        headers=headers,
         method="POST",
     )
     try:

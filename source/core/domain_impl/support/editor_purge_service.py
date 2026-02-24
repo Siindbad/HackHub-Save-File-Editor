@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Any
@@ -31,6 +32,7 @@ from core.domain_impl.infra import update_ui_service
 from core.domain_impl.infra import windows_runtime_service
 from core.domain_impl.infra import input_mode_service
 from core.domain_impl.support import crash_offer_service
+from core.domain_impl.support import bug_report_cooldown_service
 from core.domain_impl.support import error_hook_service
 from core.domain_impl.support import error_overlay_service
 from core.domain_impl.support import error_service

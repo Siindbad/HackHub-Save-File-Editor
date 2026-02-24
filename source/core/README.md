@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-24 (runtime path-safety hardening and windows runtime JSON helper sync).
+Last sync: 2026-02-24 (runtime path-safety hardening, windows runtime JSON helper sync, and bug-report Discord attachment flow updates).
 
 | Module | Purpose |
 | --- | --- |

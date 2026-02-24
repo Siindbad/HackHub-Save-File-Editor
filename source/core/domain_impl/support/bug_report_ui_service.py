@@ -453,14 +453,28 @@ def open_bug_report_dialog(
                     screenshot_filename=selected_name,
                     screenshot_note=screenshot_note,
                 )
-                owner._ui_call(status_var.set, "Submitting issue...", wait=False)
-                issue_url = owner._submit_bug_report_issue(issue_title, body)
+                owner._ui_call(status_var.set, "Submitting report...", wait=False)
+                # Discord-only bug report policy:
+                # build a clean GitHub issue-form URL for reference, but do not create GitHub issues from app submits.
+                issue_url = owner._bug_report_new_issue_url(
+                    issue_title,
+                    body,
+                    include_body=False,
+                )
                 discord_mirror_note = ""
                 try:
                     mirror_result = owner._submit_bug_report_discord_forum(
                         summary=summary,
                         details=details,
                         issue_url=issue_url,
+                        include_diag=bool(include_diag_var.get()),
+                        diag_tail=(
+                            owner._read_diag_log_tail(max_chars=12000)
+                            if bool(include_diag_var.get())
+                            else ""
+                        ),
+                        crash_tail=str(crash_tail or ""),
+                        discord_contact=discord_var.get().strip(),
                         screenshot_url=screenshot_url,
                         screenshot_filename=selected_name,
                         screenshot_note=screenshot_note,
