@@ -13,4 +13,4 @@ Last sync: 2026-02-24 (domain-implementation namespace consolidation sync).
 | `json_error_highlight_core.py` | Provides JSON highlight decision flow while delegating UI render/log callbacks to services. |
 | `layout_topbar.py` | Contains topbar spacing, compaction, and centering calculation helpers. |
 | `startup_loader.py` | Implements startup loader progress, timing, and prewarm policy math. |
-| `update_service.py` | Implements updater retry/backoff/error classification (including Windows file-lock/access guidance) and download primitives. |
+| `update_service.py` | Compatibility re-export for updater retry/backoff/error/download helpers owned by `core/domain_impl/infra/update_service.py`. |
