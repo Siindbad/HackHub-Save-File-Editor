@@ -38,10 +38,11 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _normalize_gate_label(label: str) -> str:
-    normalized = label.strip().upper()
+    normalized = label.strip().upper().replace("_", " ")
     aliases = {
         "DEFENDER": "MICROSOFT DEFENDER",
         "VIRUSTOTAL": "VIRUS TOTAL",
+        "PIP-AUDIT": "PIP AUDIT",
     }
     return aliases.get(normalized, normalized)
 
