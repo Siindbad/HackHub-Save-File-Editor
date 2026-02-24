@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-24 (domain-implementation namespace consolidation sync).
+Last sync: 2026-02-24 (tree-label routing moved to tree engine service ownership).
 
 | Module | Purpose |
 | --- | --- |

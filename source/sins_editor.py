@@ -5065,41 +5065,7 @@ if button._siindbad_base_image is None:
         self._session_started_monotonic = time.monotonic()
         self._last_callback_origin = ""
         self._crash_report_offer_after_id = None
-        self._list_labelers = self._default_list_labelers()
-
-    def _default_list_labelers(self):
-        # Keep list labeler mapping grouped behind one helper for easier maintenance.
-        return {
-            ("MailAccounts",): self._mail_account_label,
-            ("Mails",): self._mails_label,
-            ("PhoneMessages",): self._phone_messages_label,
-            ("Files",): self._files_label,
-            ("Database",): self._database_label,
-            ("Bookmarks",): self._bookmarks_label,
-            # Root key is BCCNews; safe-display renders as BCC.News.
-            ("BCCNews",): self._bcc_news_label,
-            ("BCC.News",): self._bcc_news_label,
-            ("BCCNews", "news"): self._bcc_news_label,
-            ("BCC.News", "news"): self._bcc_news_label,
-            ("Process",): self._process_label,
-            ("Processes",): self._process_label,
-            ("Typewriter",): self._typewriter_label,
-            ("Bank", "accounts"): self._bank_account_label,
-            ("Bank", "Accounts"): self._bank_account_label,
-            ("Bank", "transactions"): self._bank_transaction_label,
-            ("Bank", "Transactions"): self._bank_transaction_label,
-            ("AppStore", "unlockedMarketItems"): self._app_store_unlocked_item_label,
-            ("App.Store", "unlockedMarketItems"): self._app_store_unlocked_item_label,
-            ("AppStore", "purchasedItems"): self._app_store_unlocked_item_label,
-            ("App.Store", "purchasedItems"): self._app_store_unlocked_item_label,
-            ("Twotter", "users"): self._twotter_user_label,
-            ("Quests",): self._quests_label,
-            ("Kisscord", "friends"): self._kisscord_friend_label,
-            ("WebsiteTemplates",): self._website_templates_label,
-            ("Terminal", "installedPackages"): self._terminal_package_label,
-            ("Terminal", "datalist"): self._terminal_datalist_label,
-            ("Terminal", "dataList"): self._terminal_datalist_label,
-        }
+        self._list_labelers = tree_engine_service.default_list_labelers(self)
 
     def _init_input_mode_runtime_state(self):
         # Keep INPUT-mode runtime state initialization grouped for easier maintenance.
@@ -9640,62 +9606,6 @@ if button._siindbad_base_image is None:
 
     def _is_network_list(self, path, value):
         return highlight_label_service.is_network_list(path, value, self.network_types_set)
-
-    def _mail_account_label(self, idx, item):
-        return label_format_service.mail_account_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _mails_label(self, idx, item):
-        return label_format_service.mails_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _phone_messages_label(self, idx, item):
-        return label_format_service.phone_messages_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _files_label(self, idx, item):
-        return label_format_service.files_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _database_label(self, idx, item):
-        return label_format_service.database_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _bookmarks_label(self, idx, item):
-        return label_format_service.bookmarks_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _bcc_news_label(self, idx, item):
-        return label_format_service.bcc_news_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _process_label(self, idx, item):
-        return label_format_service.process_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _typewriter_label(self, idx, item):
-        return label_format_service.typewriter_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _bank_account_label(self, idx, item):
-        return label_format_service.bank_account_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _bank_transaction_label(self, idx, item):
-        return label_format_service.bank_transaction_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _app_store_unlocked_item_label(self, idx, item):
-        return label_format_service.app_store_unlocked_item_label(
-            idx, item, getattr(self, "_tree_style_variant", "B")
-        )
-
-    def _twotter_user_label(self, idx, item):
-        return label_format_service.twotter_user_label(idx, item)
-
-    def _quests_label(self, idx, item):
-        return label_format_service.quests_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _kisscord_friend_label(self, idx, item):
-        return label_format_service.kisscord_friend_label(idx, item)
-
-    def _website_templates_label(self, idx, item):
-        return label_format_service.website_templates_label(idx, item, getattr(self, "_tree_style_variant", "B"))
-
-    def _terminal_package_label(self, idx, item):
-        return label_format_service.terminal_package_label(idx, item)
-
-    def _terminal_datalist_label(self, idx, item):
-        return label_format_service.terminal_datalist_label(idx, item)
 
     def _find_first_dict_key_change(self, old_value, new_value, current_path=None):
         return label_format_service.find_first_dict_key_change(old_value, new_value, current_path=current_path)
