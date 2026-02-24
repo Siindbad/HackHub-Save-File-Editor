@@ -1138,7 +1138,7 @@ jobs:
           semgrep = values.get("semgrep_status", "UNKNOWN")
           trufflehog = values.get("trufflehog_status", "UNKNOWN")
           bandit = values.get("bandit_status", "UNKNOWN")
-          safety = values.get("safety_status", "UNKNOWN")
+          sbom = values.get("sbom_status", "UNKNOWN")
           pip_audit = values.get("pip_audit_status", "UNKNOWN")
           defender = values.get("defender_status", "UNKNOWN")
           vt = values.get("virustotal_status", "UNKNOWN")
@@ -1159,7 +1159,7 @@ jobs:
               gate_badge_line("SEMGREP", semgrep),
               gate_badge_line("TRUFFLEHOG", trufflehog),
               gate_badge_line("BANDIT", bandit),
-              gate_badge_line("SAFETY STATUS", safety),
+              gate_badge_line("SBOM", sbom),
               gate_badge_line("PIP AUDIT", pip_audit),
               gate_badge_line("MICROSOFT DEFENDER", defender),
               gate_badge_line("VIRUS TOTAL", vt),
