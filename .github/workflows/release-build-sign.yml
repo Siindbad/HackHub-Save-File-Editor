@@ -1193,7 +1193,6 @@ jobs:
         run: |
           @'
           from pathlib import Path
-          from urllib.parse import quote
 
           report = Path("dist/security-report.txt")
           out_md = Path("SECURITY.md")
@@ -1244,14 +1243,10 @@ jobs:
                   return "lightgrey"
               return "blue"
 
-          def gate_badge_line(gate_label: str, status_value: str) -> str:
+          def status_badge(status_value: str) -> str:
               result = resolve_gate_result(status_value)
               color = badge_color(result)
-              token = quote(gate_label, safe="")
-              return (
-                  f"- ![{gate_label} {result}]"
-                  f"(https://img.shields.io/badge/{token}-{result}-{color}?style=flat-square)"
-              )
+              return f"![{result}](https://img.shields.io/badge/{result}-{color}?style=flat-square)"
 
           semgrep = values.get("semgrep_status", "UNKNOWN")
           trufflehog = values.get("trufflehog_status", "UNKNOWN")
@@ -1276,16 +1271,18 @@ jobs:
               "",
               "## Security Gate Status",
               "",
-              gate_badge_line("SEMGREP", semgrep),
-              gate_badge_line("TRUFFLEHOG", trufflehog),
-              gate_badge_line("BANDIT", bandit),
-              gate_badge_line("CODEQL", codeql),
-              gate_badge_line("BINSKIM", binskim),
-              gate_badge_line("SBOM", sbom),
-              gate_badge_line("PIP AUDIT", pip_audit),
-              gate_badge_line("MICROSOFT DEFENDER", defender),
-              gate_badge_line("VIRUS TOTAL", vt),
-              f"- ![SHA256 {sha_status}](https://img.shields.io/badge/SHA256-{sha_status}-{badge_color(sha_status)}?style=flat-square)",
+              "| Gate | Status |",
+              "| --- | --- |",
+              f"| Semgrep | {status_badge(semgrep)} |",
+              f"| TruffleHog | {status_badge(trufflehog)} |",
+              f"| Bandit | {status_badge(bandit)} |",
+              f"| CodeQL | {status_badge(codeql)} |",
+              f"| BinSkim | {status_badge(binskim)} |",
+              f"| SBOM | {status_badge(sbom)} |",
+              f"| pip-audit | {status_badge(pip_audit)} |",
+              f"| Microsoft Defender | {status_badge(defender)} |",
+              f"| VirusTotal | {status_badge(vt)} |",
+              f"| SHA256 | ![{sha_status}](https://img.shields.io/badge/{sha_status}-{badge_color(sha_status)}?style=flat-square) |",
               "",
               "## VirusTotal Report",
               "",
