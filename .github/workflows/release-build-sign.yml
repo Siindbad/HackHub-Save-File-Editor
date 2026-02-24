@@ -193,6 +193,8 @@ jobs:
         shell: powershell
         env:
           RELEASE_TAG: ${{ steps.vars.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           VT_API_KEY: ${{ secrets.VT_API_KEY }}
           VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
           HACKHUB_DEFENDER_STRICT: ${{ vars.HACKHUB_DEFENDER_STRICT }}
@@ -250,6 +252,49 @@ jobs:
           git_full = out.strip() if rc == 0 else "unknown"
           rc, out, _ = run_cmd(["git", "describe", "--tags", "--exact-match"])
           git_tag_exact = out.strip() if rc == 0 and out.strip() else "none"
+
+          def _workflow_conclusion_to_status(conclusion: str) -> str:
+              raw = (conclusion or "").strip().lower()
+              if raw == "success":
+                  return "PASS"
+              if raw in {"failure", "timed_out", "cancelled", "action_required"}:
+                  return "FAIL"
+              if raw in {"skipped", "neutral"}:
+                  return "SKIP"
+              return "UNKNOWN"
+
+          def _latest_workflow_status(workflow_file: str, branch: str = "main") -> tuple[str, str]:
+              repo = (os.getenv("GH_REPO") or "").strip()
+              token = (os.getenv("GH_TOKEN") or "").strip()
+              if not repo or not token:
+                  return "SKIP", "missing_github_context"
+              url = (
+                  f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/runs"
+                  f"?branch={branch}&status=completed&per_page=1"
+              )
+              req = urllib.request.Request(
+                  url,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "hackhub-release-security-report",
+                  },
+                  method="GET",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as resp:
+                      payload = json.loads(resp.read().decode("utf-8", "replace") or "{}")
+              except Exception:
+                  return "UNKNOWN", "api_error"
+              runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
+              if not isinstance(runs, list) or not runs:
+                  return "UNKNOWN", "no_runs"
+              conclusion = str((runs[0] or {}).get("conclusion", "")).strip().lower()
+              return _workflow_conclusion_to_status(conclusion), (conclusion or "unknown")
+
+          codeql_status, codeql_conclusion = _latest_workflow_status("codeql.yml")
+          binskim_status, binskim_conclusion = _latest_workflow_status("windows-binary-hardening.yml")
 
           zip_sha = file_sha(zip_path)
           installer_sha = file_sha(installer_path) if installer_path.exists() else "unknown"
@@ -897,6 +942,22 @@ jobs:
               "",
               "-------------------------------------------------------------",
               "",
+              "[ CODEQL ]",
+              "",
+              f"codeql_status: {codeql_status}",
+              f"codeql_latest_conclusion: {codeql_conclusion}",
+              "codeql_workflow: .github/workflows/codeql.yml",
+              "",
+              "-------------------------------------------------------------",
+              "",
+              "[ BINSKIM ]",
+              "",
+              f"binskim_status: {binskim_status}",
+              f"binskim_latest_conclusion: {binskim_conclusion}",
+              "binskim_workflow: .github/workflows/windows-binary-hardening.yml",
+              "",
+              "-------------------------------------------------------------",
+              "",
               "[ SAFETY STATUS ]",
               "",
               f"safety_status: {safety_status}",
@@ -1188,6 +1249,8 @@ jobs:
           semgrep = values.get("semgrep_status", "UNKNOWN")
           trufflehog = values.get("trufflehog_status", "UNKNOWN")
           bandit = values.get("bandit_status", "UNKNOWN")
+          codeql = values.get("codeql_status", "UNKNOWN")
+          binskim = values.get("binskim_status", "UNKNOWN")
           sbom = values.get("sbom_status", "UNKNOWN")
           pip_audit = values.get("pip_audit_status", "UNKNOWN")
           defender = values.get("defender_status", "UNKNOWN")
@@ -1209,6 +1272,8 @@ jobs:
               gate_badge_line("SEMGREP", semgrep),
               gate_badge_line("TRUFFLEHOG", trufflehog),
               gate_badge_line("BANDIT", bandit),
+              gate_badge_line("CODEQL", codeql),
+              gate_badge_line("BINSKIM", binskim),
               gate_badge_line("SBOM", sbom),
               gate_badge_line("PIP AUDIT", pip_audit),
               gate_badge_line("MICROSOFT DEFENDER", defender),
