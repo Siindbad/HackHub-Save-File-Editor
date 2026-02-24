@@ -3,6 +3,9 @@ name: Discord Release Notify
 on:
   release:
     types: [published, prereleased]
+  workflow_run:
+    workflows: ["Release Build and Sigstore Sign"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -40,13 +43,17 @@ permissions:
 
 jobs:
   notify:
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: |
+      github.event_name == 'release' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Send Discord release message
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
           EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_URL: ${{ github.event.release.html_url }}
@@ -247,7 +254,7 @@ jobs:
           repo = (os.getenv("REPO_NAME") or "").strip()
           latest_release = {}
           manual_tag = (os.getenv("MANUAL_TAG") or "").strip()
-          if event_name == "workflow_dispatch":
+          if event_name in {"workflow_dispatch", "workflow_run"}:
               latest_release = _load_release_by_tag(repo, manual_tag) if manual_tag else _load_latest_release(repo)
 
           tag = _pick(manual_tag, os.getenv("RELEASE_TAG"), latest_release.get("tag_name"))
