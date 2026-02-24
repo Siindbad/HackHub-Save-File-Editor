@@ -7,7 +7,9 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
-ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_PATH = Path(__file__).resolve()
+# Support both source repo path (`tools/...`) and mirrored public path (`source/tools/...`).
+ROOT = SCRIPT_PATH.parents[2] if SCRIPT_PATH.parents[1].name.lower() == "source" else SCRIPT_PATH.parents[1]
 
 
 BADGE_RE = re.compile(
