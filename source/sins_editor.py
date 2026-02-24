@@ -2119,6 +2119,9 @@ if button._siindbad_base_image is None:
             sleep_fn=time.sleep,
         )
 
+    def _read_json_file(self, path, encoding="utf-8"):
+        return windows_runtime_service.read_json_file(path=path, encoding=encoding)
+
     def _commit_file_to_destination_with_retries(
         self,
         source_path,
@@ -4265,8 +4268,11 @@ if button._siindbad_base_image is None:
             if not os.path.isfile(path):
                 continue
             try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    data = json.load(fh)
+                reader = getattr(self, "_read_json_file", None)
+                if callable(reader):
+                    data = reader(path, encoding="utf-8")
+                else:
+                    data = windows_runtime_service.read_json_file(path=path, encoding="utf-8")
                 fs = data.get("font_size")
                 if isinstance(fs, int) and 6 <= fs <= 32:
                     self._font_size = fs
@@ -4303,8 +4309,11 @@ if button._siindbad_base_image is None:
             if callable(writer):
                 writer(path, payload, encoding="utf-8")
             else:
-                with open(path, "w", encoding="utf-8") as fh:
-                    fh.write(payload)
+                windows_runtime_service.write_text_file_atomic(
+                    path=path,
+                    text=payload,
+                    encoding="utf-8",
+                )
         except _EXPECTED_APP_ERRORS:
             return
 

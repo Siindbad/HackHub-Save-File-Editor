@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-24 (domain implementation extraction sync: tree markers, toolbar max layout, README/text-context UI, JSON find orchestration).
+Last sync: 2026-02-24 (runtime path-safety hardening and windows runtime JSON helper sync).
 
 | Module | Purpose |
 | --- | --- |
