@@ -7,17 +7,17 @@ Release version: **v1.3.7**
 
 | Gate | Status |
 | --- | --- |
-| Semgrep | ![SEMGREP PASS](https://img.shields.io/badge/SEMGREP-PASS-brightgreen?style=flat-square) |
-| TruffleHog | ![TRUFFLEHOG PASS](https://img.shields.io/badge/TRUFFLEHOG-PASS-brightgreen?style=flat-square) |
-| Bandit | ![BANDIT PASS](https://img.shields.io/badge/BANDIT-PASS-brightgreen?style=flat-square) |
-| CodeQL | ![CODEQL PASS](https://img.shields.io/badge/CODEQL-PASS-brightgreen?style=flat-square) |
-| BinSkim | ![BINSKIM PASS](https://img.shields.io/badge/BINSKIM-PASS-brightgreen?style=flat-square) |
-| Authenticode | ![AUTHENTICODE PASS](https://img.shields.io/badge/AUTHENTICODE-PASS-brightgreen?style=flat-square) |
-| pip-audit | ![PIP AUDIT PASS](https://img.shields.io/badge/PIP%20AUDIT-PASS-brightgreen?style=flat-square) |
-| SBOM | ![SBOM PASS](https://img.shields.io/badge/SBOM-PASS-brightgreen?style=flat-square) |
-| Microsoft Defender | ![MICROSOFT DEFENDER PASS](https://img.shields.io/badge/MICROSOFT%20DEFENDER-PASS-brightgreen?style=flat-square) |
-| VirusTotal | ![VIRUS TOTAL PASS](https://img.shields.io/badge/VIRUS%20TOTAL-PASS-brightgreen?style=flat-square) |
-| SHA256 | ![SHA256 PASS](https://img.shields.io/badge/SHA256-PASS-brightgreen?style=flat-square) |
+| Semgrep | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| TruffleHog | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| Bandit | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| CodeQL | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| BinSkim | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| Authenticode | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| pip-audit | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| SBOM | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| Microsoft Defender | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| VirusTotal | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
+| SHA256 | ![PASS](https://img.shields.io/badge/PASS-brightgreen?style=flat-square) |
 
 ## VirusTotal Report
 
