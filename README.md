@@ -26,7 +26,7 @@
 
 | <img align="left" alt="CHANGE LOGS" src="https://img.shields.io/badge/CHANGE%20LOGS-5B21B6?style=for-the-badge&labelColor=0F172A"> |
 |---|
-| **[ Version 1.3.7 ]**<br>- No changelog notes provided. |
+| **[ Version 1.3.8 ]**<br>- Updated diagnostics to daily files and retained only today and yesterday logs.<br>- Added browser fallback prompt to open direct update download page.<br>- Added structured update failure logging with details to diagnostics logs.<br>- HOTFIX: Added clear download/install/restart status and persistent update overlay.<br>- HOTFIX: Updated version/changelog/disclaimer to include missed 1.3.2 items.<br>- Fixed JSON Find Next to cycle global value matches across categories and include.<br>- Fixed protected-folder updates by adding admin elevation retry and silent ZIP apply.<br>- Fixed style-B maximize toolbar flow.<br>- HOTFIX: Updater verification.<br>- Added delegation contracts and roadmap status updates to lock Phase 4 boundaries.<br>- Added Phase 6 delegation contracts and roadmap status updates for next-phase handoff.<br>- Added session and uptime diagnostics with sanitized exception-chain and hashed. |
 
 | <img align="left" alt="VERIFICATION SUITE" src="https://img.shields.io/badge/VERIFICATION%20SUITE-0F172A?style=for-the-badge&labelColor=0F172A"> |
 |---|
