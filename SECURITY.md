@@ -20,8 +20,9 @@ Release version: **v1.3.8**
 
 ## VirusTotal Report
 
-- VirusTotal permalink: [https://www.virustotal.com/gui/file/1943ba687e09902b821447f0423cc3505f3a55034af2289fdf047121a259ec20/detection](https://www.virustotal.com/gui/file/1943ba687e09902b821447f0423cc3505f3a55034af2289fdf047121a259ec20/detection)
+- VirusTotal permalink: [![Click Here For VirusTotal Results](https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=for-the-badge)](https://www.virustotal.com/gui/file/1943ba687e09902b821447f0423cc3505f3a55034af2289fdf047121a259ec20/detection)
 
 See GitHub Releases for the matching release artifacts.
+
 
 

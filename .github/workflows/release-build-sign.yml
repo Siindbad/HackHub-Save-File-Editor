@@ -1288,7 +1288,12 @@ jobs:
               "",
           ]
           if vt_link:
-              lines.append(f"- VirusTotal permalink: [{vt_link}]({vt_link})")
+              vt_badge = (
+                  "[![Click Here For VirusTotal Results]"
+                  "(https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=for-the-badge)]"
+                  f"({vt_link})"
+              )
+              lines.append(f"- VirusTotal permalink: {vt_badge}")
           else:
               lines.append("- VirusTotal permalink: not available in this report.")
           lines += [
