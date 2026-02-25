@@ -154,9 +154,19 @@ def _validate_version(security_body: str, expected_version: str) -> str | None:
 
 def _validate_virustotal_line(security_body: str, permalink: str) -> str | None:
     if permalink:
+        badge_expected = (
+            "- VirusTotal permalink: "
+            "[![Click Here For VirusTotal Results]"
+            "(https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=for-the-badge)]"
+            f"({permalink})"
+        )
         markdown_expected = f"- VirusTotal permalink: [{permalink}]({permalink})"
         plaintext_expected = f"- VirusTotal permalink: {permalink}"
-        if markdown_expected not in security_body and plaintext_expected not in security_body:
+        if (
+            badge_expected not in security_body
+            and markdown_expected not in security_body
+            and plaintext_expected not in security_body
+        ):
             return "VirusTotal permalink line is missing or does not match security-report permalink."
         return None
     fallback = "- VirusTotal permalink: not available in this report."
