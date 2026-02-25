@@ -1588,4 +1588,10 @@ jobs:
             dist/security-report.txt
             dist/sigstore-proofs.zip
 
+      - name: Discord Handoff
+        shell: powershell
+        run: |
+          Write-Host "Discord handoff complete: release publish step finished."
+          Write-Host "Discord Release Notify workflow now handles release announcement delivery."
+
 
