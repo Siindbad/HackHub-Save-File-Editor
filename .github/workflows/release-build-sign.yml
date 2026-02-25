@@ -1236,7 +1236,7 @@ jobs:
 
           def badge_color(result: str) -> str:
               if result == "PASS":
-                  return "brightgreen"
+                  return "green"
               if result == "FAIL":
                   return "red"
               if result == "SKIP":
