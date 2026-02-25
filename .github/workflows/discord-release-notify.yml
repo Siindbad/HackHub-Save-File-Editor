@@ -133,7 +133,7 @@ jobs:
                   cleaned = cleaned.replace("\n\n\n", "\n\n")
               return cleaned
 
-          def _compact_changelog(raw_text, max_items=10, max_words=10):
+          def _compact_changelog(raw_text, max_items=40):
               text = (raw_text or "").strip()
               if not text:
                   return ""
@@ -144,24 +144,12 @@ jobs:
                       item = " ".join(stripped[2:].split())
                       if item:
                           bullets.append(item.rstrip("."))
-              def _shorten_phrase(item):
-                  # Keep Discord lines compact; prefer first clause and simple wording.
-                  s = item.strip()
-                  for sep in (" and ", " with ", " while ", " plus "):
-                      if sep in s:
-                          s = s.split(sep, 1)[0].strip()
-                          break
-                  words = s.split()
-                  if len(words) > max_words:
-                      s = " ".join(words[:max_words]).rstrip(".,;:!?")
-                  return s
               if not bullets:
                   compact = " ".join(text.split())
                   return f"- {compact}" if compact else ""
               compact_items = []
               for item in bullets[:max_items]:
-                  short_item = _shorten_phrase(item)
-                  compact_items.append(f"- {short_item}.")
+                  compact_items.append(f"- {item}.")
               return "\n".join(compact_items)
 
           def _extract_version_changelog_from_readme(readme_text, version_text):
