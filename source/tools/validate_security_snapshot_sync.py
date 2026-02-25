@@ -154,7 +154,13 @@ def _validate_version(security_body: str, expected_version: str) -> str | None:
 
 def _validate_virustotal_line(security_body: str, permalink: str) -> str | None:
     if permalink:
-        badge_expected = (
+        badge_multiline_expected = (
+            "- VirusTotal permalink:\n"
+            "  [![Click Here For VirusTotal Results]"
+            "(https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=flat-square)]"
+            f"({permalink})"
+        )
+        badge_legacy_expected = (
             "- VirusTotal permalink: "
             "[![Click Here For VirusTotal Results]"
             "(https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=for-the-badge)]"
@@ -163,7 +169,8 @@ def _validate_virustotal_line(security_body: str, permalink: str) -> str | None:
         markdown_expected = f"- VirusTotal permalink: [{permalink}]({permalink})"
         plaintext_expected = f"- VirusTotal permalink: {permalink}"
         if (
-            badge_expected not in security_body
+            badge_multiline_expected not in security_body
+            and badge_legacy_expected not in security_body
             and markdown_expected not in security_body
             and plaintext_expected not in security_body
         ):
