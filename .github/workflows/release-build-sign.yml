@@ -1236,7 +1236,7 @@ jobs:
 
           def badge_color(result: str) -> str:
               if result == "PASS":
-                  return "green"
+                  return "006400"
               if result == "FAIL":
                   return "red"
               if result == "SKIP":
@@ -1593,5 +1593,6 @@ jobs:
         run: |
           Write-Host "Discord handoff complete: release publish step finished."
           Write-Host "Discord Release Notify workflow now handles release announcement delivery."
+
 
 
