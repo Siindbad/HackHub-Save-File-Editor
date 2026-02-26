@@ -349,19 +349,18 @@ def refresh_tree_item_markers(owner: Any) -> Any:
             depth = 0 if is_group else (len(path) if isinstance(path, list) else 0)
             has_children = bool(tree.get_children(item_id))
             is_expanded = bool(tree.item(item_id, "open")) if has_children else False
-            if depth <= 1:
-                if owner._is_input_red_arrow_root_path(path):
-                    icon = owner._load_input_bank_red_arrow_icon(
-                        expandable=has_children,
-                        expanded=is_expanded,
-                    )
-                else:
-                    icon = owner._load_tree_marker_icon(
-                        "main",
-                        selected=False,
-                        expandable=has_children,
-                        expanded=is_expanded,
-                    )
+            if owner._is_input_red_arrow_root_path(path):
+                icon = owner._load_input_bank_red_arrow_icon(
+                    expandable=has_children,
+                    expanded=is_expanded,
+                )
+            elif depth <= 1:
+                icon = owner._load_tree_marker_icon(
+                    "main",
+                    selected=False,
+                    expandable=has_children,
+                    expanded=is_expanded,
+                )
             else:
                 icon = owner._load_tree_marker_icon(
                     "sub",
@@ -389,19 +388,18 @@ def refresh_tree_marker_for_item(owner: Any, item_id: Any, selected: Any=False) 
         depth = 0 if is_group else (len(path) if isinstance(path, list) else 0)
         has_children = bool(tree.get_children(item_id))
         is_expanded = bool(tree.item(item_id, "open")) if has_children else False
-        if depth <= 1:
-            if owner._is_input_red_arrow_root_path(path):
-                icon = owner._load_input_bank_red_arrow_icon(
-                    expandable=has_children,
-                    expanded=is_expanded,
-                )
-            else:
-                icon = owner._load_tree_marker_icon(
-                    "main",
-                    selected=False,
-                    expandable=has_children,
-                    expanded=is_expanded,
-                )
+        if owner._is_input_red_arrow_root_path(path):
+            icon = owner._load_input_bank_red_arrow_icon(
+                expandable=has_children,
+                expanded=is_expanded,
+            )
+        elif depth <= 1:
+            icon = owner._load_tree_marker_icon(
+                "main",
+                selected=False,
+                expandable=has_children,
+                expanded=is_expanded,
+            )
         else:
             icon = owner._load_tree_marker_icon(
                 "sub",

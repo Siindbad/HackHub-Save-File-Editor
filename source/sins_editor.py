@@ -98,6 +98,7 @@ text_context_pointer_service = text_context_manager.TEXT_CONTEXT.text_context_po
 text_context_state_service = text_context_manager.TEXT_CONTEXT.text_context_state_service
 text_context_widget_service = text_context_manager.TEXT_CONTEXT.text_context_widget_service
 input_bank_style_service = theme_manager.THEME.input_bank_style_service
+input_database_bcc_style_service = theme_manager.THEME.input_database_bcc_style_service
 input_database_style_service = theme_manager.THEME.input_database_style_service
 input_network_firewall_style_service = theme_manager.THEME.input_network_firewall_style_service
 input_network_router_style_service = theme_manager.THEME.input_network_router_style_service
@@ -826,10 +827,29 @@ if button._siindbad_base_image is None:
             return False
         if str(normalized[0]) != "Database":
             return False
-        # Render from root Database click and direct tables->Grades path.
+        # Root Database now shows subcategory selector; style render is subcategory-only.
         if len(normalized) == 1:
+            return False
+        # Support clicking a Database entry node (e.g., first item -> Grades matrix).
+        if len(normalized) == 2 and isinstance(normalized[1], int):
             return True
         return len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]) == "Grades"
+
+    def _database_root_entry_label(self, idx, item):
+        variant = str(getattr(self, "_tree_style_variant", "B"))
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return label_format_service.database_label(idx, item, variant)
+        if isinstance(item, dict):
+            tables = item.get("tables")
+            if isinstance(tables, dict) and tables:
+                first_table = str(next(iter(tables.keys()))).strip().casefold()
+                if first_table == "grades":
+                    return "Grades"
+                if first_table == "users":
+                    return "BCC"
+                if first_table == "customers":
+                    return "INTERPOL"
+        return label_format_service.database_label(idx, item, variant)
 
     def _collect_database_grades_matrix(self, value, max_rows=40):
         return input_database_style_service.collect_database_grades_matrix(
@@ -845,14 +865,91 @@ if button._siindbad_base_image is None:
             matrix_payload,
         )
 
+    def _collect_database_bcc_payload(self, value, max_rows=200):
+        return input_database_bcc_style_service.collect_database_bcc_payload(
+            value,
+            max_rows=max_rows,
+        )
+
+    def _render_database_bcc_table(self, host, normalized_path, payload):
+        input_database_bcc_style_service.render_database_bcc_table(
+            self,
+            host,
+            normalized_path,
+            payload,
+        )
+
+    def _collect_database_interpol_payload(self, value, max_rows=200):
+        return input_database_bcc_style_service.collect_database_interpol_payload(
+            value,
+            max_rows=max_rows,
+        )
+
+    def _render_database_interpol_table(self, host, normalized_path, payload):
+        input_database_bcc_style_service.render_database_interpol_table(
+            self,
+            host,
+            normalized_path,
+            payload,
+        )
+
+    def _database_grades_matrix_for_input_path(self, path, value):
+        normalized = list(path or [])
+        if not normalized:
+            return None
+        if str(normalized[0]) != "Database":
+            return None
+        if len(normalized) == 1:
+            return None
+        if len(normalized) == 2 and isinstance(normalized[1], int):
+            return self._collect_database_grades_matrix(value)
+        if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]) == "Grades":
+            return self._collect_database_grades_matrix(value)
+        return None
+
+    def _database_bcc_payload_for_input_path(self, path, value):
+        normalized = list(path or [])
+        if not normalized:
+            return None
+        if str(normalized[0]) != "Database":
+            return None
+        if len(normalized) == 2 and isinstance(normalized[1], int):
+            return self._collect_database_bcc_payload(value)
+        if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]).casefold() == "users":
+            return self._collect_database_bcc_payload(value)
+        return None
+
+    def _database_interpol_payload_for_input_path(self, path, value):
+        normalized = list(path or [])
+        if not normalized:
+            return None
+        if str(normalized[0]) != "Database":
+            return None
+        if len(normalized) == 2 and isinstance(normalized[1], int):
+            return self._collect_database_interpol_payload(value)
+        if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]).casefold() == "customers":
+            return self._collect_database_interpol_payload(value)
+        return None
+
     def _is_network_router_input_style_payload(self, path, value):
         return input_network_router_style_service.is_network_router_group_payload(self, path, value)
 
     def _is_suspicion_input_style_path(self, path):
         return input_suspicion_phone_style_service.is_suspicion_input_path(self, path)
 
+    def _is_phone_input_style_path(self, path):
+        return input_suspicion_phone_style_service.is_phone_input_path(self, path)
+
     def _render_suspicion_phone_input(self, host, normalized_path, value):
         return input_suspicion_phone_style_service.render_suspicion_phone_input(
+            self,
+            host,
+            normalized_path,
+            value,
+        )
+
+    def _render_phone_preview_input(self, host, normalized_path, value):
+        return input_suspicion_phone_style_service.render_phone_preview_input(
             self,
             host,
             normalized_path,
@@ -931,10 +1028,14 @@ if button._siindbad_base_image is None:
         panel_bg = theme.get("panel", "#161b24")
         host.configure(bg=panel_bg)
         normalized_path = list(path or [])
+        root_key = self._input_mode_root_key_for_path(normalized_path)
         is_network_router_payload = self._is_network_router_input_style_payload(normalized_path, value)
         is_network_device_payload = self._is_network_device_input_style_payload(normalized_path, value)
         is_network_firewall_payload = self._is_network_firewall_input_style_payload(normalized_path, value)
-        is_database_payload = self._is_database_input_style_path(normalized_path)
+        database_grades_matrix = self._database_grades_matrix_for_input_path(normalized_path, value)
+        database_bcc_payload = self._database_bcc_payload_for_input_path(normalized_path, value)
+        database_interpol_payload = self._database_interpol_payload_for_input_path(normalized_path, value)
+        is_database_payload = bool(database_grades_matrix)
         if is_network_router_payload:
             input_network_router_style_service.prepare_router_render_host(
                 self,
@@ -998,7 +1099,7 @@ if button._siindbad_base_image is None:
             return
         if (
             len(normalized_path) == 1
-            and self._input_mode_root_key_for_path(normalized_path) == "network"
+            and root_key == "network"
         ):
             # Keep generic Network root placeholder, but allow custom subgroup payload renderers
             # (e.g., ROUTER/DEVICE/FIREWALL grouped selection routed through list_path) to proceed.
@@ -1015,6 +1116,17 @@ if button._siindbad_base_image is None:
                 )
                 input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
+        if len(normalized_path) == 1 and root_key == "database":
+            input_mode_service.show_input_mode_notice(
+                self,
+                host,
+                panel_bg,
+                "Select A Sub Category To View Input Fields",
+                font_size=11,
+                tk_module=tk,
+            )
+            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+            return
         if self._is_bank_input_style_path(normalized_path):
             bank_rows = self._collect_bank_input_rows(value)
             if bank_rows:
@@ -1023,16 +1135,33 @@ if button._siindbad_base_image is None:
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
+        if database_bcc_payload:
+            self._render_database_bcc_table(host, normalized_path, database_bcc_payload)
+            self._refresh_input_mode_bool_widget_colors()
+            self._schedule_input_mode_layout_finalize(reset_scroll=True)
+            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+            return
+        if database_interpol_payload:
+            self._render_database_interpol_table(host, normalized_path, database_interpol_payload)
+            self._refresh_input_mode_bool_widget_colors()
+            self._schedule_input_mode_layout_finalize(reset_scroll=True)
+            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+            return
         if self._is_database_input_style_path(normalized_path):
-            grades_matrix = self._collect_database_grades_matrix(value)
-            if grades_matrix:
-                self._render_database_grades_input_matrix(host, normalized_path, grades_matrix)
+            if database_grades_matrix:
+                self._render_database_grades_input_matrix(host, normalized_path, database_grades_matrix)
                 self._refresh_input_mode_bool_widget_colors()
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
         if self._is_suspicion_input_style_path(normalized_path):
             if self._render_suspicion_phone_input(host, normalized_path, value):
+                self._refresh_input_mode_bool_widget_colors()
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+                return
+        if self._is_phone_input_style_path(normalized_path):
+            if self._render_phone_preview_input(host, normalized_path, value):
                 self._refresh_input_mode_bool_widget_colors()
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 input_mode_service.mark_input_mode_render_complete(self, normalized_path)
@@ -4609,6 +4738,10 @@ if button._siindbad_base_image is None:
         self.last_find_query = ""
         # Cache searchable tree labels by data path to avoid expensive full-tree expansion on find.
         self._find_search_entries = []
+        # Cache JSON path token text for incremental Find Next narrowing.
+        self._json_find_path_token_cache = {}
+        # Track configured JSON text widget for one-time find tag styling.
+        self._json_find_tag_widget = None
         self.error_overlay = None
         self.error_pin = None
         self._mono_family = None
@@ -4642,6 +4775,9 @@ if button._siindbad_base_image is None:
         self._last_callback_origin = ""
         self._crash_report_offer_after_id = None
         self._list_labelers = tree_engine_service.default_list_labelers(self)
+        # INPUT mode uses custom Database entry names (Grades/BCC/INTERPOL) while
+        # JSON mode keeps canonical host-style labels through the same labeler hook.
+        self._list_labelers[("Database",)] = self._database_root_entry_label
 
     def _init_input_mode_runtime_state(self):
         # Keep INPUT-mode runtime state initialization grouped for easier maintenance.
@@ -6568,6 +6704,9 @@ if button._siindbad_base_image is None:
         tasks.append({"variant": variant, "kind": "font"})
         tasks.append({"variant": variant, "kind": "logo"})
         tasks.append({"variant": variant, "kind": "badges"})
+        # Prewarm marker integrity/icons so first tree expansion is stable and hitch-free.
+        tasks.append({"variant": variant, "kind": "tree_integrity"})
+        tasks.append({"variant": variant, "kind": "tree_markers"})
         return tasks
 
     def _execute_theme_prewarm_task(self, task):
@@ -7377,6 +7516,21 @@ if button._siindbad_base_image is None:
     def _is_input_red_arrow_root_path(self, path):
         return tree_policy_service.should_use_input_red_arrow_for_path(self, path)
 
+    def _is_input_database_locked_subcategory_path(self, path):
+        normalized = list(path or [])
+        if len(normalized) != 2:
+            return False
+        if self._input_mode_root_key_for_path(normalized) != "database":
+            return False
+        entry = self._get_value(normalized)
+        if not isinstance(entry, dict):
+            return False
+        tables = entry.get("tables")
+        if not isinstance(tables, dict) or not tables:
+            return False
+        first_table = str(next(iter(tables.keys()))).strip().casefold()
+        return first_table in {"grades", "users", "customers"}
+
     def _load_input_bank_red_arrow_icon(self, expandable=False, expanded=False):
         # INPUT-only Bank marker override: red arrow without affecting JSON marker assets.
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
@@ -7534,7 +7688,9 @@ if button._siindbad_base_image is None:
         self.find_index = 0
         self.last_find_query = ""
         self._find_search_entries = []
+        self._json_find_path_token_cache = {}
         self._json_find_last_query = ""
+        self._json_find_tag_widget = None
         self._find_last_root_item = ""
         text_widget = getattr(self, "text", None)
         if text_widget is not None:
@@ -7637,9 +7793,56 @@ if button._siindbad_base_image is None:
                         break
 
             if next_item is None:
+                # Network roots can bucket list rows under group nodes (ROUTER/DEVICE/etc.).
+                # Resolve those rows through the group node so Find Next can jump cross-category.
+                next_item = self._resolve_grouped_list_item(current_item, prefix)
+
+            if next_item is None:
                 return None
             current_item = next_item
         return current_item
+
+    def _network_group_for_list_index(self, list_path, row_index):
+        if not isinstance(list_path, list) or not isinstance(row_index, int):
+            return None
+        try:
+            list_value = self._get_value(list_path)
+        except _EXPECTED_APP_ERRORS:
+            return None
+        if not isinstance(list_value, list):
+            return None
+        if row_index < 0 or row_index >= len(list_value):
+            return None
+        if not self._is_network_list(list_path, list_value):
+            return None
+        row = list_value[row_index]
+        if isinstance(row, dict):
+            group = str(row.get("type", "") or "").strip()
+            return group or "UNKNOWN"
+        return "UNKNOWN"
+
+    def _resolve_grouped_list_item(self, current_item, prefix):
+        if not current_item:
+            return None
+        if not isinstance(prefix, list) or len(prefix) < 2:
+            return None
+        list_path = prefix[:-1]
+        row_index = prefix[-1]
+        if not isinstance(row_index, int):
+            return None
+        group = self._network_group_for_list_index(list_path, row_index)
+        if not group:
+            return None
+        group_item = self._ensure_tree_group_item_loaded(list_path, group)
+        if group_item is None:
+            return None
+        if self._has_loading_child(group_item):
+            self._populate_children(group_item)
+        for child in self.tree.get_children(group_item):
+            child_path = self.item_to_path.get(child)
+            if isinstance(child_path, list) and child_path == prefix:
+                return child
+        return None
 
     def _ensure_tree_group_item_loaded(self, list_path, group):
         parent_id = self._ensure_tree_item_for_path(list_path)
@@ -7678,6 +7881,9 @@ if button._siindbad_base_image is None:
 
     def _build_json_find_matches(self, query_lower):
         return json_find_service.build_json_find_matches(self, query_lower)
+
+    def _filter_json_find_matches(self, prior_matches, query_lower):
+        return json_find_service.filter_json_find_matches(self, prior_matches, query_lower)
 
     def _find_next_json_text_match(self, query):
         return json_text_find_service.find_next_json_text_match(self, query)

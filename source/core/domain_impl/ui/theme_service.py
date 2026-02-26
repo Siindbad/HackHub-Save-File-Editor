@@ -656,6 +656,29 @@ def _execute_theme_prewarm_task(owner: Any, task):
                 owner._load_credit_github_icon(max_size=14, tint="#d8e8f2", with_plate=False)
                 owner._load_credit_discord_icon(max_size=14, tint="#d8e8f2", with_plate=False)
                 return
+            if kind == "tree_integrity":
+                owner._check_tree_marker_integrity()
+                return
+            if kind == "tree_markers":
+                marker_states = (
+                    ("main", False, False, False),
+                    ("main", False, True, False),
+                    ("main", False, True, True),
+                    ("sub", False, False, False),
+                    ("sub", True, False, False),
+                    ("sub", False, True, False),
+                    ("sub", True, True, True),
+                )
+                for marker_kind, marker_selected, marker_expandable, marker_expanded in marker_states:
+                    owner._load_tree_marker_icon(
+                        marker_kind,
+                        selected=marker_selected,
+                        expandable=marker_expandable,
+                        expanded=marker_expanded,
+                    )
+                owner._load_input_bank_red_arrow_icon(expandable=True, expanded=False)
+                owner._load_input_bank_red_arrow_icon(expandable=True, expanded=True)
+                return
         finally:
             owner._app_theme_variant = original_variant
             owner._theme = original_theme

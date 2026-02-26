@@ -40,6 +40,10 @@ def is_input_mode_tree_expand_blocked(owner: Any, item_id: Any) -> Any:
         root_key = owner._normalize_root_tree_key(path[0])
         if root_key in set(getattr(owner, "INPUT_MODE_NO_EXPAND_ROOT_KEYS", set())):
             return True
+    if isinstance(path, list) and len(path) == 2:
+        is_locked_database_subcategory = getattr(owner, "_is_input_database_locked_subcategory_path", None)
+        if callable(is_locked_database_subcategory):
+            return bool(is_locked_database_subcategory(path))
     if isinstance(path, tuple) and len(path) == 3 and path[0] == "__group__":
         list_path = path[1] if isinstance(path[1], list) else []
         group_name = str(path[2] or "").strip().casefold()
@@ -55,6 +59,10 @@ def should_use_input_red_arrow_for_path(owner: Any, path: Any) -> Any:
     if isinstance(path, list) and len(path) == 1:
         root_key = owner._normalize_root_tree_key(path[0])
         return root_key in set(getattr(owner, "INPUT_MODE_RED_ARROW_ROOT_KEYS", set()))
+    if isinstance(path, list) and len(path) == 2:
+        is_locked_database_subcategory = getattr(owner, "_is_input_database_locked_subcategory_path", None)
+        if callable(is_locked_database_subcategory):
+            return bool(is_locked_database_subcategory(path))
     if isinstance(path, tuple) and len(path) == 3 and path[0] == "__group__":
         list_path = path[1] if isinstance(path[1], list) else []
         group_name = str(path[2] or "").strip().casefold()

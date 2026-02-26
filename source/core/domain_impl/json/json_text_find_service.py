@@ -43,13 +43,20 @@ def find_next_json_text_match(owner: Any, query: Any) -> Any:
             return False
 
         end = f"{start}+{len(needle)}c"
-        text_widget.tag_remove("find_next_match", "1.0", "end")
+        prior_ranges = list(text_widget.tag_ranges("find_next_match"))
+        if len(prior_ranges) >= 2:
+            text_widget.tag_remove("find_next_match", prior_ranges[0], prior_ranges[1])
+        else:
+            text_widget.tag_remove("find_next_match", "1.0", "end")
         text_widget.tag_add("find_next_match", start, end)
-        text_widget.tag_config(
-            "find_next_match",
-            background="#214a6a",
-            foreground="#e8f6ff",
-        )
+        # Configure the match tag once per live text widget instead of per keystroke hit.
+        if getattr(owner, "_json_find_tag_widget", None) is not text_widget:
+            text_widget.tag_config(
+                "find_next_match",
+                background="#214a6a",
+                foreground="#e8f6ff",
+            )
+            owner._json_find_tag_widget = text_widget
         text_widget.mark_set("insert", end)
         text_widget.see(start)
         owner._json_find_last_query = query_key

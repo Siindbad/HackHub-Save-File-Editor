@@ -115,7 +115,6 @@ HIDDEN_ROOT_TREE_KEYS_INPUT = {str(name).strip().casefold() for name in HIDDEN_R
 
 # Add root category names here to disable INPUT-mode editing for that branch.
 INPUT_MODE_DISABLED_ROOT_CATEGORIES = (
-    "Phone",
     "Skypersky",
 )
 INPUT_MODE_DISABLED_ROOT_KEYS = {
@@ -128,7 +127,6 @@ INPUT_MODE_NO_EXPAND_ROOT_CATEGORIES = (
     "Bank",
     "Phone",
     "Skypersky",
-    "Database",
     "Mail.Accounts",
     "MailAccounts",
 )
@@ -164,7 +162,6 @@ INPUT_MODE_RED_ARROW_ROOT_CATEGORIES = (
     "Phone",
     "Suspicion",
     "Skypersky",
-    "Database",
     "Mail.Accounts",
     "MailAccounts",
 )

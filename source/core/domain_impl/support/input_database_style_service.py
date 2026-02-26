@@ -140,6 +140,13 @@ def collect_database_grades_matrix(value: Any, max_rows: Any=40) -> Any:
 
 
 def _resolve_grades_rows(value):
+    if isinstance(value, dict):
+        tables = value.get("tables")
+        if isinstance(tables, dict):
+            grades = tables.get("Grades")
+            if _looks_like_grades_rows(grades):
+                return grades
+        return None
     if not isinstance(value, list) or not value:
         return None
     if not all(isinstance(item, dict) for item in value):
@@ -177,7 +184,8 @@ def render_database_grades_matrix(owner: Any, host: Any, normalized_path: Any, m
         table_edge = "#6a4697"
         tab_edge = "#8f6ad1"
         header_fg = "#e2cbff"
-        student_fg = "#C8A8FF"
+        # Keep Grades student-name tone aligned with BCC Name value color.
+        student_fg = "#e2cbff"
         value_fg = "#70e58a"
         plain_fg = "#d6c8e8"
         input_bg = "#1b1230"
@@ -186,7 +194,8 @@ def render_database_grades_matrix(owner: Any, host: Any, normalized_path: Any, m
         table_edge = "#2f5f85"
         tab_edge = "#33cfff"
         header_fg = "#a8c9e6"
-        student_fg = "#f2ad5e"
+        # Keep Grades student-name tone aligned with BCC Name value color.
+        student_fg = "#9fd1ff"
         value_fg = "#62d67a"
         plain_fg = "#b7c2ce"
         input_bg = "#071322"
@@ -401,7 +410,8 @@ def _build_database_matrix_pool(
             row_frame.grid_columnconfigure(col_idx, minsize=64, weight=1)
 
         student_name = str(row.get("student_name", "") or "")
-        student_var = tk.StringVar(value=student_name)
+        display_student_name = f"  {student_name}" if student_name else student_name
+        student_var = tk.StringVar(value=display_student_name)
         student_label = tk.Entry(
             row_frame,
             textvariable=student_var,
@@ -412,7 +422,7 @@ def _build_database_matrix_pool(
             highlightthickness=0,
             readonlybackground=panel_bg,
             justify="left",
-            font=(label_family, student_size, "bold"),
+            font=(input_family, student_size, "bold"),
             state="readonly",
         )
         student_label.grid(row=0, column=0, sticky="w")
@@ -557,15 +567,16 @@ def _update_database_matrix_pool(
         student_name = str(row.get("student_name", "") or "")
         try:
             if student_label is not None:
+                display_student_name = f"  {student_name}" if student_name else student_name
                 student_text_changed = row_widget.get("last_student_name") != student_name
                 if student_text_changed and student_var is not None:
-                    student_var.set(student_name)
+                    student_var.set(display_student_name)
                 kwargs: dict[str, Any] = {}
                 if style_changed:
                     kwargs.update(
                         readonlybackground=panel_bg,
                         fg=student_fg,
-                        font=(label_family, student_size, "bold"),
+                        font=(input_family, student_size, "bold"),
                     )
                 if kwargs:
                     student_label.configure(**kwargs)

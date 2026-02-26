@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-24 (JSON find/UI popup orchestration extraction sync).
+Last sync: 2026-02-26 (theme manager wiring updates for INPUT-mode category style/service routing changes).
 
 | Module | Purpose |
 | --- | --- |

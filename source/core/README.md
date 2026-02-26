@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-26 (INPUT support renderers cleanup: retired Phone/Firewall/Router fallback placeholder paths while preserving active INPUT layouts).
+Last sync: 2026-02-26 (INPUT support, JSON find, and tree/theme policy refinements aligned with current editor behavior).
 
 | Module | Purpose |
 | --- | --- |
