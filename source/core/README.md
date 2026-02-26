@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-26 (crash-offer and editor-purge support flows aligned with current smoke/teardown stability behavior).
+Last sync: 2026-02-26 (crash triage guards and editor-purge startup wiring checks aligned with smoke diagnostics flow).
 
 | Module | Purpose |
 | --- | --- |

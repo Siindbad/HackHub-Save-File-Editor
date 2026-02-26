@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import time
@@ -19,6 +20,7 @@ from core.domain_impl.json import json_quoted_item_tail_service
 from core.domain_impl.json import json_scalar_tail_service
 from core.domain_impl.json import json_validation_feedback_service
 from core.domain_impl.json import json_view_service
+from core.domain_impl.json import json_diagnostics_service
 from core.domain_impl.ui import footer_service
 from core.domain_impl.ui import loader_service
 from core.domain_impl.ui import toolbar_service
@@ -26,6 +28,7 @@ from core.domain_impl.ui import tree_mode_service
 from core.domain_impl.ui import tree_policy_service
 from core.domain_impl.ui import tree_view_service
 from core.domain_impl.ui import ui_build_service
+from core.domain_impl.ui import theme_service
 from core.domain_impl.infra import runtime_log_service
 from core.domain_impl.infra import update_headers_service
 from core.domain_impl.infra import update_release_info_service
@@ -39,6 +42,40 @@ from core.domain_impl.support import error_overlay_service
 from core.domain_impl.support import error_service
 from core.domain_impl.support import highlight_label_service
 from core.domain_impl.json import validation_service
+
+_LOG = logging.getLogger(__name__)
+
+
+def _startup_wiring_sanity_issues(owner: Any) -> list[str]:
+        """Return missing critical symbol paths that previously caused runtime NameError crashes."""
+        checks = (
+            ("json_diagnostics_service.os", json_diagnostics_service, "os"),
+            ("json_diagnostics_service.datetime", json_diagnostics_service, "datetime"),
+            ("theme_service.deque", theme_service, "deque"),
+            ("editor_purge_service.input_mode_service", sys.modules[__name__], "input_mode_service"),
+            ("editor_purge_service.json_path_service", sys.modules[__name__], "json_path_service"),
+            ("editor_purge_service.bug_report_cooldown_service", sys.modules[__name__], "bug_report_cooldown_service"),
+        )
+        issues: list[str] = []
+        for label, container, attr in checks:
+            if container is None or not hasattr(container, attr):
+                issues.append(label)
+        return issues
+
+
+def _run_startup_wiring_sanity_check(owner: Any) -> None:
+        """Log and surface startup wiring gaps early so regressions do not fail deep in UI callbacks."""
+        issues = _startup_wiring_sanity_issues(owner)
+        owner._startup_wiring_sanity_issues = tuple(issues)
+        if not issues:
+            return
+        joined = ", ".join(issues)
+        _LOG.warning("startup_wiring_missing_symbols=%s", joined)
+        try:
+            owner.set_status(f"Startup wiring warning: missing {joined}")
+        except EXPECTED_ERRORS:
+            return
+
 
 def _append_find_search_entries(owner: Any, path, value, entries):
         mode_is_input = str(getattr(owner, "_editor_mode", "JSON")).upper() == "INPUT"
@@ -947,6 +984,9 @@ def save_file(owner: Any):
 
 
 def _offer_crash_report_if_available(owner: Any):
+        if not bool(getattr(owner, "_startup_wiring_checked", False)):
+            owner._startup_wiring_checked = True
+            _run_startup_wiring_sanity_check(owner)
         owner._crash_report_offer_after_id = None
         if not crash_offer_service.should_offer_crash_report_for_process(env=os.environ):
             return

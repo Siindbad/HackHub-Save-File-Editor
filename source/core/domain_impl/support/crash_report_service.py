@@ -7,10 +7,16 @@ from datetime import datetime
 from typing import Any
 
 
-def _normalized_limit(default_limit, max_chars):
+def _normalized_limit(default_limit: Any, max_chars: Any) -> int:
     if max_chars is None:
         return int(default_limit)
     return max(0, int(max_chars))
+
+
+def _is_non_actionable_crash_tail(crash_tail: str) -> bool:
+    """Ignore manual-interrupt entries so startup prompts only target real crashes."""
+    lowered = crash_tail.casefold()
+    return "exception_type=keyboardinterrupt" in lowered
 
 
 def build_crash_log_path(runtime_dir: Any, crash_log_filename: Any) -> Any:
@@ -87,10 +93,13 @@ def pending_crash_report_payload(
     except expected_errors:
         return None
     crash_tail = read_latest_crash_block_func()
-    if not crash_tail.strip():
+    crash_tail_text = str(crash_tail or "")
+    if not crash_tail_text.strip():
         return None
-    crash_hash = hashlib.sha256(crash_tail.encode("utf-8", errors="replace")).hexdigest().lower()
+    if _is_non_actionable_crash_tail(crash_tail_text):
+        return None
+    crash_hash = hashlib.sha256(crash_tail_text.encode("utf-8", errors="replace")).hexdigest().lower()
     state = read_crash_prompt_state_func()
     if str(state.get("last_seen_hash", "")).strip().lower() == crash_hash:
         return None
-    return {"hash": crash_hash, "tail": crash_tail}
+    return {"hash": crash_hash, "tail": crash_tail_text}
