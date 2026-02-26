@@ -5,7 +5,12 @@ framed sections and editable port/state fields.
 """
 
 import tkinter as tk
+import importlib
+import os
 from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
 
 
 _FIELD_ORDER = (
@@ -17,6 +22,17 @@ _FIELD_ORDER = (
     "locked",
     "accessable",
 )
+
+# Secure-access logo tuning knobs (single-source for quick visual iteration).
+_SECURE_ACCESS_MAX_WIDTH = 118
+_SECURE_ACCESS_MAX_HEIGHT = 42
+_SECURE_ACCESS_CELL_MARGIN_X = 1
+_SECURE_ACCESS_CELL_MARGIN_Y = 1
+_SECURE_ACCESS_CROP_PAD_X = 2
+_SECURE_ACCESS_CROP_PAD_TOP = 1
+_SECURE_ACCESS_CROP_PAD_BOTTOM = 5
+_SECURE_ACCESS_LABEL_PAD_X = 0
+_SECURE_ACCESS_LABEL_PAD_Y = 0
 
 
 def _format_input_text(value: Any) -> str:
@@ -58,9 +74,11 @@ def collect_router_input_rows(owner: Any, normalized_path: Any, routers: Any, ma
         if root_index is None:
             continue
 
-        wifi = router.get("wifiNetwork") if isinstance(router.get("wifiNetwork"), dict) else {}
+        wifi_raw = router.get("wifiNetwork")
+        wifi = wifi_raw if isinstance(wifi_raw, dict) else {}
         users = router.get("users") if isinstance(router.get("users"), list) else []
-        first_user = users[0] if users and isinstance(users[0], dict) else {}
+        first_user_raw = users[0] if users else {}
+        first_user = first_user_raw if isinstance(first_user_raw, dict) else {}
         ports = router.get("ports") if isinstance(router.get("ports"), list) else []
         if not ports:
             ports = [{}]
@@ -136,13 +154,15 @@ def reset_router_row_pool(owner: Any) -> None:
 
 
 def _router_style(owner: Any) -> dict[str, Any]:
-    theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    # Use explicit router panel fills per theme to prevent cross-theme bleed.
+    panel_bg = "#130a1f" if variant == "KAMUE" else "#08111d"
     return {
-        "panel_bg": theme.get("panel", "#161b24"),
+        "panel_bg": panel_bg,
         "frame_edge": "#5f3d86" if variant == "KAMUE" else "#295478",
         "left_bg": "#140c22" if variant == "KAMUE" else "#0b1523",
         "right_bg": "#120a1f" if variant == "KAMUE" else "#091521",
+        "cell_bg": "#160f27" if variant == "KAMUE" else "#091521",
         "name_fg": "#C8A8FF" if variant == "KAMUE" else "#f2ad5e",
         "meta_fg": "#bbaed0" if variant == "KAMUE" else "#9ab0c2",
         "label_fg": "#d8c0f3" if variant == "KAMUE" else "#b7d5ef",
@@ -236,27 +256,191 @@ def _set_widget_text(widget: Any, value: str) -> None:
         return
 
 
-def _bind_version_placeholder(entry: tk.Entry, var: tk.StringVar) -> None:
-    if bool(getattr(entry, "_hh_placeholder_bound", False)):
+def _router_asset_path(owner: Any, filename: str) -> str:
+    return os.path.join(owner._resource_base_dir(), "assets", "network", str(filename))
+
+
+def _load_router_art_photo(
+    owner: Any,
+    path: str,
+    *,
+    max_width: int,
+    max_height: int,
+    stretch: bool = False,
+    allow_upscale: bool = False,
+    fit_mode: str = "contain",
+) -> Any:
+    cache = getattr(owner, "_input_mode_router_art_cache", None)
+    if not isinstance(cache, dict):
+        cache = {}
+        owner._input_mode_router_art_cache = cache
+    mode = str(fit_mode or "contain").strip().lower()
+    key = (str(path), int(max_width), int(max_height), bool(stretch), bool(allow_upscale), mode)
+    if key in cache:
+        return cache[key]
+    if not os.path.isfile(path):
+        cache[key] = None
+        return None
+
+    photo = None
+    try:
+        image_module = importlib.import_module("PIL.Image")
+        image_tk_module = importlib.import_module("PIL.ImageTk")
+        image = image_module.open(path).convert("RGBA")
+        # Trim transparent padding so logos can truly fill target frames.
+        bbox = image.getbbox()
+        if bbox is not None:
+            image = image.crop(bbox)
+        # secure_access.png ships on a large matte canvas; crop to logo foreground first.
+        if os.path.basename(str(path)).strip().lower() == "secure_access.png":
+            image_chops_module = importlib.import_module("PIL.ImageChops")
+            red_chan, green_chan, blue_chan, _alpha_chan = image.split()
+            green_over_red = image_chops_module.subtract(green_chan, red_chan).point(lambda v: 255 if v >= 16 else 0)
+            green_over_blue = image_chops_module.subtract(green_chan, blue_chan).point(lambda v: 255 if v >= 10 else 0)
+            green_floor = green_chan.point(lambda v: 255 if v >= 60 else 0)
+            logo_mask = image_chops_module.multiply(image_chops_module.multiply(green_over_red, green_over_blue), green_floor)
+            logo_bbox = logo_mask.getbbox()
+            if logo_bbox is not None:
+                x1, y1, x2, y2 = [int(v) for v in logo_bbox]
+                # Keep a thin matte around the logo while still filling the frame.
+                pad_x = _SECURE_ACCESS_CROP_PAD_X
+                # Bias extra bottom matte so the rendered badge sits visually centered.
+                pad_top = _SECURE_ACCESS_CROP_PAD_TOP
+                pad_bottom = _SECURE_ACCESS_CROP_PAD_BOTTOM
+                image = image.crop(
+                    (
+                        max(0, x1 - pad_x),
+                        max(0, y1 - pad_top),
+                        min(image.width, x2 + pad_x),
+                        min(image.height, y2 + pad_bottom),
+                    )
+                )
+        width, height = image.size
+        if width > 0 and height > 0:
+            if bool(stretch):
+                target_w = max(1, int(max_width))
+                target_h = max(1, int(max_height))
+                if target_w != width or target_h != height:
+                    image = image.resize((target_w, target_h), image_module.LANCZOS)
+            elif mode == "cover":
+                target_w = max(1, int(max_width))
+                target_h = max(1, int(max_height))
+                image_ops_module = importlib.import_module("PIL.ImageOps")
+                image = image_ops_module.fit(
+                    image,
+                    (target_w, target_h),
+                    method=image_module.LANCZOS,
+                    centering=(0.5, 0.5),
+                )
+            else:
+                ratio = min(float(max_width) / float(width), float(max_height) / float(height))
+                if not bool(allow_upscale):
+                    ratio = min(ratio, 1.0)
+                new_w = max(1, int(width * ratio))
+                new_h = max(1, int(height * ratio))
+                if new_w != width or new_h != height:
+                    image = image.resize((new_w, new_h), image_module.LANCZOS)
+        if os.path.basename(str(path)).strip().lower() == "secure_access.png":
+            # Nudge the badge content upward for visual centering inside the version frame.
+            shifted = image_module.new("RGBA", image.size, (0, 0, 0, 0))
+            shifted.paste(image, (0, -2))
+            image = shifted
+        photo = image_tk_module.PhotoImage(image)
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug("expected_error", exc_info=exc)
+        try:
+            raw = tk.PhotoImage(file=path)
+            width = raw.width()
+            height = raw.height()
+            if width > 0 and height > 0:
+                scale = max(
+                    1,
+                    int(round(max(float(width) / float(max_width), float(height) / float(max_height), 1.0))),
+                )
+                if scale > 1:
+                    raw = raw.subsample(scale)
+            photo = raw
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug("expected_error", exc_info=exc)
+            photo = None
+
+    cache[key] = photo
+    return photo
+
+
+def _set_art_label_image(label: Any, photo: Any, *, show: bool, padx: int = 7, pady: tuple[int, int] = (4, 4)) -> None:
+    if show and photo is not None:
+        try:
+            label.configure(image=photo)
+            setattr(label, "image", photo)
+        except (tk.TclError, RuntimeError, AttributeError):
+            return
+        if label.winfo_manager() != "pack":
+            label.pack(anchor="center", padx=padx, pady=pady)
+        return
+    if label.winfo_manager() == "pack":
+        label.pack_forget()
+
+
+def _render_secure_access_logo(owner: Any, row_slot: dict[str, Any]) -> None:
+    cell = row_slot["version_logo_cell"]
+    label = row_slot["version_logo_label"]
+    cell_width = int(cell.winfo_width())
+    cell_height = int(cell.winfo_height())
+    if cell_width <= 8 or cell_height <= 8:
+        # Geometry is not settled yet; paint a safe default, then retry after layout.
+        secure_photo = _load_router_art_photo(
+            owner,
+            _router_asset_path(owner, "secure_access.png"),
+            max_width=_SECURE_ACCESS_MAX_WIDTH - _SECURE_ACCESS_CELL_MARGIN_X,
+            max_height=_SECURE_ACCESS_MAX_HEIGHT - _SECURE_ACCESS_CELL_MARGIN_Y,
+            allow_upscale=True,
+            fit_mode="contain",
+            stretch=True,
+        )
+        _set_art_label_image(label, secure_photo, show=True, padx=0, pady=(0, 0))
+        if not bool(getattr(label, "_hh_logo_refresh_pending", False)):
+            setattr(label, "_hh_logo_refresh_pending", True)
+
+            def _retry() -> None:
+                setattr(label, "_hh_logo_refresh_pending", False)
+                _render_secure_access_logo(owner, row_slot)
+
+            cell.after(20, _retry)
         return
 
-    def _on_focus_in(_event: Any) -> None:
-        placeholder = getattr(entry, "_hh_placeholder_text", None)
-        if placeholder and str(var.get()).strip() == str(placeholder):
-            var.set("")
-        entry.configure(fg=getattr(entry, "_hh_input_fg", "#62d67a"), justify="left")
+    # Keep the frame size stable: grow logo within the cell but cap height to avoid row expansion.
+    target_width = max(20, min(cell_width - _SECURE_ACCESS_CELL_MARGIN_X, _SECURE_ACCESS_MAX_WIDTH))
+    target_height = max(16, min(cell_height - _SECURE_ACCESS_CELL_MARGIN_Y, _SECURE_ACCESS_MAX_HEIGHT))
+    secure_photo = _load_router_art_photo(
+        owner,
+        _router_asset_path(owner, "secure_access.png"),
+        max_width=target_width,
+        max_height=target_height,
+        allow_upscale=True,
+        fit_mode="contain",
+        stretch=True,
+    )
+    _set_art_label_image(label, secure_photo, show=True, padx=0, pady=(0, 0))
 
-    def _on_focus_out(_event: Any) -> None:
-        placeholder = getattr(entry, "_hh_placeholder_text", None)
-        if placeholder and str(var.get()).strip() == "":
-            var.set(str(placeholder))
-            entry.configure(fg=getattr(entry, "_hh_na_fg", "#d08c8c"), justify="center")
-            return
-        entry.configure(fg=getattr(entry, "_hh_input_fg", "#62d67a"), justify="left")
 
-    entry.bind("<FocusIn>", _on_focus_in, add="+")
-    entry.bind("<FocusOut>", _on_focus_out, add="+")
-    entry._hh_placeholder_bound = True
+def _schedule_secure_access_logo_refresh(owner: Any, row_slot: dict[str, Any]) -> None:
+    cell = row_slot["version_logo_cell"]
+    pending = bool(row_slot.get("_logo_resize_pending", False))
+    if pending:
+        return
+    row_slot["_logo_resize_pending"] = True
+
+    def _refresh() -> None:
+        row_slot["_logo_resize_pending"] = False
+        _render_secure_access_logo(owner, row_slot)
+
+    cell.after_idle(_refresh)
+
+
+def _has_lan_value(lan_ip: Any) -> bool:
+    text = str(lan_ip or "").strip().lower()
+    return bool(text) and text not in {"n/a", "na", "none", "null"}
 
 
 def _build_router_row_slot(owner: Any, host: Any, style: dict[str, Any]) -> dict[str, Any]:
@@ -288,7 +472,7 @@ def _build_router_row_slot(owner: Any, host: Any, style: dict[str, Any]) -> dict
             font=(style["input_family"], size, "bold"),
             state="readonly",
         )
-        entry._hh_text_var = var
+        setattr(entry, "_hh_text_var", var)
         bind_input_widget = getattr(owner, "_bind_input_context_widget", None)
         if callable(bind_input_widget):
             bind_input_widget(entry, allow_paste=False)
@@ -306,6 +490,7 @@ def _build_router_row_slot(owner: Any, host: Any, style: dict[str, Any]) -> dict
     }
     left_labels["ip"].pack(anchor="w", padx=7, pady=(4, 1))
     left_labels["lan"].pack(anchor="w", padx=7)
+    left_router_art = tk.Label(left, bg=style["left_bg"], bd=0, highlightthickness=0)
 
     right = tk.Frame(row_frame, bg=style["panel_bg"], bd=0, highlightthickness=0)
     right.grid(row=0, column=1, sticky="nsew", padx=(0, 6), pady=6)
@@ -332,17 +517,19 @@ def _build_router_row_slot(owner: Any, host: Any, style: dict[str, Any]) -> dict
         ("accessable", "Accessable", 1, 2),
     )
     for key, title, grid_row, grid_col in fields:
-        cell = tk.Frame(edit_frame, bg=style["right_bg"], bd=0, highlightthickness=1, highlightbackground=style["frame_edge"])
+        cell = tk.Frame(edit_frame, bg=style["cell_bg"], bd=0, highlightthickness=1, highlightbackground=style["frame_edge"])
         cell.grid(row=grid_row, column=grid_col, sticky="nsew", padx=2, pady=2)
-        tk.Label(
+        header_label = tk.Label(
             cell,
             text=title,
-            bg=style["right_bg"],
+            bg=style["cell_bg"],
             fg=style["label_fg"],
             anchor="center",
             justify="center",
-            font=(style["label_family"], style["label_size"], "bold"),
-        ).pack(fill="x", padx=3, pady=(3, 2))
+            # Use value-family typography for ROUTER field labels to match INPUT value styling.
+            font=(style["input_family"], style["label_size"], "bold"),
+        )
+        header_label.pack(fill="x", padx=3, pady=(3, 2))
         var = tk.StringVar(value="")
         is_version = key == "version"
         entry = tk.Entry(
@@ -360,23 +547,36 @@ def _build_router_row_slot(owner: Any, host: Any, style: dict[str, Any]) -> dict
             highlightcolor=style["input_edge"],
             font=(style["input_family"], style["input_size"], "bold"),
         )
-        if is_version:
-            _bind_version_placeholder(entry, var)
         entry.pack(fill="x", padx=5, pady=(1, 5), ipady=2)
         bind_input_widget = getattr(owner, "_bind_input_context_widget", None)
         if callable(bind_input_widget):
             bind_input_widget(entry, allow_paste=True)
-        field_slots[key] = {"entry": entry, "var": var, "is_version": is_version}
+        field_slots[key] = {"entry": entry, "var": var, "is_version": is_version, "cell": cell, "label": header_label}
 
-    return {
+    version_logo_cell = tk.Frame(edit_frame, bg=style["cell_bg"], bd=0, highlightthickness=1, highlightbackground=style["frame_edge"])
+    version_logo_cell.grid(row=1, column=3, sticky="nsew", padx=2, pady=2)
+    version_logo_label = tk.Label(version_logo_cell, bg=style["cell_bg"], bd=0, highlightthickness=0)
+    version_logo_label.pack(
+        fill="both",
+        expand=True,
+        padx=_SECURE_ACCESS_LABEL_PAD_X,
+        pady=_SECURE_ACCESS_LABEL_PAD_Y,
+    )
+
+    row_slot = {
         "row_frame": row_frame,
         "left": left,
         "right": right,
         "edit_frame": edit_frame,
         "left_labels": left_labels,
+        "left_router_art": left_router_art,
         "field_slots": field_slots,
+        "version_logo_cell": version_logo_cell,
+        "version_logo_label": version_logo_label,
         "field_specs": [],
     }
+    version_logo_cell.bind("<Configure>", lambda _event: _schedule_secure_access_logo_refresh(owner, row_slot), add="+")
+    return row_slot
 
 
 def _apply_router_row_style(row_slot: dict[str, Any], style: dict[str, Any]) -> None:
@@ -384,13 +584,40 @@ def _apply_router_row_style(row_slot: dict[str, Any], style: dict[str, Any]) -> 
     row_slot["left"].configure(bg=style["left_bg"], highlightbackground=style["frame_edge"])
     row_slot["right"].configure(bg=style["panel_bg"])
     row_slot["edit_frame"].configure(bg=style["right_bg"], highlightbackground=style["frame_edge"])
+    row_slot["version_logo_cell"].configure(bg=style["cell_bg"], highlightbackground=style["frame_edge"])
+    row_slot["version_logo_label"].configure(bg=style["cell_bg"])
+    row_slot["left_router_art"].configure(bg=style["left_bg"])
 
     left_labels = row_slot["left_labels"]
-    left_labels["ip"].configure(bg=style["left_bg"], fg=style["name_fg"], font=(style["input_family"], style["ip_size"], "bold"))
+    left_labels["ip"].configure(
+        bg=style["left_bg"],
+        fg=style["name_fg"],
+        readonlybackground=style["left_bg"],
+        disabledforeground=style["name_fg"],
+        insertbackground=style["name_fg"],
+        font=(style["input_family"], style["ip_size"], "bold"),
+    )
     for key in ("lan", "model", "wifi", "signal", "wifi_pass", "user", "user_pass"):
-        left_labels[key].configure(bg=style["left_bg"], fg=style["meta_fg"], font=(style["input_family"], style["meta_size"], "bold"))
+        left_labels[key].configure(
+            bg=style["left_bg"],
+            fg=style["meta_fg"],
+            readonlybackground=style["left_bg"],
+            disabledforeground=style["meta_fg"],
+            insertbackground=style["meta_fg"],
+            font=(style["input_family"], style["meta_size"], "bold"),
+        )
 
     for field_slot in row_slot["field_slots"].values():
+        cell = field_slot.get("cell")
+        if cell is not None:
+            cell.configure(bg=style["cell_bg"], highlightbackground=style["frame_edge"])
+        header_label = field_slot.get("label")
+        if header_label is not None:
+            header_label.configure(
+                bg=style["cell_bg"],
+                fg=style["label_fg"],
+                font=(style["input_family"], style["label_size"], "bold"),
+            )
         entry = field_slot["entry"]
         entry.configure(
             bg=style["input_bg"],
@@ -408,8 +635,10 @@ def _build_row_field_specs(
     style: dict[str, Any],
 ) -> list[dict[str, Any]]:
     left_labels = row_slot["left_labels"]
+    left_router_art = row_slot["left_router_art"]
     _set_widget_text(left_labels["ip"], row.get("ip", ""))
-    _set_widget_text(left_labels["lan"], f"LAN: {row.get('lan_ip', '')}")
+    lan_text = str(row.get("lan_ip", "") or "").strip()
+    _set_widget_text(left_labels["lan"], f"LAN: {lan_text}" if lan_text else "LAN:")
 
     model_value = str(row.get("model", "") or "").strip()
     _set_widget_text(left_labels["model"], f"Model : {model_value}")
@@ -441,6 +670,18 @@ def _build_row_field_specs(
     _set_label_visible(left_labels["user"], not has_wifi and bool(user_name))
     _set_label_visible(left_labels["user_pass"], not has_wifi and bool(user_pass), pady=(0, 4))
 
+    has_detail_under_lan = bool(model_value or has_wifi or user_name or user_pass)
+    show_router_art = not has_detail_under_lan
+    router_photo = _load_router_art_photo(
+        owner,
+        _router_asset_path(owner, "router1.png"),
+        max_width=190,
+        max_height=84,
+    )
+    _set_art_label_image(left_router_art, router_photo, show=show_router_art, padx=7, pady=(4, 4))
+
+    _render_secure_access_logo(owner, row_slot)
+
     specs: list[dict[str, Any]] = []
     for field_key in _FIELD_ORDER:
         spec = row[field_key]
@@ -452,24 +693,12 @@ def _build_row_field_specs(
         value = spec.get("value")
         text_value = _format_input_text(value)
         value_fg = style["bool_false_fg"] if _is_false_like(value) else style["input_fg"]
-        placeholder_text = None
-
-        entry._hh_input_fg = style["input_fg"]
-        entry._hh_na_fg = style["na_fg"]
-
-        if is_version and str(text_value).strip() == "":
-            placeholder_text = "Not Available"
-            var.set(placeholder_text)
-            entry._hh_placeholder_text = placeholder_text
-            entry.configure(fg=style["na_fg"], insertbackground=style["na_fg"], justify="center")
-        else:
-            var.set(text_value)
-            entry._hh_placeholder_text = None
-            entry.configure(
-                fg=value_fg,
-                insertbackground=value_fg,
-                justify="left" if is_version else "center",
-            )
+        var.set(text_value)
+        entry.configure(
+            fg=value_fg,
+            insertbackground=value_fg,
+            justify="left" if is_version else "center",
+        )
 
         specs.append(
             {
@@ -479,8 +708,8 @@ def _build_row_field_specs(
                 "type": spec.get("type", type(value)),
                 "var": var,
                 "widget": entry,
-                "display_placeholder": placeholder_text,
-                "placeholder_as_empty": bool(placeholder_text),
+                "display_placeholder": None,
+                "placeholder_as_empty": False,
             }
         )
 

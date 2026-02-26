@@ -35,6 +35,8 @@ def collect_firewall_input_rows(owner: Any, normalized_path: Any, firewalls: Any
     full_network = owner._get_value(normalized_path)
     if not isinstance(full_network, list):
         return []
+    if not isinstance(firewalls, list):
+        return []
     index_by_id = {id(item): idx for idx, item in enumerate(full_network) if isinstance(item, dict)}
 
     rows = []
@@ -54,7 +56,9 @@ def collect_firewall_input_rows(owner: Any, normalized_path: Any, firewalls: Any
         password = str(first_user.get("password", "") or "")
         display_id = user_id or username or str(firewall.get("id", "") or "FIREWALL")
 
-        raw_rules = firewall.get("rules") if isinstance(firewall.get("rules"), list) else []
+        raw_rules = firewall.get("rules")
+        if not isinstance(raw_rules, list):
+            raw_rules = []
         rules = []
         for rule_index, rule in enumerate(raw_rules):
             if not isinstance(rule, dict):
@@ -183,14 +187,6 @@ def render_firewall_input_rows(owner: Any, host: Any, normalized_path: Any, row_
         edit_frame = tk.Frame(right, bg=right_bg, bd=0, highlightthickness=1, highlightbackground=frame_edge)
         edit_frame.grid(row=0, column=0, sticky="ew")
         rules = list(row.get("rules", []) or [])
-        if not rules:
-            # Keep a visible fallback slot so category never looks empty.
-            rules = [
-                {
-                    "port": {"value": None, "rel_path": None, "type": type(None)},
-                    "allowed": {"value": None, "rel_path": None, "type": type(None)},
-                }
-            ]
         column_count = len(rules)
         for idx in range(column_count):
             edit_frame.grid_columnconfigure(idx, weight=1, minsize=118)
@@ -279,28 +275,6 @@ def _render_field_input(
         highlightcolor=input_edge,
         font=(input_family, input_size, "bold"),
     )
-    placeholder_text = None
-    if str(text_value).strip() == "":
-        # Mirror Version placeholder behavior: visible fallback text, still editable.
-        placeholder_text = "Not Available"
-        var.set(placeholder_text)
-        entry.configure(fg=na_fg)
-
-        def _on_focus_in(_event, _var=var, _entry=entry, _placeholder=placeholder_text):
-            if str(_var.get()).strip() == _placeholder:
-                _var.set("")
-            _entry.configure(fg=input_fg)
-
-        def _on_focus_out(_event, _var=var, _entry=entry, _placeholder=placeholder_text):
-            if str(_var.get()).strip() == "":
-                _var.set(_placeholder)
-                _entry.configure(fg=na_fg)
-            else:
-                _entry.configure(fg=input_fg)
-
-        entry.bind("<FocusIn>", _on_focus_in, add="+")
-        entry.bind("<FocusOut>", _on_focus_out, add="+")
-
     if not is_editable:
         entry.configure(state="disabled", disabledforeground=na_fg)
     entry.pack(fill="x", padx=5, pady=(1, 5), ipady=2)
@@ -318,7 +292,7 @@ def _render_field_input(
             "type": spec.get("type", type(value)),
             "var": var,
             "widget": entry,
-            "display_placeholder": placeholder_text,
-            "placeholder_as_empty": bool(placeholder_text),
+            "display_placeholder": None,
+            "placeholder_as_empty": False,
         }
     )
