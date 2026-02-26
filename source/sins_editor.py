@@ -2023,6 +2023,7 @@ if button._siindbad_base_image is None:
             "_update_overlay_title_after_id",
             "_theme_prewarm_after_id",
             "_theme_footer_refresh_after_id",
+            "_toolbar_refresh_after_id",
             "_startup_loader_text_after_id",
             "_startup_loader_hide_after_id",
             "_startup_loader_progress_after_id",
@@ -4677,6 +4678,7 @@ if button._siindbad_base_image is None:
         self._theme_prewarm_loader_tick_ms = 16
         self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
         self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
+        self._toolbar_refresh_after_id = None
         self._updates_auto_after_id = None
         # Saved startup update-check preference: default off unless user enables from update dialogs.
         self._startup_update_check_enabled = False
@@ -5918,6 +5920,14 @@ if button._siindbad_base_image is None:
         self._load_toolbar_button_images_from_assets(style="A")
 
     def _refresh_toolbar_button_images(self):
+        root = getattr(self, "root", None)
+        if root is None or getattr(self, "_shutdown_cleanup_done", False):
+            return
+        try:
+            if not bool(root.winfo_exists()):
+                return
+        except _EXPECTED_APP_ERRORS:
+            return
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
         if variant == "SIINDBAD" or (variant == "KAMUE" and self._siindbad_effective_style() == "B"):
             for key, button in self._toolbar_buttons.items():
@@ -5945,6 +5955,42 @@ if button._siindbad_base_image is None:
                     self._font_stepper_label.configure(image=image)
                 except _EXPECTED_APP_ERRORS:
                     pass
+
+    def _cancel_toolbar_refresh_after(self):
+        root = getattr(self, "root", None)
+        after_id = getattr(self, "_toolbar_refresh_after_id", None)
+        if after_id and root is not None:
+            try:
+                root.after_cancel(after_id)
+            except _EXPECTED_APP_ERRORS:
+                pass
+        self._toolbar_refresh_after_id = None
+
+    def _run_toolbar_refresh_after(self):
+        self._toolbar_refresh_after_id = None
+        if getattr(self, "_shutdown_cleanup_done", False):
+            return
+        self._refresh_toolbar_button_images()
+
+    def _schedule_toolbar_refresh_after(self, delay_ms=1):
+        if getattr(self, "_shutdown_cleanup_done", False):
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            if not bool(root.winfo_exists()):
+                return
+        except _EXPECTED_APP_ERRORS:
+            return
+        self._cancel_toolbar_refresh_after()
+        try:
+            self._toolbar_refresh_after_id = root.after(
+                max(1, int(delay_ms)),
+                self._run_toolbar_refresh_after,
+            )
+        except _EXPECTED_APP_ERRORS:
+            self._toolbar_refresh_after_id = None
 
     @staticmethod
     def _theme_chip_palette(variant):
@@ -6730,10 +6776,7 @@ if button._siindbad_base_image is None:
         self._log_theme_perf(f"prewarm {variant} completed")
         current = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
         if current == variant and getattr(self, "_toolbar_buttons", {}):
-            try:
-                self.root.after(1, self._refresh_toolbar_button_images)
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
+            self._schedule_toolbar_refresh_after(delay_ms=1)
         self._update_startup_loader_progress()
         self._on_startup_full_load_ready()
 

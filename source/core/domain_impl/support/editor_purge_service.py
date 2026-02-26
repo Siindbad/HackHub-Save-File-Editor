@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -551,7 +552,7 @@ def apply_edit(owner: Any):
         try:
             new_value = json.loads(raw)
         except EXPECTED_ERRORS as exc:
-            json_parse_feedback_service.handle_apply_parse_error(owner, exc, path)
+            json_parse_feedback_service.handle_apply_parse_error(owner, exc, list(path) if isinstance(path, tuple) else path)
             return
         owner._clear_json_error_highlight()
 
@@ -645,7 +646,7 @@ def _show_live_error_feedback(owner: Any):
         try:
             new_value = json.loads(raw)
         except EXPECTED_ERRORS as exc:
-            json_parse_feedback_service.handle_live_parse_error(owner, exc, path)
+            json_parse_feedback_service.handle_live_parse_error(owner, exc, list(path) if isinstance(path, tuple) else path)
             return
 
         spacing_issue = owner._find_json_spacing_issue()
@@ -947,8 +948,14 @@ def save_file(owner: Any):
 
 def _offer_crash_report_if_available(owner: Any):
         owner._crash_report_offer_after_id = None
+        if not crash_offer_service.should_offer_crash_report_for_process(env=os.environ):
+            return
+        payload = owner._pending_crash_report_payload()
+        if not payload:
+            return
+        crash_offer_service.mark_crash_report_prompted_for_process()
         crash_offer_service.offer_crash_report_if_available(
-            payload=owner._pending_crash_report_payload(),
+            payload=payload,
             ui_call=owner._ui_call,
             askyesno_func=messagebox.askyesno,
             write_crash_prompt_state=owner._write_crash_prompt_state,

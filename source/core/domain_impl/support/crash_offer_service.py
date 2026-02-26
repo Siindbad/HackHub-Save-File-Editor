@@ -1,5 +1,8 @@
 """Crash report offer scheduling and prompt helpers."""
+import os
 from typing import Any
+
+_process_crash_offer_prompted = False
 
 
 def schedule_crash_report_offer(root: Any, existing_after_id: Any, delay_ms: Any, callback: Any, expected_errors: Any) -> Any:
@@ -56,3 +59,24 @@ def offer_crash_report_if_available(
         include_diag_default=True,
         crash_tail=crash_tail,
     )
+
+
+def should_offer_crash_report_for_process(env: Any = None) -> bool:
+    """Return True only when crash-report prompt is allowed for this process."""
+    source = env if env is not None else os.environ
+    raw = str(source.get("HACKHUB_DISABLE_CRASH_REPORT_PROMPT", "")).strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return False
+    return not bool(_process_crash_offer_prompted)
+
+
+def mark_crash_report_prompted_for_process() -> None:
+    """Mark startup crash-report prompt as shown for this process."""
+    global _process_crash_offer_prompted
+    _process_crash_offer_prompted = True
+
+
+def reset_crash_report_prompt_guard_for_tests() -> None:
+    """Test helper: reset per-process crash-report prompt guard."""
+    global _process_crash_offer_prompted
+    _process_crash_offer_prompted = False

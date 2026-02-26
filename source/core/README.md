@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-26 (INPUT support, JSON find, and tree/theme policy refinements aligned with current editor behavior).
+Last sync: 2026-02-26 (crash-offer and editor-purge support flows aligned with current smoke/teardown stability behavior).
 
 | Module | Purpose |
 | --- | --- |
