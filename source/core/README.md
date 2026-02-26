@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-26 (crash triage guards and editor-purge startup wiring checks aligned with smoke diagnostics flow).
+Last sync: 2026-02-26 (error-hook crash policy now skips KeyboardInterrupt/SystemExit control-flow exits).
 
 | Module | Purpose |
 | --- | --- |
