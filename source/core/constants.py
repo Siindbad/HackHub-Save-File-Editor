@@ -114,9 +114,7 @@ HIDDEN_ROOT_TREE_KEYS_JSON = {str(name).strip().casefold() for name in HIDDEN_RO
 HIDDEN_ROOT_TREE_KEYS_INPUT = {str(name).strip().casefold() for name in HIDDEN_ROOT_TREE_CATEGORIES_INPUT}
 
 # Add root category names here to disable INPUT-mode editing for that branch.
-INPUT_MODE_DISABLED_ROOT_CATEGORIES = (
-    "Skypersky",
-)
+INPUT_MODE_DISABLED_ROOT_CATEGORIES = ()
 INPUT_MODE_DISABLED_ROOT_KEYS = {
     str(name).strip().casefold() for name in INPUT_MODE_DISABLED_ROOT_CATEGORIES
 }

@@ -516,7 +516,8 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
 
     active_variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     other_variant = "KAMUE" if active_variant == "SIINDBAD" else "SIINDBAD"
-    owner._schedule_theme_asset_prewarm(targets=(active_variant,), delay_ms=120)
+    # Delay startup prewarm of active theme slightly so first hover/click feels instant.
+    owner._schedule_theme_asset_prewarm(targets=(active_variant,), delay_ms=420)
     if bool(getattr(owner, "_startup_loader_enabled", False)):
         owner._startup_loader_deferred_variants = {other_variant}
         owner._show_startup_loader()

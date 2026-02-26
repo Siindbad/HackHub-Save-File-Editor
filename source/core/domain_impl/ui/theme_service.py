@@ -713,6 +713,34 @@ def _run_theme_asset_prewarm(owner: Any):
             loader_tick_ms=int(getattr(owner, "_theme_prewarm_loader_tick_ms", 16) or 16),
             idle_tick_ms=int(getattr(owner, "_theme_prewarm_idle_tick_ms", 12) or 12),
         )
+        # Keep initial toolbar hover smooth: defer prewarm ticks while pointer/scan is active.
+        try:
+            toolbar_buttons = dict(getattr(owner, "_toolbar_buttons", {}) or {})
+            pointer_fn = getattr(owner, "_pointer_within_widget", None)
+            interaction_active = False
+            for button in toolbar_buttons.values():
+                if button is None:
+                    continue
+                try:
+                    if not button.winfo_exists():
+                        continue
+                except (tk.TclError, RuntimeError, AttributeError):
+                    continue
+                if bool(getattr(button, "_siindbad_scan_running", False)):
+                    interaction_active = True
+                    break
+                if callable(pointer_fn):
+                    try:
+                        if pointer_fn(button):
+                            interaction_active = True
+                            break
+                    except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                        pass
+            if interaction_active:
+                owner._theme_prewarm_after_id = owner.root.after(max(80, int(next_tick_ms) * 2), owner._run_theme_asset_prewarm)
+                return
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            pass
         deadline = time.perf_counter() + (float(budget_ms) / 1000.0)
         done_counts = dict(getattr(owner, "_theme_prewarm_done_by_variant", {}))
         totals = dict(getattr(owner, "_theme_prewarm_total_by_variant", {}))

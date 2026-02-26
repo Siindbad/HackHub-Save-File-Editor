@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-26 (error-hook crash policy now skips KeyboardInterrupt/SystemExit control-flow exits).
+Last sync: 2026-02-26 (enabled Skypersky INPUT-mode editing path and custom protection-toggle preview renderer).
 
 | Module | Purpose |
 | --- | --- |

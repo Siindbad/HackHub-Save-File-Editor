@@ -23,6 +23,11 @@ def is_phone_input_path(owner: Any, path: Any) -> Any:
     return len(normalized) == 1 and owner._input_mode_root_key_for_path(normalized) == "phone"
 
 
+def is_skypersky_input_path(owner: Any, path: Any) -> Any:
+    normalized = list(path or [])
+    return len(normalized) == 1 and owner._input_mode_root_key_for_path(normalized) == "skypersky"
+
+
 def render_suspicion_phone_input(owner: Any, host: Any, normalized_path: Any, value: Any) -> Any:
     # Suspicion payload is expected to be a scalar root value.
     if not isinstance(value, (str, int, float, bool)) and value is not None:
@@ -125,6 +130,114 @@ def render_phone_preview_input(owner: Any, host: Any, normalized_path: Any, valu
         variant=variant,
     )
     return True
+
+
+def render_skypersky_input(owner: Any, host: Any, normalized_path: Any, value: Any) -> Any:
+    payload = _skypersky_payload_from_value(value)
+    theme = getattr(owner, "_theme", {})
+    variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    panel_bg = theme.get("panel", "#161b24")
+    stage_bg = "#05070d" if variant == "KAMUE" else "#060b14"
+    frame_edge = "#5f3d86" if variant == "KAMUE" else "#295478"
+    card_edge = "#6b37b6" if variant == "KAMUE" else "#4e6e86"
+    card_fill = "#13102a" if variant == "KAMUE" else "#101a2a"
+    label_fg = "#eee8ff" if variant == "KAMUE" else "#e6f6ff"
+    family = owner._resolve_font_family(
+        ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
+        owner._credit_name_font()[0],
+    )
+    label_size = owner._input_mode_font_size(12, min_size=9, max_size=20)
+    state_size = owner._input_mode_font_size(9, min_size=8, max_size=16)
+    seg_edge = "#6b37b6" if variant == "KAMUE" else "#4e6e86"
+    seg_fill = "#120f24" if variant == "KAMUE" else "#0b1524"
+    seg_active_fill = "#2d155f" if variant == "KAMUE" else "#2f3a4d"
+    seg_active_fg = "#ffffff"
+    seg_inactive_fg = "#b0bfcc" if variant == "KAMUE" else "#c5d5e2"
+
+    image_name = "skypersky_kam.png" if variant == "KAMUE" else "skypersky.png"
+    stage = _render_skypersky_preview_shell(
+        owner,
+        host,
+        panel_bg=panel_bg,
+        stage_bg=stage_bg,
+        image_name=image_name,
+    )
+    if stage is None:
+        return False
+
+    # Keep this frame aligned to the PNG inner dialog bounds from the approved concept.
+    overlay_bounds = tk.Frame(
+        stage,
+        bg=stage_bg,
+        bd=0,
+        highlightthickness=1,
+        highlightbackground=frame_edge,
+        highlightcolor=frame_edge,
+    )
+    overlay_bounds.place(relx=0.5, rely=0.526, anchor="center", relwidth=0.892, relheight=0.748)
+
+    card = tk.Frame(
+        overlay_bounds,
+        bg=card_fill,
+        bd=0,
+        highlightthickness=1,
+        highlightbackground=card_edge,
+        highlightcolor=card_edge,
+    )
+    card.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.964, relheight=0.932)
+    inner = tk.Frame(card, bg=card_fill, bd=0, highlightthickness=0)
+    inner.pack(fill="both", expand=True, padx=10, pady=8)
+    content = tk.Frame(inner, bg=card_fill, bd=0, highlightthickness=0)
+    content.place(relx=0.5, rely=0.5, anchor="center")
+
+    label = tk.Label(
+        content,
+        text="PROTECTION",
+        bg=card_fill,
+        fg=label_fg,
+        font=(family, label_size, "bold"),
+        anchor="center",
+        justify="center",
+    )
+    label.pack(anchor="center", pady=(2, 6))
+
+    protecting_var = tk.StringVar(value="true" if payload.get("protecting") is True else "false")
+    toggle = _build_segmented_toggle(
+        content,
+        value_var=protecting_var,
+        edge=seg_edge,
+        fill=seg_fill,
+        active_fill=seg_active_fill,
+        active_fg=seg_active_fg,
+        inactive_fg=seg_inactive_fg,
+        family=family,
+        size=state_size,
+        width=150,
+        height=30,
+        off_text="Off",
+        on_text="On",
+    )
+    toggle.pack(anchor="center", pady=(0, 2))
+
+    owner._input_mode_field_specs.append(
+        {
+            "rel_path": ["protecting"],
+            "abs_path": list(normalized_path) + ["protecting"],
+            "initial": bool(payload.get("protecting") is True),
+            "type": bool,
+            "var": protecting_var,
+            "widget": toggle,
+        }
+    )
+    return True
+
+
+def _skypersky_payload_from_value(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        protecting_raw = value.get("protecting", False)
+    else:
+        protecting_raw = value
+    return {"protecting": bool(protecting_raw is True)}
 
 
 def _phone_preview_payload_from_value(value: Any) -> dict[str, Any]:
@@ -345,8 +458,20 @@ def _build_segmented_toggle(
     inactive_fg: str,
     family: str,
     size: int,
+    width: int = 126,
+    height: int = 28,
+    off_text: str = "Off",
+    on_text: str = "On",
 ) -> Any:
-    shell = tk.Canvas(parent, width=126, height=28, bg=parent.cget("bg"), highlightthickness=0, bd=0, relief="flat")
+    shell = tk.Canvas(
+        parent,
+        width=max(90, int(width)),
+        height=max(24, int(height)),
+        bg=parent.cget("bg"),
+        highlightthickness=0,
+        bd=0,
+        relief="flat",
+    )
     setattr(shell, "_phone_toggle_var", value_var)
 
     def _is_on() -> bool:
@@ -374,14 +499,14 @@ def _build_segmented_toggle(
         shell.create_text(
             mid // 2,
             h // 2,
-            text="Off",
+            text=str(off_text),
             fill=active_fg if left_active else inactive_fg,
             font=(family, size, "bold"),
         )
         shell.create_text(
             (mid + w) // 2,
             h // 2,
-            text="On",
+            text=str(on_text),
             fill=active_fg if right_active else inactive_fg,
             font=(family, size, "bold"),
         )
@@ -390,7 +515,7 @@ def _build_segmented_toggle(
         try:
             w = max(90, int(shell.winfo_width()))
         except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            w = 126
+            w = max(90, int(width))
         value_var.set("false" if int(getattr(event, "x", 0)) < (w // 2) else "true")
         _redraw_toggle()
 
@@ -501,6 +626,47 @@ def _render_phone_preview_shell(
 
     # Fallback notice templates are retired; keep a clean stage when art is missing.
     return phone_stage
+
+
+def _render_skypersky_preview_shell(
+    owner: Any,
+    host: Any,
+    *,
+    panel_bg: Any,
+    stage_bg: Any,
+    image_name: Any,
+) -> Any:
+    # Keep full Skypersky stage consistently dark so no lighter panel strip shows below the art.
+    host.configure(bg=stage_bg)
+    parent_canvas = getattr(host, "master", None)
+    if isinstance(parent_canvas, tk.Canvas):
+        parent_canvas.configure(bg=stage_bg)
+    wrapper = tk.Frame(host, bg=stage_bg, bd=0, highlightthickness=0)
+    wrapper.pack(fill="both", expand=True, padx=0, pady=(0, 0))
+
+    center = tk.Frame(wrapper, bg=stage_bg, bd=0, highlightthickness=0)
+    center.pack(fill="both", expand=True)
+
+    image_holder = tk.Frame(center, bg=stage_bg, bd=0, highlightthickness=0)
+    image_holder.pack(fill="both", expand=True)
+
+    stage_host = tk.Frame(image_holder, bg=stage_bg, bd=0, highlightthickness=0)
+    stage_host.pack(fill="both", expand=True)
+    stage = tk.Frame(stage_host, bg=stage_bg, bd=0, highlightthickness=0)
+    stage.pack(expand=True)
+
+    image_path = os.path.join(
+        owner._resource_base_dir(),
+        "assets",
+        "skype",
+        str(image_name),
+    )
+    preview_photo = _load_phone_photo(owner, image_path, max_width=540)
+    if preview_photo is not None:
+        preview_label = tk.Label(stage, image=preview_photo, bg=stage_bg, bd=0, highlightthickness=0)
+        setattr(preview_label, "image", preview_photo)
+        preview_label.pack()
+    return stage
 
 
 def _load_phone_photo(owner, path, max_width=440):

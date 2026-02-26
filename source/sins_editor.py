@@ -940,6 +940,9 @@ if button._siindbad_base_image is None:
     def _is_phone_input_style_path(self, path):
         return input_suspicion_phone_style_service.is_phone_input_path(self, path)
 
+    def _is_skypersky_input_style_path(self, path):
+        return input_suspicion_phone_style_service.is_skypersky_input_path(self, path)
+
     def _render_suspicion_phone_input(self, host, normalized_path, value):
         return input_suspicion_phone_style_service.render_suspicion_phone_input(
             self,
@@ -950,6 +953,14 @@ if button._siindbad_base_image is None:
 
     def _render_phone_preview_input(self, host, normalized_path, value):
         return input_suspicion_phone_style_service.render_phone_preview_input(
+            self,
+            host,
+            normalized_path,
+            value,
+        )
+
+    def _render_skypersky_input(self, host, normalized_path, value):
+        return input_suspicion_phone_style_service.render_skypersky_input(
             self,
             host,
             normalized_path,
@@ -1166,6 +1177,12 @@ if button._siindbad_base_image is None:
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
+        if self._is_skypersky_input_style_path(normalized_path):
+            if self._render_skypersky_input(host, normalized_path, value):
+                self._refresh_input_mode_bool_widget_colors()
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+                return
         if is_network_router_payload:
             router_rows = self._collect_network_router_input_rows(normalized_path, value)
             if router_rows:
@@ -1357,14 +1374,19 @@ if button._siindbad_base_image is None:
         rows = self._collect_network_router_input_rows(["Network"], routers)
         if not rows:
             return
+        # Keep startup/open responsive: prewarm only a small router subset.
+        prewarm_limit = max(1, min(8, int(getattr(self, "_router_input_prewarm_row_limit", 4) or 4)))
+        prewarm_rows = list(rows[:prewarm_limit])
+        if not prewarm_rows:
+            return
         input_network_router_style_service.prepare_router_render_host(self, host, reset_pool=True)
         self._render_network_router_input_rows(
             host,
             ["Network"],
-            rows,
+            prewarm_rows,
             start_index=0,
             finalize=True,
-            total_rows=len(rows),
+            total_rows=len(prewarm_rows),
         )
         input_network_router_style_service.suspend_router_render_host(self, host)
         self._input_mode_field_specs = []
@@ -1381,11 +1403,9 @@ if button._siindbad_base_image is None:
             self._run_router_input_prewarm()
             return
         try:
-            after_idle = getattr(root, "after_idle", None)
-            if callable(after_idle):
-                self._input_mode_router_prewarm_after_id = after_idle(self._run_router_input_prewarm)
-                return
-            self._input_mode_router_prewarm_after_id = root.after(0, self._run_router_input_prewarm)
+            # Defer prewarm so open-file flow returns before non-critical cache work.
+            delay_ms = max(100, int(getattr(self, "_router_input_prewarm_delay_ms", 180) or 180))
+            self._input_mode_router_prewarm_after_id = root.after(delay_ms, self._run_router_input_prewarm)
         except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
             self._input_mode_router_prewarm_after_id = None
 
