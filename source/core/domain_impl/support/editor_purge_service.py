@@ -46,6 +46,67 @@ from core.domain_impl.json import validation_service
 _LOG = logging.getLogger(__name__)
 
 
+def _network_row_display_name(item: dict[str, Any], group: str) -> Any:
+        if group == "FIREWALL":
+            users = item.get("users")
+            if isinstance(users, list) and users:
+                user0 = users[0]
+                if isinstance(user0, dict):
+                    return user0.get("id")
+            return None
+        if group in ("SPLITTER",):
+            return None
+        name = item.get("name")
+        if not name:
+            domain = item.get("domain")
+            if isinstance(domain, dict):
+                name = domain.get("name")
+        if not name:
+            users = item.get("users")
+            if isinstance(users, list) and users:
+                user0 = users[0]
+                if isinstance(user0, dict):
+                    name = user0.get("firstName") or user0.get("name")
+        if not name and group in ("ROUTER", "DEVICE"):
+            name = item.get("type")
+        return name
+
+
+def _is_input_network_bcc_domains_item(owner: Any, group: Any, item: Any) -> bool:
+        if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
+            return False
+        if str(group or "").strip().upper() != "DEVICE":
+            return False
+        if not isinstance(item, dict):
+            return False
+        ip = str(item.get("ip", "") or "").strip()
+        if ip != "193.8.64.214":
+            return False
+        name = _network_row_display_name(item, "DEVICE")
+        return str(name or "").strip().casefold() == "bcc.com"
+
+
+def _is_input_network_bcc_subdomain_item(owner: Any, group: Any, item: Any) -> bool:
+        if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
+            return False
+        if str(group or "").strip().upper() != "DEVICE":
+            return False
+        if not isinstance(item, dict):
+            return False
+        name = str(_network_row_display_name(item, "DEVICE") or "").strip().casefold()
+        return bool(name) and name.endswith(".bcc.com")
+
+
+def _is_input_network_device_item_hidden(owner: Any, group: Any, pos: int, item: Any) -> bool:
+        if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
+            return False
+        if str(group or "").strip().upper() != "DEVICE":
+            return False
+        is_primary_geoip = int(pos) == 0
+        is_bcc_domains = _is_input_network_bcc_domains_item(owner, group, item)
+        return not (is_primary_geoip or is_bcc_domains)
+
+
 def _startup_wiring_sanity_issues(owner: Any) -> list[str]:
         """Return missing critical symbol paths that previously caused runtime NameError crashes."""
         checks = (
@@ -138,41 +199,47 @@ def _append_find_search_entries(owner: Any, path, value, entries):
                 if tree_policy_service.is_network_group_hidden_for_mode(owner, path, group):
                     continue
                 items = groups[group]
-                group_label = f"{group} ({len(items)})"
+                is_input_device_group = (
+                    mode_is_input
+                    and bool(path)
+                    and str(path[0] if path else "").strip().casefold() == "network"
+                    and str(group or "").strip().casefold() == "device"
+                )
+                visible_items = (
+                    [
+                        pair
+                        for pos, pair in enumerate(items)
+                        if not _is_input_network_device_item_hidden(owner, group, pos, pair[1])
+                    ]
+                    if is_input_device_group
+                    else items
+                )
+                group_label = f"{group} ({len(visible_items)})"
                 entries.append((("__group__", list(path), group), group_label.casefold()))
                 group_is_locked = (
                     mode_is_input
                     and str(path[0] if path else "").strip().casefold() == "network"
                     and str(group or "").strip().casefold() in set(getattr(owner, "INPUT_MODE_NETWORK_NO_EXPAND_GROUP_KEYS", set()))
                 )
-                for idx, item in items:
+                for pos, (idx, item) in enumerate(items):
+                    if _is_input_network_device_item_hidden(owner, group, pos, item):
+                        continue
                     label = ""
-                    if isinstance(item, dict):
+                    is_input_device_primary = is_input_device_group and pos == 0
+                    is_input_device_bcc_domains = _is_input_network_bcc_domains_item(owner, group, item)
+                    if is_input_device_primary:
+                        label = "GEO IP"
+                    elif is_input_device_bcc_domains:
+                        label = "BCC DOMAINS"
+                    if isinstance(item, dict) and not (is_input_device_primary or is_input_device_bcc_domains):
                         if group in ("ROUTER", "DEVICE", "FIREWALL", "SPLITTER"):
                             ip = item.get("ip")
                             if group == "SPLITTER":
                                 name = None
                             elif group == "FIREWALL":
-                                name = None
-                                users = item.get("users")
-                                if isinstance(users, list) and users:
-                                    user0 = users[0]
-                                    if isinstance(user0, dict):
-                                        name = user0.get("id")
+                                name = _network_row_display_name(item, "FIREWALL")
                             else:
-                                name = item.get("name")
-                                if not name:
-                                    domain = item.get("domain")
-                                    if isinstance(domain, dict):
-                                        name = domain.get("name")
-                                if not name:
-                                    users = item.get("users")
-                                    if isinstance(users, list) and users:
-                                        user0 = users[0]
-                                        if isinstance(user0, dict):
-                                            name = user0.get("firstName") or user0.get("name")
-                                if not name and group in ("ROUTER", "DEVICE"):
-                                    name = item.get("type")
+                                name = _network_row_display_name(item, str(group))
                             if ip is not None or name is not None:
                                 ip_str = "" if ip is None else str(ip)
                                 name_str = "" if name is None else str(name)
@@ -926,6 +993,28 @@ def load_file(owner: Any, path):
             f"SIINDBAD's HackHub Editor - {os.path.basename(path)} - v{owner.APP_VERSION}"
         )
         owner._rebuild_tree()
+        # Post-open responsiveness: ensure both theme variants are warmed so
+        # switching themes immediately after file load does not cold-start.
+        if getattr(owner, "_startup_loader_ready_ts", None) is not None:
+            warmed = set(getattr(owner, "_theme_prewarm_done", set()))
+            prewarm_variant = getattr(owner, "_prewarm_theme_variant_assets", None)
+            finish_variant = getattr(owner, "_finish_theme_prewarm_variant", None)
+            if callable(prewarm_variant):
+                for variant_name in ("SIINDBAD", "KAMUE"):
+                    if variant_name in warmed:
+                        continue
+                    try:
+                        setattr(owner, "_theme_prewarm_render_mode", "full")
+                        prewarm_variant(variant_name)
+                    except EXPECTED_ERRORS:
+                        continue
+                    finally:
+                        setattr(owner, "_theme_prewarm_render_mode", None)
+                    if callable(finish_variant):
+                        try:
+                            finish_variant(variant_name)
+                        except EXPECTED_ERRORS:
+                            pass
         schedule_router_prewarm = getattr(owner, "_schedule_router_input_prewarm", None)
         if callable(schedule_router_prewarm):
             schedule_router_prewarm()

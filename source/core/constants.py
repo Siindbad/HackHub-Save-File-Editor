@@ -136,7 +136,6 @@ INPUT_MODE_NO_EXPAND_ROOT_KEYS = {
 # Keep these Network type buckets collapsed in INPUT mode while still showing them.
 INPUT_MODE_NETWORK_NO_EXPAND_GROUPS = (
     "ROUTER",
-    "DEVICE",
     "FIREWALL",
     "SPLITTER",
 )

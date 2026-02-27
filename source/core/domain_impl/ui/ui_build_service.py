@@ -288,6 +288,8 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
     owner._body_top_separator_inner = separator_inner
 
     body = ttk.Panedwindow(owner.root, orient="horizontal")
+    owner._body_panedwindow = body
+    owner._body_paned_bindtags_default = tuple(body.bindtags())
 
     left = ttk.Frame(body)
     right = ttk.Frame(body)
@@ -516,12 +518,15 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
 
     active_variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     other_variant = "KAMUE" if active_variant == "SIINDBAD" else "SIINDBAD"
-    # Delay startup prewarm of active theme slightly so first hover/click feels instant.
-    owner._schedule_theme_asset_prewarm(targets=(active_variant,), delay_ms=420)
     if bool(getattr(owner, "_startup_loader_enabled", False)):
-        owner._startup_loader_deferred_variants = {other_variant}
+        # Full-app prewarm runs under loader so first visible interaction and
+        # first theme switch are both hot.
+        owner._schedule_theme_asset_prewarm(targets=(active_variant, other_variant), delay_ms=1)
+        owner._startup_loader_deferred_variants = set()
         owner._show_startup_loader()
     else:
+        # Delay startup prewarm of active theme slightly so first hover/click feels instant.
+        owner._schedule_theme_asset_prewarm(targets=(active_variant,), delay_ms=420)
         owner._startup_loader_deferred_variants = set()
         owner._schedule_theme_asset_prewarm(targets=(other_variant,), delay_ms=650)
         if owner._auto_update_startup_enabled():

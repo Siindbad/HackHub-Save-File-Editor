@@ -208,9 +208,9 @@ def _render_my_account_mirror(owner: Any, host: Any, normalized_path: Any, paylo
     identity_bg = "#1a1430" if is_kamue else "#0c1420"
     header_bg = "#2a1f44" if is_kamue else "#11263a"
     divider = "#7a58b6" if is_kamue else "#3a6a91"
-    text_fg = "#c8e2fb"
-    desc_fg = "#a7c3df"
-    iban_fg = "#9fc0df"
+    text_fg = "#d8c7f3" if is_kamue else "#c8e2fb"
+    desc_fg = "#b8a7d8" if is_kamue else "#a7c3df"
+    iban_fg = "#c5b2e6" if is_kamue else "#9fc0df"
     amount_pos = "#70e58a"
     amount_neg = "#ff7b8f"
     label_fg = "#f2ad5e"
@@ -221,11 +221,13 @@ def _render_my_account_mirror(owner: Any, host: Any, normalized_path: Any, paylo
     row_alt_1 = "#15182d" if is_kamue else "#0e1926"
     row_alt_2 = "#111626" if is_kamue else "#0a1420"
     if is_kamue:
-        header_col_bgs = ("#231835", "#281c3d", "#221834", "#1e152d")
-        row_col_even = ("#141a2a", "#121726", "#101421", "#0e121c")
-        row_col_odd = ("#111725", "#0f1421", "#0d111c", "#0b0f17")
+        # Keep KAMUE header cells uniform with the Amount block tone.
+        header_col_bgs = ("#1e152d", "#1e152d", "#1e152d", "#1e152d")
+        row_col_even = ("#1a1630", "#18142b", "#151125", "#130f20")
+        row_col_odd = ("#161229", "#140f24", "#110d1f", "#0f0b1a")
     else:
-        header_col_bgs = ("#16324b", "#153149", "#142f46", "#11283e")
+        # Keep header row near identity card tone with a slight lift for readability.
+        header_col_bgs = ("#0e1622", "#0e1622", "#0e1622", "#0e1622")
         row_col_even = ("#0d1b2c", "#0c1928", "#0b1624", "#09121e")
         row_col_odd = ("#0b1828", "#0a1523", "#09131f", "#08111b")
 
@@ -490,4 +492,3 @@ def _render_my_account_mirror(owner: Any, host: Any, normalized_path: Any, paylo
             padx=(0, 0),
             pady=(0, 0),
         )
-

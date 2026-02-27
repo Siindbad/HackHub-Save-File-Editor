@@ -486,7 +486,10 @@ source/assets/installer/wizard/sin_wizard_small.bmp
 source/assets/klogo.fw.png
 source/assets/known_email_domains.json
 source/assets/logo2.png
+source/assets/network/device_kam.png
+source/assets/network/device_sin.png
 source/assets/network/router1.png
+source/assets/network/router_kam.png
 source/assets/network/secure_access.png
 source/assets/phone/kam_phone_sus.png
 source/assets/phone/sin_phone.png
@@ -569,6 +572,8 @@ source/core/domain_impl/support/highlight_label_service.py
 source/core/domain_impl/support/input_bank_style_service.py
 source/core/domain_impl/support/input_database_bcc_style_service.py
 source/core/domain_impl/support/input_database_style_service.py
+source/core/domain_impl/support/input_network_device_bcc_style_service.py
+source/core/domain_impl/support/input_network_device_geoip_style_service.py
 source/core/domain_impl/support/input_network_firewall_style_service.py
 source/core/domain_impl/support/input_network_router_style_service.py
 source/core/domain_impl/support/input_suspicion_phone_style_service.py

@@ -4,6 +4,8 @@ from core.domain_impl.support import input_bank_style_service
 from core.domain_impl.support import input_database_bcc_style_service
 from core.domain_impl.support import input_database_style_service
 from core.domain_impl.support import input_network_firewall_style_service
+from core.domain_impl.support import input_network_device_bcc_style_service
+from core.domain_impl.support import input_network_device_geoip_style_service
 from core.domain_impl.support import input_network_router_style_service
 from core.domain_impl.support import input_suspicion_phone_style_service
 from core.domain_impl.ui import theme_asset_service
@@ -15,6 +17,8 @@ class ThemeManager:
     input_database_bcc_style_service = input_database_bcc_style_service
     input_database_style_service = input_database_style_service
     input_network_firewall_style_service = input_network_firewall_style_service
+    input_network_device_bcc_style_service = input_network_device_bcc_style_service
+    input_network_device_geoip_style_service = input_network_device_geoip_style_service
     input_network_router_style_service = input_network_router_style_service
     input_suspicion_phone_style_service = input_suspicion_phone_style_service
     theme_asset_service = theme_asset_service

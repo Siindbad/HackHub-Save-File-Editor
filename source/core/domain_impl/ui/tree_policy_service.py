@@ -3,10 +3,39 @@
 Keeps JSON and INPUT tree behavior split by policy while sharing one tree engine.
 """
 from typing import Any
+from core.exceptions import EXPECTED_ERRORS
 
 
 def _normalize_mode(mode):
     return str(mode or "JSON").strip().upper()
+
+
+def _is_input_bcc_domains_locked_subcategory_path(owner: Any, path: Any) -> bool:
+    if _normalize_mode(getattr(owner, "_editor_mode", "JSON")) != "INPUT":
+        return False
+    if not isinstance(path, list) or len(path) != 2:
+        return False
+    if owner._normalize_root_tree_key(path[0]) != "network":
+        return False
+    if not isinstance(path[1], int):
+        return False
+    try:
+        value = owner._get_value(path)
+    except EXPECTED_ERRORS:
+        return False
+    if not isinstance(value, dict):
+        return False
+    if str(value.get("type", "")).strip().upper() != "DEVICE":
+        return False
+    ip = str(value.get("ip", "") or "").strip()
+    if ip != "193.8.64.214":
+        return False
+    name = value.get("name")
+    if not name:
+        domain = value.get("domain")
+        if isinstance(domain, dict):
+            name = domain.get("name")
+    return str(name or "").strip().casefold() == "bcc.com"
 
 
 def hidden_root_keys_for_mode(owner: Any, mode: Any=None) -> Any:
@@ -43,7 +72,10 @@ def is_input_mode_tree_expand_blocked(owner: Any, item_id: Any) -> Any:
     if isinstance(path, list) and len(path) == 2:
         is_locked_database_subcategory = getattr(owner, "_is_input_database_locked_subcategory_path", None)
         if callable(is_locked_database_subcategory):
-            return bool(is_locked_database_subcategory(path))
+            if bool(is_locked_database_subcategory(path)):
+                return True
+        if _is_input_bcc_domains_locked_subcategory_path(owner, path):
+            return True
     if isinstance(path, tuple) and len(path) == 3 and path[0] == "__group__":
         list_path = path[1] if isinstance(path[1], list) else []
         group_name = str(path[2] or "").strip().casefold()
@@ -62,7 +94,10 @@ def should_use_input_red_arrow_for_path(owner: Any, path: Any) -> Any:
     if isinstance(path, list) and len(path) == 2:
         is_locked_database_subcategory = getattr(owner, "_is_input_database_locked_subcategory_path", None)
         if callable(is_locked_database_subcategory):
-            return bool(is_locked_database_subcategory(path))
+            if bool(is_locked_database_subcategory(path)):
+                return True
+        if _is_input_bcc_domains_locked_subcategory_path(owner, path):
+            return True
     if isinstance(path, tuple) and len(path) == 3 and path[0] == "__group__":
         list_path = path[1] if isinstance(path[1], list) else []
         group_name = str(path[2] or "").strip().casefold()

@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-26 (enabled Skypersky INPUT-mode editing path and custom protection-toggle preview renderer).
+Last sync: 2026-02-27 (startup loader prewarm policy now gates reveal on full theme readiness).
 
 | Module | Purpose |
 | --- | --- |

@@ -591,7 +591,10 @@ def _siindbad_b_sprite_bundle(owner: Any, key, width, height, render_mode="full"
             return None
         if str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
             try:
-                base_image = owner._shade_toolbar_button_for_theme(base_image)
+                base_image = owner._shade_toolbar_button_for_theme(
+                    base_image,
+                    cache_key=f"sprite:{base_path}",
+                )
                 base_image = owner._harmonize_kamue_b_outer_frame(base_image)
             except EXPECTED_ERRORS:
                 pass
@@ -610,7 +613,6 @@ def _siindbad_b_sprite_bundle(owner: Any, key, width, height, render_mode="full"
                 )
             except EXPECTED_ERRORS:
                 hover_files = []
-
         hover_images = []
         for hover_name in hover_files:
             hover_path = os.path.join(sprite_dir, str(hover_name))
@@ -620,7 +622,10 @@ def _siindbad_b_sprite_bundle(owner: Any, key, width, height, render_mode="full"
                 hover_image = image_module.open(hover_path).convert("RGBA")
                 if str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
                     try:
-                        hover_image = owner._shade_toolbar_button_for_theme(hover_image)
+                        hover_image = owner._shade_toolbar_button_for_theme(
+                            hover_image,
+                            cache_key=f"sprite:{hover_path}",
+                        )
                         hover_image = owner._harmonize_kamue_b_outer_frame(hover_image)
                     except EXPECTED_ERRORS:
                         pass

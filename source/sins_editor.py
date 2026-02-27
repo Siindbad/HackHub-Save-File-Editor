@@ -101,6 +101,8 @@ input_bank_style_service = theme_manager.THEME.input_bank_style_service
 input_database_bcc_style_service = theme_manager.THEME.input_database_bcc_style_service
 input_database_style_service = theme_manager.THEME.input_database_style_service
 input_network_firewall_style_service = theme_manager.THEME.input_network_firewall_style_service
+input_network_device_bcc_style_service = theme_manager.THEME.input_network_device_bcc_style_service
+input_network_device_geoip_style_service = theme_manager.THEME.input_network_device_geoip_style_service
 input_network_router_style_service = theme_manager.THEME.input_network_router_style_service
 input_suspicion_phone_style_service = theme_manager.THEME.input_suspicion_phone_style_service
 theme_asset_service = theme_manager.THEME.theme_asset_service
@@ -980,6 +982,26 @@ if button._siindbad_base_image is None:
     def _is_network_firewall_input_style_payload(self, path, value):
         return input_network_firewall_style_service.is_network_firewall_group_payload(self, path, value)
 
+    def _is_network_geoip_input_style_payload(self, path, value):
+        # GEO IP concept applies only to first Network DEVICE row.
+        return input_network_device_geoip_style_service.is_network_geoip_payload(self, path, value)
+
+    def _is_network_bcc_domains_input_style_payload(self, path, value):
+        # BCC DOMAINS concept applies only to the locked bcc.com row.
+        return input_network_device_bcc_style_service.is_network_bcc_domains_payload(self, path, value)
+
+    def _collect_network_bcc_domains_payload(self, normalized_path, value):
+        return input_network_device_bcc_style_service.collect_bcc_domains_payload(self, normalized_path, value)
+
+    def _render_network_bcc_domains_input(self, host, normalized_path, payload):
+        input_network_device_bcc_style_service.render_bcc_domains_input(self, host, normalized_path, payload)
+
+    def _collect_network_geoip_payload(self, normalized_path, value):
+        return input_network_device_geoip_style_service.collect_geoip_payload(self, normalized_path, value)
+
+    def _render_network_geoip_input(self, host, normalized_path, payload):
+        input_network_device_geoip_style_service.render_geoip_input(self, host, normalized_path, payload)
+
     def _collect_network_firewall_input_rows(self, normalized_path, firewalls, max_rows=40):
         return input_network_firewall_style_service.collect_firewall_input_rows(
             self,
@@ -1041,6 +1063,8 @@ if button._siindbad_base_image is None:
         normalized_path = list(path or [])
         root_key = self._input_mode_root_key_for_path(normalized_path)
         is_network_router_payload = self._is_network_router_input_style_payload(normalized_path, value)
+        is_network_bcc_domains_payload = self._is_network_bcc_domains_input_style_payload(normalized_path, value)
+        is_network_geoip_payload = self._is_network_geoip_input_style_payload(normalized_path, value)
         is_network_device_payload = self._is_network_device_input_style_payload(normalized_path, value)
         is_network_firewall_payload = self._is_network_firewall_input_style_payload(normalized_path, value)
         database_grades_matrix = self._database_grades_matrix_for_input_path(normalized_path, value)
@@ -1207,12 +1231,28 @@ if button._siindbad_base_image is None:
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 input_mode_service.mark_input_mode_render_complete(self, normalized_path)
                 return
+        if is_network_bcc_domains_payload:
+            bcc_domains_payload = self._collect_network_bcc_domains_payload(normalized_path, value)
+            if bcc_domains_payload:
+                self._render_network_bcc_domains_input(host, normalized_path, bcc_domains_payload)
+                self._refresh_input_mode_bool_widget_colors()
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+                return
+        if is_network_geoip_payload:
+            geoip_payload = self._collect_network_geoip_payload(normalized_path, value)
+            if geoip_payload:
+                self._render_network_geoip_input(host, normalized_path, geoip_payload)
+                self._refresh_input_mode_bool_widget_colors()
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+                return
         if is_network_device_payload:
             input_mode_service.show_input_mode_notice(
                 self,
                 host,
                 panel_bg,
-                self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
+                "Selected A Sub Category",
                 font_size=11,
                 tk_module=tk,
             )
@@ -1674,6 +1714,7 @@ if button._siindbad_base_image is None:
         if text is None or input_container is None or text_scroll is None:
             return
         mode = str(getattr(self, "_editor_mode", "JSON")).upper()
+        self._sync_input_mode_paned_sash_lock(mode)
         self._apply_tree_mode_style(mode)
         show_input = (mode == "INPUT")
         editor_mode_top_inset = 24
@@ -1706,6 +1747,61 @@ if button._siindbad_base_image is None:
             text_scroll.pack(fill="y", side="right", pady=(editor_mode_top_inset, 0))
         if getattr(self, "data", None) is None:
             self._show_json_no_file_message()
+
+    def _sync_input_mode_paned_sash_lock(self, mode=None):
+        """Disable divider dragging in INPUT mode and keep sash at its locked position."""
+        body = getattr(self, "_body_panedwindow", None)
+        if body is None:
+            return
+        lock_active = bool(getattr(self, "_input_mode_paned_lock_active", False))
+        try:
+            body_class = str(body.winfo_class() or "")
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            body_class = "TPanedwindow"
+        default_tags = tuple(getattr(self, "_body_paned_bindtags_default", ()) or ())
+        if not default_tags:
+            try:
+                default_tags = tuple(body.bindtags())
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                default_tags = ()
+            if default_tags:
+                self._body_paned_bindtags_default = default_tags
+        use_mode = str(mode or getattr(self, "_editor_mode", "JSON")).upper()
+        if use_mode != "INPUT":
+            if not lock_active and getattr(self, "_input_mode_paned_sash_x", None) is None:
+                return
+            self._input_mode_paned_sash_x = None
+            if lock_active and default_tags:
+                try:
+                    if tuple(body.bindtags()) != default_tags:
+                        body.bindtags(default_tags)
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    return
+            self._input_mode_paned_lock_active = False
+            return
+        if default_tags and not lock_active:
+            locked_tags = tuple(tag for tag in default_tags if str(tag) != body_class)
+            if not locked_tags:
+                locked_tags = default_tags
+            try:
+                if tuple(body.bindtags()) != locked_tags:
+                    body.bindtags(locked_tags)
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                return
+        self._input_mode_paned_lock_active = True
+        try:
+            current_x = int(body.sashpos(0))
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            return
+        locked_x = getattr(self, "_input_mode_paned_sash_x", None)
+        if locked_x is None:
+            self._input_mode_paned_sash_x = current_x
+            return
+        if int(locked_x) != current_x:
+            try:
+                body.sashpos(0, int(locked_x))
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                return
 
     def _apply_tree_mode_style(self, mode=None):
         return editor_purge_service._apply_tree_mode_style(self, mode)
@@ -3593,6 +3689,10 @@ if button._siindbad_base_image is None:
             self._bug_report_follow_root = False
 
     def _on_root_configure(self, event=None):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT" or bool(
+            getattr(self, "_input_mode_paned_lock_active", False)
+        ):
+            self._sync_input_mode_paned_sash_lock()
         self._schedule_topbar_alignment(delay_ms=35)
         if not bool(getattr(self, "BUG_REPORT_USE_CUSTOM_CHROME", True)):
             return
@@ -4563,6 +4663,10 @@ if button._siindbad_base_image is None:
         self._editor_mode_labels = {}
         self._editor_mode_tab_cache = {}
         self._editor_right_parent = None
+        self._body_panedwindow = None
+        self._body_paned_bindtags_default = ()
+        self._input_mode_paned_sash_x = None
+        self._input_mode_paned_lock_active = False
         self._text_scroll = None
         self._init_input_mode_runtime_state()
         self._init_tree_runtime_state()
@@ -4582,6 +4686,7 @@ if button._siindbad_base_image is None:
         self._siindbad_style_focus = None
         self._toolbar_button_images = {}
         self._toolbar_asset_image_cache = {}
+        self._toolbar_theme_shade_cache = {}
         self._toolbar_buttons = {}
         self._toolbar_button_text = {}
         self._toolbar_style_labels = {}
@@ -4698,6 +4803,8 @@ if button._siindbad_base_image is None:
         self._theme_prewarm_loader_tick_ms = 16
         self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
         self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
+        # Cache per-variant logo PhotoImage so theme switches avoid reload work.
+        self._theme_logo_photo_by_variant = {}
         self._toolbar_refresh_after_id = None
         self._updates_auto_after_id = None
         # Saved startup update-check preference: default off unless user enables from update dialogs.
@@ -4716,7 +4823,8 @@ if button._siindbad_base_image is None:
             in ("1", "true", "yes", "on")
         )
         self._startup_loader_enabled = True
-        self._startup_loader_extra_hold_ms = 1800
+        # Keep startup loader visible briefly for polish, but avoid delaying interactivity.
+        self._startup_loader_extra_hold_ms = 600
         self._startup_loader_overlay = None
         self._startup_loader_pct_label = None
         self._startup_loader_statement_label = None
@@ -4740,6 +4848,11 @@ if button._siindbad_base_image is None:
         self._startup_loader_progress_interval_ms = 90
         self._startup_loader_statement_interval_loading_ms = 1450
         self._startup_loader_statement_interval_ready_ms = 1150
+        # Loader finish phase: smooth progress to 100 before teardown.
+        self._startup_loader_complete_dwell_ms = 260
+        self._startup_loader_finishing = False
+        self._startup_loader_finish_started_ts = 0.0
+        self._startup_loader_finish_start_pct = 0.0
         self._startup_loader_window_mode = bool(
             getattr(self.root, "_hh_use_startup_loader_window", False)
         )
@@ -5257,7 +5370,7 @@ if button._siindbad_base_image is None:
             image = image_module.open(base_path).convert("RGBA")
             if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
                 try:
-                    image = self._shade_toolbar_button_for_theme(image)
+                    image = self._shade_toolbar_button_for_theme(image, cache_key=f"search:{base_path}")
                     image = self._harmonize_kamue_b_outer_frame(image)
                 except _EXPECTED_APP_ERRORS:
                     pass
@@ -6361,7 +6474,10 @@ if button._siindbad_base_image is None:
             self._rebuild_toolbar(preserve_find_text=True)
         self._refresh_runtime_theme_widgets()
         other_variant = "KAMUE" if variant == "SIINDBAD" else "SIINDBAD"
-        self._schedule_theme_asset_prewarm(targets=(other_variant,), delay_ms=180)
+        warmed = set(getattr(self, "_theme_prewarm_done", set()))
+        queued = set(str(item).upper() for item in list(getattr(self, "_theme_prewarm_queue", []) or []))
+        if other_variant not in warmed and other_variant not in queued:
+            self._schedule_theme_asset_prewarm(targets=(other_variant,), delay_ms=180)
         if save:
             try:
                 self._save_user_settings()
@@ -6679,6 +6795,55 @@ if button._siindbad_base_image is None:
 
     def _hide_startup_loader(self):
         root = getattr(self, "root", None)
+        overlay = getattr(self, "_startup_loader_overlay", None)
+        overlay_exists = False
+        if overlay is not None:
+            try:
+                overlay_exists = bool(overlay.winfo_exists())
+            except (tk.TclError, RuntimeError, AttributeError, ValueError):
+                overlay_exists = False
+        if (
+            root is not None
+            and overlay_exists
+            and bool(getattr(self, "_startup_loader_ready_ts", None) is not None)
+        ):
+            now = time.perf_counter()
+            if not bool(getattr(self, "_startup_loader_finishing", False)):
+                self._startup_loader_finishing = True
+                self._startup_loader_finish_started_ts = float(now)
+                start_pct = 0.0
+                try:
+                    pct_label = getattr(self, "_startup_loader_pct_label", None)
+                    if pct_label is not None and pct_label.winfo_exists():
+                        text = str(pct_label.cget("text") or "").strip().replace("%", "")
+                        start_pct = max(0.0, min(100.0, float(text or 0.0)))
+                except (tk.TclError, RuntimeError, AttributeError, ValueError, TypeError):
+                    start_pct = 0.0
+                self._startup_loader_finish_start_pct = float(start_pct)
+            elapsed_ms = max(
+                0.0,
+                (float(now) - float(getattr(self, "_startup_loader_finish_started_ts", now) or now)) * 1000.0,
+            )
+            dwell_ms = max(120.0, float(getattr(self, "_startup_loader_complete_dwell_ms", 260) or 260))
+            progress = max(0.0, min(1.0, elapsed_ms / dwell_ms))
+            start_pct = float(getattr(self, "_startup_loader_finish_start_pct", 0.0) or 0.0)
+            show_pct = start_pct + ((100.0 - start_pct) * progress)
+            try:
+                self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_top_fill", None), show_pct)
+                self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_bottom_fill", None), show_pct)
+                pct_label = getattr(self, "_startup_loader_pct_label", None)
+                if pct_label is not None and pct_label.winfo_exists():
+                    pct_label.configure(text=f"{int(round(show_pct))}%")
+                statement = getattr(self, "_startup_loader_statement_label", None)
+                if statement is not None and statement.winfo_exists():
+                    statement.configure(text="/startup shell handshake complete.")
+                overlay.update_idletasks()
+            except (tk.TclError, RuntimeError, AttributeError, ValueError):
+                pass
+            if progress < 1.0:
+                self._startup_loader_hide_after_id = root.after(16, self._hide_startup_loader)
+                return
+
         if root is not None:
             for attr in (
                 "_startup_loader_text_after_id",
@@ -6694,14 +6859,6 @@ if button._siindbad_base_image is None:
                         pass
                 setattr(self, attr, None)
 
-        overlay = getattr(self, "_startup_loader_overlay", None)
-        overlay_exists = False
-        if overlay is not None:
-            try:
-                # Quick-close smoke can destroy Tk before loader teardown runs.
-                overlay_exists = bool(overlay.winfo_exists())
-            except (tk.TclError, RuntimeError, AttributeError, ValueError):
-                overlay_exists = False
         if overlay is not None and overlay_exists:
             try:
                 overlay.destroy()
@@ -6721,6 +6878,9 @@ if button._siindbad_base_image is None:
         self._startup_loader_title_suffix_label = None
         self._startup_loader_top_fill = None
         self._startup_loader_bottom_fill = None
+        self._startup_loader_finishing = False
+        self._startup_loader_finish_started_ts = 0.0
+        self._startup_loader_finish_start_pct = 0.0
         deferred = startup_loader_core.normalize_deferred_variants_for_schedule(
             getattr(self, "_startup_loader_deferred_variants", set())
         )
@@ -6939,10 +7099,22 @@ if button._siindbad_base_image is None:
                 cursor="hand2",
             )
 
-    def _shade_toolbar_button_for_theme(self, image):
+    def _shade_toolbar_button_for_theme(self, image, cache_key=None):
         """Apply theme-specific color treatment to toolbar button assets."""
         if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() != "KAMUE":
             return image
+        if cache_key:
+            cache = getattr(self, "_toolbar_theme_shade_cache", None)
+            if not isinstance(cache, dict):
+                cache = {}
+                self._toolbar_theme_shade_cache = cache
+            key = (str(cache_key), int(getattr(image, "width", 0) or 0), int(getattr(image, "height", 0) or 0))
+            cached = cache.get(key)
+            if cached is not None:
+                try:
+                    return cached.copy()
+                except _EXPECTED_APP_ERRORS:
+                    return cached
         try:
             image_module = importlib.import_module("PIL.Image")
             image_chops_module = importlib.import_module("PIL.ImageChops")
@@ -6987,6 +7159,13 @@ if button._siindbad_base_image is None:
             rgb = image_enhance_module.Sharpness(rgb).enhance(1.08)
             out = rgb.convert("RGBA")
             out.putalpha(alpha_chan)
+            if cache_key:
+                cache = getattr(self, "_toolbar_theme_shade_cache", None)
+                if not isinstance(cache, dict):
+                    cache = {}
+                    self._toolbar_theme_shade_cache = cache
+                key = (str(cache_key), int(out.width), int(out.height))
+                self._bounded_cache_put(cache, key, out.copy(), max_items=192)
             return out
         except (ImportError, OSError, ValueError, TypeError, AttributeError):
             return image
@@ -7034,7 +7213,7 @@ if button._siindbad_base_image is None:
             image_module = importlib.import_module("PIL.Image")
             image_tk_module = importlib.import_module("PIL.ImageTk")
             image = image_module.open(path).convert("RGBA")
-            image = self._shade_toolbar_button_for_theme(image)
+            image = self._shade_toolbar_button_for_theme(image, cache_key=f"asset:{path}")
             if stretch_to_fit and max_width > 0 and max_height > 0:
                 if image.width != max_width or image.height != max_height:
                     image = image.resize((max_width, max_height), image_module.LANCZOS)
@@ -7184,17 +7363,31 @@ if button._siindbad_base_image is None:
         parent = self._header_frame
         if not parent or not parent.winfo_exists():
             return
+        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
         logo_path = self._find_logo_path()
         if not logo_path:
             return
 
         needs_reload = force or logo_path != getattr(self, "_logo_path", None) or not self.logo_image
+        if needs_reload and not force:
+            logo_cache = getattr(self, "_theme_logo_photo_by_variant", None)
+            if isinstance(logo_cache, dict):
+                cached_logo = logo_cache.get(variant)
+                if cached_logo is not None:
+                    self.logo_image = cached_logo
+                    self._logo_path = logo_path
+                    needs_reload = False
         if needs_reload:
             image = self._load_logo_image(logo_path)
             if image is None:
                 return
             self.logo_image = image
             self._logo_path = logo_path
+            logo_cache = getattr(self, "_theme_logo_photo_by_variant", None)
+            if not isinstance(logo_cache, dict):
+                logo_cache = {}
+                self._theme_logo_photo_by_variant = logo_cache
+            self._bounded_cache_put(logo_cache, variant, image, max_items=8)
 
         wants_frame = self._is_banner_logo_path(logo_path)
         has_frame = bool(self.logo_frame and self.logo_frame.winfo_exists())
@@ -8870,7 +9063,7 @@ def main():
         path = sys.argv[1]
     _enable_windows_dpi_awareness()
     root = tk.Tk()
-    root._hh_use_startup_loader_window = True
+    setattr(root, "_hh_use_startup_loader_window", True)
     root.withdraw()
     JsonEditor(root, path)
     root.mainloop()

@@ -31,7 +31,10 @@ def prepare_loader_variants(active_variant: Any, deferred_variants: Any) -> Any:
         if str(name).upper() in VALID_THEME_VARIANTS
     }
     deferred.discard(active)
-    return active, {active}, deferred
+    # Startup loader prewarms both theme variants before reveal so first
+    # post-open theme switch stays hot and visually instant.
+    required = {active, *deferred}
+    return active, required, set()
 
 
 def compute_loader_progress(
@@ -106,8 +109,10 @@ def prewarm_tick_policy(
     idle_tick_ms: int,
 ) -> Any:
     if loader_visible:
-        budget_ms = max(2, int(loader_budget_ms or 0))
-        max_tasks_this_tick = 2
+        # Loader-visible mode should aggressively prewarm so reveal happens only
+        # after both variants are truly hot.
+        budget_ms = max(12, int(loader_budget_ms or 0))
+        max_tasks_this_tick = 8
         next_tick_ms = max(8, int(loader_tick_ms or 0))
     else:
         budget_ms = max(3, int(idle_budget_ms or 0))

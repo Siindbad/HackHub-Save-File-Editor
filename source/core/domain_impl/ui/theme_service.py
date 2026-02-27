@@ -605,6 +605,7 @@ def _execute_theme_prewarm_task(owner: Any, task):
 
         original_variant = getattr(owner, "_app_theme_variant", "SIINDBAD")
         original_theme = getattr(owner, "_theme", None)
+        prewarm_render_mode = getattr(owner, "_theme_prewarm_render_mode", None)
         try:
             owner._app_theme_variant = variant
             owner._theme = owner._theme_palette_for_variant(variant)
@@ -622,7 +623,8 @@ def _execute_theme_prewarm_task(owner: Any, task):
                     width=max(1, int(width)),
                     height=max(1, int(height)),
                     palette=palette,
-                    render_mode="full",
+                    # Loader-visible prewarm uses fast sprites to avoid startup hitching.
+                    render_mode=prewarm_render_mode,
                 )
                 return
             if kind == "search":
@@ -649,7 +651,13 @@ def _execute_theme_prewarm_task(owner: Any, task):
             if kind == "logo":
                 logo_path = owner._find_logo_path()
                 if logo_path:
-                    owner._load_logo_image(logo_path)
+                    logo_image = owner._load_logo_image(logo_path)
+                    if logo_image is not None:
+                        logo_cache = getattr(owner, "_theme_logo_photo_by_variant", None)
+                        if not isinstance(logo_cache, dict):
+                            logo_cache = {}
+                            owner._theme_logo_photo_by_variant = logo_cache
+                        owner._bounded_cache_put(logo_cache, variant, logo_image, max_items=8)
                 return
             if kind == "badges":
                 owner._load_credit_badge_sources()
@@ -713,6 +721,9 @@ def _run_theme_asset_prewarm(owner: Any):
             loader_tick_ms=int(getattr(owner, "_theme_prewarm_loader_tick_ms", 16) or 16),
             idle_tick_ms=int(getattr(owner, "_theme_prewarm_idle_tick_ms", 12) or 12),
         )
+        # Build full bundles during startup prewarm so first manual theme switch
+        # is truly hot and does not trigger first-use sprite/render spikes.
+        owner._theme_prewarm_render_mode = "full"
         # Keep initial toolbar hover smooth: defer prewarm ticks while pointer/scan is active.
         try:
             toolbar_buttons = dict(getattr(owner, "_toolbar_buttons", {}) or {})
@@ -770,6 +781,7 @@ def _run_theme_asset_prewarm(owner: Any):
         owner._theme_prewarm_done_by_variant = done_counts
         owner._theme_prewarm_queue = queue
         owner._theme_prewarm_tasks = tasks
+        owner._theme_prewarm_render_mode = None
         owner._update_startup_loader_progress()
         if owner._theme_prewarm_tasks:
             owner._theme_prewarm_after_id = owner.root.after(next_tick_ms, owner._run_theme_asset_prewarm)

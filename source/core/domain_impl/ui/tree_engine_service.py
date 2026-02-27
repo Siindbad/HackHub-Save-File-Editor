@@ -109,6 +109,99 @@ def resolve_list_labeler(owner: Any, path: Any) -> Any:
     return None
 
 
+def _is_input_network_device_row(owner: Any, path: Any) -> bool:
+    if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
+        return False
+    if not isinstance(path, list) or len(path) < 2:
+        return False
+    if str(path[0] or "").strip().casefold() != "network":
+        return False
+    if not isinstance(path[1], int):
+        return False
+    try:
+        value = owner._get_value(path)
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        return False
+    if not (isinstance(value, dict) and str(value.get("type", "")).strip().upper() == "DEVICE"):
+        return False
+    try:
+        network_value = owner._get_value([path[0]])
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        return False
+    if not isinstance(network_value, list):
+        return False
+    first_device_index = None
+    for idx, item in enumerate(network_value):
+        if isinstance(item, dict) and str(item.get("type", "")).strip().upper() == "DEVICE":
+            first_device_index = idx
+            break
+    return first_device_index is not None and int(path[1]) == int(first_device_index)
+
+
+def _network_row_display_name(item: dict[str, Any], group: str) -> Any:
+    if group == "FIREWALL":
+        users = item.get("users")
+        if isinstance(users, list) and users:
+            user0 = users[0]
+            if isinstance(user0, dict):
+                return user0.get("id")
+        return None
+    if group in ("SPLITTER",):
+        return None
+    name = item.get("name")
+    if not name:
+        domain = item.get("domain")
+        if isinstance(domain, dict):
+            name = domain.get("name")
+    if not name:
+        users = item.get("users")
+        if isinstance(users, list) and users:
+            user0 = users[0]
+            if isinstance(user0, dict):
+                name = user0.get("firstName") or user0.get("name")
+    if not name and group in ("ROUTER", "DEVICE"):
+        name = item.get("type")
+    return name
+
+
+def _is_input_network_bcc_domains_item(owner: Any, group: Any, item: Any) -> bool:
+    if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
+        return False
+    if str(group or "").strip().upper() != "DEVICE":
+        return False
+    if not isinstance(item, dict):
+        return False
+    ip = str(item.get("ip", "") or "").strip()
+    if ip != "193.8.64.214":
+        return False
+    name = _network_row_display_name(item, "DEVICE")
+    return str(name or "").strip().casefold() == "bcc.com"
+
+
+def _is_input_network_bcc_subdomain_item(owner: Any, group: Any, item: Any) -> bool:
+    if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
+        return False
+    if str(group or "").strip().upper() != "DEVICE":
+        return False
+    if not isinstance(item, dict):
+        return False
+    name = str(_network_row_display_name(item, "DEVICE") or "").strip().casefold()
+    return bool(name) and name.endswith(".bcc.com")
+
+
+def _is_input_network_device_item_hidden(owner: Any, group: Any, pos: int, item: Any) -> bool:
+    """Hide interim DEVICE subcategories in INPUT mode until their concepts are implemented."""
+    if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
+        return False
+    if str(group or "").strip().upper() != "DEVICE":
+        return False
+    is_primary_geoip = int(pos) == 0
+    is_bcc_domains = _is_input_network_bcc_domains_item(owner, group, item)
+    return not (is_primary_geoip or is_bcc_domains)
+
+
 def load_tree_marker_icon(
     owner: Any,
     kind: Any,
@@ -231,7 +324,7 @@ def populate_children(owner: Any, item_id: Any) -> Any:
                 text=child_text,
                 tags=(level_tag,),
             )
-            owner.item_to_path[child_id] = path + [key]
+            owner.item_to_path[child_id] = (list(path) if isinstance(path, list) else []) + [key]
             owner._add_placeholder_if_container(child_id, value[key])
     elif isinstance(value, list) and owner._is_network_list(path, value):
         groups = {}
@@ -247,42 +340,48 @@ def populate_children(owner: Any, item_id: Any) -> Any:
             if tree_policy_service.is_network_group_hidden_for_mode(owner, path, group):
                 continue
             items = groups[group]
+            is_input_device_group = (
+                str(getattr(owner, "_editor_mode", "JSON")).upper() == "INPUT"
+                and bool(path)
+                and str(path[0] or "").strip().casefold() == "network"
+                and str(group or "").strip().casefold() == "device"
+            )
+            visible_items = (
+                [
+                    pair
+                    for pos, pair in enumerate(items)
+                    if not _is_input_network_device_item_hidden(owner, group, pos, pair[1])
+                ]
+                if is_input_device_group
+                else items
+            )
             group_id = owner.tree.insert(
                 item_id,
                 "end",
-                text=f"{group} ({len(items)})",
+                text=f"{group} ({len(visible_items)})",
                 tags=("tree-sub-level",),
             )
             owner.item_to_path[group_id] = ("__group__", path, group)
-            for idx, item in items:
+            for pos, (idx, item) in enumerate(items):
+                if _is_input_network_device_item_hidden(owner, group, pos, item):
+                    continue
                 label = ""
-                if isinstance(item, dict):
+                is_input_device_primary = is_input_device_group and pos == 0
+                is_input_device_bcc_domains = _is_input_network_bcc_domains_item(owner, group, item)
+                if is_input_device_primary:
+                    label = "GEO IP"
+                elif is_input_device_bcc_domains:
+                    label = "BCC DOMAINS"
+                if isinstance(item, dict) and not (is_input_device_primary or is_input_device_bcc_domains):
                     if group in ("ROUTER", "DEVICE", "FIREWALL", "SPLITTER"):
                         ip = item.get("ip")
                         match group:
                             case "SPLITTER":
                                 name = None
                             case "FIREWALL":
-                                name = None
-                                users = item.get("users")
-                                if isinstance(users, list) and users:
-                                    user0 = users[0]
-                                    if isinstance(user0, dict):
-                                        name = user0.get("id")
+                                name = _network_row_display_name(item, "FIREWALL")
                             case _:
-                                name = item.get("name")
-                                if not name:
-                                    domain = item.get("domain")
-                                    if isinstance(domain, dict):
-                                        name = domain.get("name")
-                        if not name:
-                            users = item.get("users")
-                            if isinstance(users, list) and users:
-                                user0 = users[0]
-                                if isinstance(user0, dict):
-                                    name = user0.get("firstName") or user0.get("name")
-                        if not name and group in ("ROUTER", "DEVICE"):
-                            name = item.get("type")
+                                name = _network_row_display_name(item, str(group))
                         if ip is not None or name is not None:
                             ip_str = "" if ip is None else str(ip)
                             name_str = "" if name is None else str(name)
@@ -306,8 +405,9 @@ def populate_children(owner: Any, item_id: Any) -> Any:
                 if not label:
                     label = f"Item {idx + 1}"
                 child_id = owner.tree.insert(group_id, "end", text=label, tags=("tree-sub-level",))
-                owner.item_to_path[child_id] = path + [idx]
-                owner._add_placeholder_if_container(child_id, item)
+                owner.item_to_path[child_id] = (list(path) if isinstance(path, list) else []) + [idx]
+                if not (is_input_device_primary or is_input_device_bcc_domains):
+                    owner._add_placeholder_if_container(child_id, item)
     elif isinstance(value, list):
         labeler = resolve_list_labeler(owner, path)
         for idx, item in enumerate(value):
@@ -318,7 +418,7 @@ def populate_children(owner: Any, item_id: Any) -> Any:
             else:
                 label = f"[{idx}]"
             child_id = owner.tree.insert(item_id, "end", text=label, tags=("tree-sub-level",))
-            owner.item_to_path[child_id] = path + [idx]
+            owner.item_to_path[child_id] = (list(path) if isinstance(path, list) else []) + [idx]
             owner._add_placeholder_if_container(child_id, item)
     refresh_tree_item_markers(owner)
 
@@ -349,7 +449,7 @@ def refresh_tree_item_markers(owner: Any) -> Any:
             depth = 0 if is_group else (len(path) if isinstance(path, list) else 0)
             has_children = bool(tree.get_children(item_id))
             is_expanded = bool(tree.item(item_id, "open")) if has_children else False
-            if owner._is_input_red_arrow_root_path(path):
+            if owner._is_input_red_arrow_root_path(path) or _is_input_network_device_row(owner, path):
                 icon = owner._load_input_bank_red_arrow_icon(
                     expandable=has_children,
                     expanded=is_expanded,
@@ -388,7 +488,7 @@ def refresh_tree_marker_for_item(owner: Any, item_id: Any, selected: Any=False) 
         depth = 0 if is_group else (len(path) if isinstance(path, list) else 0)
         has_children = bool(tree.get_children(item_id))
         is_expanded = bool(tree.item(item_id, "open")) if has_children else False
-        if owner._is_input_red_arrow_root_path(path):
+        if owner._is_input_red_arrow_root_path(path) or _is_input_network_device_row(owner, path):
             icon = owner._load_input_bank_red_arrow_icon(
                 expandable=has_children,
                 expanded=is_expanded,
@@ -425,6 +525,8 @@ def tree_item_can_toggle(owner: Any, item_id: Any) -> Any:
         _LOG.debug('expected_error', exc_info=exc)
         pass
     path = owner.item_to_path.get(item_id)
+    if _is_input_network_device_row(owner, path):
+        return False
     try:
         value = owner._get_value(path)
         return tree_view_service.tree_item_can_toggle_from_value(path, value)
