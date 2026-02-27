@@ -996,6 +996,26 @@ if button._siindbad_base_image is None:
     def _render_network_bcc_domains_input(self, host, normalized_path, payload):
         input_network_device_bcc_style_service.render_bcc_domains_input(self, host, normalized_path, payload)
 
+    def _is_network_blue_table_input_style_payload(self, path, value):
+        # BLUE TABLE concept applies to the locked thebluetable.com anchor row.
+        return input_network_device_bcc_style_service.is_network_blue_table_payload(self, path, value)
+
+    def _collect_network_blue_table_payload(self, normalized_path, value):
+        return input_network_device_bcc_style_service.collect_blue_table_payload(self, normalized_path, value)
+
+    def _render_network_blue_table_input(self, host, normalized_path, payload):
+        input_network_device_bcc_style_service.render_blue_table_input(self, host, normalized_path, payload)
+
+    def _is_network_interpol_input_style_payload(self, path, value):
+        # INTERPOL concept applies to the locked row directly under BLUE TABLE.
+        return input_network_device_bcc_style_service.is_network_interpol_payload(self, path, value)
+
+    def _collect_network_interpol_payload(self, normalized_path, value):
+        return input_network_device_bcc_style_service.collect_interpol_payload(self, normalized_path, value)
+
+    def _render_network_interpol_input(self, host, normalized_path, payload):
+        input_network_device_bcc_style_service.render_interpol_input(self, host, normalized_path, payload)
+
     def _collect_network_geoip_payload(self, normalized_path, value):
         return input_network_device_geoip_style_service.collect_geoip_payload(self, normalized_path, value)
 
@@ -1071,6 +1091,8 @@ if button._siindbad_base_image is None:
         root_key = self._input_mode_root_key_for_path(normalized_path)
         is_network_router_payload = self._is_network_router_input_style_payload(normalized_path, value)
         is_network_bcc_domains_payload = self._is_network_bcc_domains_input_style_payload(normalized_path, value)
+        is_network_blue_table_payload = self._is_network_blue_table_input_style_payload(normalized_path, value)
+        is_network_interpol_payload = self._is_network_interpol_input_style_payload(normalized_path, value)
         is_network_geoip_payload = self._is_network_geoip_input_style_payload(normalized_path, value)
         is_network_device_payload = self._is_network_device_input_style_payload(normalized_path, value)
         is_network_firewall_payload = self._is_network_firewall_input_style_payload(normalized_path, value)
@@ -1243,6 +1265,22 @@ if button._siindbad_base_image is None:
             bcc_domains_payload = self._collect_network_bcc_domains_payload(normalized_path, value)
             if bcc_domains_payload:
                 self._render_network_bcc_domains_input(host, normalized_path, bcc_domains_payload)
+                self._refresh_input_mode_bool_widget_colors()
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+                return
+        if is_network_blue_table_payload:
+            blue_table_payload = self._collect_network_blue_table_payload(normalized_path, value)
+            if blue_table_payload:
+                self._render_network_blue_table_input(host, normalized_path, blue_table_payload)
+                self._refresh_input_mode_bool_widget_colors()
+                self._schedule_input_mode_layout_finalize(reset_scroll=True)
+                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
+                return
+        if is_network_interpol_payload:
+            interpol_payload = self._collect_network_interpol_payload(normalized_path, value)
+            if interpol_payload:
+                self._render_network_interpol_input(host, normalized_path, interpol_payload)
                 self._refresh_input_mode_bool_widget_colors()
                 self._schedule_input_mode_layout_finalize(reset_scroll=True)
                 input_mode_service.mark_input_mode_render_complete(self, normalized_path)
@@ -1787,7 +1825,41 @@ if button._siindbad_base_image is None:
             if default_tags:
                 self._body_paned_bindtags_default = default_tags
         use_mode = str(mode or getattr(self, "_editor_mode", "JSON")).upper()
+        try:
+            current_x = int(body.sashpos(0))
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            current_x = None
+        try:
+            body_width = int(body.winfo_width() or 0)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            body_width = 0
+        fallback_x = None
+        if body_width > 160:
+            min_tree_width = 180
+            min_editor_width = 320
+            max_sash = max(min_tree_width, int(body_width) - min_editor_width)
+            candidate = max(min_tree_width, int(round(float(body_width) * 0.30)))
+            candidate = min(candidate, max_sash)
+            if candidate > 10:
+                fallback_x = int(candidate)
+        # Persist a sane first sash position as INPUT lock baseline so
+        # JSON-mode manual sash moves do not change INPUT layout.
+        # Ignore near-zero values to avoid capturing pre-layout sash=0.
+        fixed_input_x = getattr(self, "_input_mode_paned_fixed_sash_x", None)
+        try:
+            fixed_input_x = int(fixed_input_x) if fixed_input_x is not None else None
+        except (TypeError, ValueError):
+            fixed_input_x = None
+        if fixed_input_x is not None and int(fixed_input_x) <= 10:
+            fixed_input_x = None
+        if fixed_input_x is None and current_x is not None and int(current_x) > 10:
+            fixed_input_x = int(current_x)
+            self._input_mode_paned_fixed_sash_x = fixed_input_x
+        if fixed_input_x is None and fallback_x is not None:
+            fixed_input_x = int(fallback_x)
+            self._input_mode_paned_fixed_sash_x = fixed_input_x
         if use_mode != "INPUT":
+            self._cancel_input_mode_paned_lock_recheck()
             if not lock_active and getattr(self, "_input_mode_paned_sash_x", None) is None:
                 return
             self._input_mode_paned_sash_x = None
@@ -1807,21 +1879,125 @@ if button._siindbad_base_image is None:
                 if tuple(body.bindtags()) != locked_tags:
                     body.bindtags(locked_tags)
             except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                self._schedule_input_mode_paned_lock_recheck()
                 return
         self._input_mode_paned_lock_active = True
-        try:
-            current_x = int(body.sashpos(0))
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+        # Windows zoom->normal can leave the tree pane attached-but-unmapped.
+        # Reassert pane config so INPUT tree does not disappear until a mode toggle.
+        JsonEditor._repair_input_mode_tree_pane_mapping(self)
+        if current_x is None:
+            self._schedule_input_mode_paned_lock_recheck()
             return
         locked_x = getattr(self, "_input_mode_paned_sash_x", None)
         if locked_x is None:
-            self._input_mode_paned_sash_x = current_x
-            return
-        if int(locked_x) != current_x:
-            try:
-                body.sashpos(0, int(locked_x))
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            if fixed_input_x is not None:
+                target_x = int(fixed_input_x)
+            elif int(current_x) > 10:
+                target_x = int(current_x)
+                self._input_mode_paned_fixed_sash_x = int(current_x)
+            elif fallback_x is not None:
+                target_x = int(fallback_x)
+                self._input_mode_paned_fixed_sash_x = int(target_x)
+            else:
+                # Wait for a stable configure pass before locking INPUT sash.
+                self._schedule_input_mode_paned_lock_recheck()
                 return
+            self._input_mode_paned_sash_x = int(target_x)
+            locked_x = int(target_x)
+        else:
+            try:
+                locked_x = int(locked_x)
+            except (TypeError, ValueError):
+                locked_x = None
+        if locked_x is None:
+            self._schedule_input_mode_paned_lock_recheck()
+            return
+        # Self-heal if an older transient lock captured an invalid near-zero split.
+        if int(locked_x) <= 10:
+            if int(current_x) > 10:
+                locked_x = int(current_x)
+                self._input_mode_paned_sash_x = int(locked_x)
+                if fixed_input_x is None:
+                    self._input_mode_paned_fixed_sash_x = int(locked_x)
+            elif fallback_x is not None:
+                locked_x = int(fallback_x)
+                self._input_mode_paned_sash_x = int(locked_x)
+                if fixed_input_x is None:
+                    self._input_mode_paned_fixed_sash_x = int(locked_x)
+        apply_x = int(locked_x)
+        if body_width > 160:
+            min_tree_width = 180
+            min_editor_width = 320
+            max_sash = max(min_tree_width, int(body_width) - min_editor_width)
+            apply_x = max(min_tree_width, min(apply_x, max_sash))
+        if int(apply_x) != current_x:
+            try:
+                body.sashpos(0, int(apply_x))
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                self._schedule_input_mode_paned_lock_recheck()
+                return
+        # If metrics are still transient, recheck shortly so INPUT can recover
+        # without requiring a mode toggle.
+        if int(apply_x) <= 10 or body_width <= 160:
+            self._schedule_input_mode_paned_lock_recheck()
+            return
+        self._cancel_input_mode_paned_lock_recheck()
+
+    def _repair_input_mode_tree_pane_mapping(self):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return False
+        body = getattr(self, "_body_panedwindow", None)
+        tree = getattr(self, "tree", None)
+        if body is None or tree is None:
+            return False
+        left = getattr(tree, "master", None)
+        if left is None:
+            return False
+        try:
+            if not bool(body.winfo_ismapped()):
+                return False
+            if bool(left.winfo_ismapped()):
+                return False
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            return False
+        try:
+            body.pane(left, weight=1)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            return False
+        return True
+
+    def _cancel_input_mode_paned_lock_recheck(self):
+        after_id = getattr(self, "_input_mode_paned_recheck_after_id", None)
+        self._input_mode_paned_recheck_after_id = None
+        if not after_id:
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            root.after_cancel(after_id)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            return
+
+    def _schedule_input_mode_paned_lock_recheck(self, delay_ms=72):
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        self._cancel_input_mode_paned_lock_recheck()
+
+        def _run_recheck():
+            self._input_mode_paned_recheck_after_id = None
+            self._sync_input_mode_paned_sash_lock("INPUT")
+
+        try:
+            self._input_mode_paned_recheck_after_id = root.after(
+                max(16, int(delay_ms)),
+                _run_recheck,
+            )
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            self._input_mode_paned_recheck_after_id = None
 
     def _apply_tree_mode_style(self, mode=None):
         return editor_purge_service._apply_tree_mode_style(self, mode)
@@ -2175,6 +2351,7 @@ if button._siindbad_base_image is None:
             "_input_mode_router_settle_after_id",
             "_input_mode_scroll_drag_after_id",
             "_input_mode_layout_finalize_after_id",
+            "_input_mode_paned_recheck_after_id",
         ):
             after_id = getattr(self, attr, None)
             if after_id:
@@ -4687,6 +4864,8 @@ if button._siindbad_base_image is None:
         self._body_panedwindow = None
         self._body_paned_bindtags_default = ()
         self._input_mode_paned_sash_x = None
+        self._input_mode_paned_fixed_sash_x = None
+        self._input_mode_paned_recheck_after_id = None
         self._input_mode_paned_lock_active = False
         self._text_scroll = None
         self._init_input_mode_runtime_state()
@@ -6908,9 +7087,41 @@ if button._siindbad_base_image is None:
             except (tk.TclError, RuntimeError, AttributeError):
                 pass
         if root is not None and bool(getattr(self, "_startup_loader_window_mode", False)):
+            alpha_fade_armed = False
+            try:
+                self._apply_dark_theme()
+                self._style_text_widget()
+                self._apply_tree_style()
+                self._apply_tree_mode_style()
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            try:
+                theme_bg = str((getattr(self, "_theme", {}) or {}).get("bg", "#0f131a"))
+                root.configure(bg=theme_bg)
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            try:
+                root.update_idletasks()
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            try:
+                root.attributes("-alpha", 0.0)
+                alpha_fade_armed = True
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                alpha_fade_armed = False
             try:
                 root.deiconify()
+                root.update_idletasks()
+                root.update()
                 root.lift()
+            except (tk.TclError, RuntimeError, AttributeError):
+                pass
+            if alpha_fade_armed:
+                try:
+                    root.after(48, lambda target=root: self._restore_startup_root_alpha(target))
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    self._restore_startup_root_alpha(root)
+            try:
                 root.focus_force()
             except (tk.TclError, RuntimeError, AttributeError):
                 pass
@@ -6937,6 +7148,15 @@ if button._siindbad_base_image is None:
         if root is not None and self._auto_update_startup_enabled():
             self._schedule_auto_update_check(delay_ms=350)
         self._schedule_crash_report_offer()
+
+    @staticmethod
+    def _restore_startup_root_alpha(target):
+        if target is None:
+            return
+        try:
+            target.attributes("-alpha", 1.0)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            return
 
     def _log_theme_perf(self, label, started_ts=None):
         if not bool(getattr(self, "_theme_perf_logging", False)):

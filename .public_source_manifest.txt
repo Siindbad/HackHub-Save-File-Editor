@@ -488,9 +488,15 @@ source/assets/known_email_domains.json
 source/assets/logo2.png
 source/assets/network/device_kam.png
 source/assets/network/device_sin.png
+source/assets/network/firewall_kam.png
+source/assets/network/firewall_sin.png
 source/assets/network/router1.png
 source/assets/network/router_kam.png
 source/assets/network/secure_access.png
+source/assets/network/server_kam.png
+source/assets/network/server_sin.png
+source/assets/network/splitter_kam.png
+source/assets/network/splitter_sin.png
 source/assets/phone/kam_phone_sus.png
 source/assets/phone/sin_phone.png
 source/assets/phone/sin_phone_sus.png

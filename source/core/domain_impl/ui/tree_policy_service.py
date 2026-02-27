@@ -10,6 +10,51 @@ def _normalize_mode(mode):
     return str(mode or "JSON").strip().upper()
 
 
+def _device_domain_name(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    name = value.get("name")
+    if not name:
+        domain = value.get("domain")
+        if isinstance(domain, dict):
+            name = domain.get("name")
+    return str(name or "")
+
+
+def _network_device_blue_and_interpol_anchor_indices(owner: Any, root_token: Any) -> tuple[int | None, int | None]:
+    try:
+        network = owner._get_value([root_token])
+    except EXPECTED_ERRORS:
+        return None, None
+    if not isinstance(network, list):
+        return None, None
+    first_subdomain_index: int | None = None
+    blue_anchor_index: int | None = None
+    for idx, item in enumerate(network):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("type", "")).strip().upper() != "DEVICE":
+            continue
+        row_domain = _device_domain_name(item).strip().casefold()
+        if row_domain == "thebluetable.com":
+            blue_anchor_index = idx
+            break
+        if first_subdomain_index is None and row_domain.endswith(".thebluetable.com"):
+            first_subdomain_index = idx
+    if blue_anchor_index is None:
+        blue_anchor_index = first_subdomain_index
+    interpol_anchor_index: int | None = None
+    if blue_anchor_index is not None:
+        for idx in range(int(blue_anchor_index) + 1, len(network)):
+            item = network[idx]
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type", "")).strip().upper() == "DEVICE":
+                interpol_anchor_index = idx
+                break
+    return blue_anchor_index, interpol_anchor_index
+
+
 def _is_input_bcc_domains_locked_subcategory_path(owner: Any, path: Any) -> bool:
     if _normalize_mode(getattr(owner, "_editor_mode", "JSON")) != "INPUT":
         return False
@@ -30,12 +75,52 @@ def _is_input_bcc_domains_locked_subcategory_path(owner: Any, path: Any) -> bool
     ip = str(value.get("ip", "") or "").strip()
     if ip != "193.8.64.214":
         return False
-    name = value.get("name")
-    if not name:
-        domain = value.get("domain")
-        if isinstance(domain, dict):
-            name = domain.get("name")
-    return str(name or "").strip().casefold() == "bcc.com"
+    return _device_domain_name(value).strip().casefold() == "bcc.com"
+
+
+def _is_input_blue_table_locked_subcategory_path(owner: Any, path: Any) -> bool:
+    if _normalize_mode(getattr(owner, "_editor_mode", "JSON")) != "INPUT":
+        return False
+    if not isinstance(path, list) or len(path) != 2:
+        return False
+    if owner._normalize_root_tree_key(path[0]) != "network":
+        return False
+    if not isinstance(path[1], int):
+        return False
+    try:
+        value = owner._get_value(path)
+    except EXPECTED_ERRORS:
+        return False
+    if not isinstance(value, dict):
+        return False
+    if str(value.get("type", "")).strip().upper() != "DEVICE":
+        return False
+    domain_name = _device_domain_name(value).strip().casefold()
+    if not domain_name or (domain_name != "thebluetable.com" and not domain_name.endswith(".thebluetable.com")):
+        return False
+    anchor_index, _interpol_anchor = _network_device_blue_and_interpol_anchor_indices(owner, path[0])
+    return anchor_index is not None and int(path[1]) == int(anchor_index)
+
+
+def _is_input_interpol_locked_subcategory_path(owner: Any, path: Any) -> bool:
+    if _normalize_mode(getattr(owner, "_editor_mode", "JSON")) != "INPUT":
+        return False
+    if not isinstance(path, list) or len(path) != 2:
+        return False
+    if owner._normalize_root_tree_key(path[0]) != "network":
+        return False
+    if not isinstance(path[1], int):
+        return False
+    try:
+        value = owner._get_value(path)
+    except EXPECTED_ERRORS:
+        return False
+    if not isinstance(value, dict):
+        return False
+    if str(value.get("type", "")).strip().upper() != "DEVICE":
+        return False
+    _blue_anchor, interpol_anchor = _network_device_blue_and_interpol_anchor_indices(owner, path[0])
+    return interpol_anchor is not None and int(path[1]) == int(interpol_anchor)
 
 
 def hidden_root_keys_for_mode(owner: Any, mode: Any=None) -> Any:
@@ -76,6 +161,10 @@ def is_input_mode_tree_expand_blocked(owner: Any, item_id: Any) -> Any:
                 return True
         if _is_input_bcc_domains_locked_subcategory_path(owner, path):
             return True
+        if _is_input_blue_table_locked_subcategory_path(owner, path):
+            return True
+        if _is_input_interpol_locked_subcategory_path(owner, path):
+            return True
     if isinstance(path, tuple) and len(path) == 3 and path[0] == "__group__":
         list_path = path[1] if isinstance(path[1], list) else []
         group_name = str(path[2] or "").strip().casefold()
@@ -97,6 +186,10 @@ def should_use_input_red_arrow_for_path(owner: Any, path: Any) -> Any:
             if bool(is_locked_database_subcategory(path)):
                 return True
         if _is_input_bcc_domains_locked_subcategory_path(owner, path):
+            return True
+        if _is_input_blue_table_locked_subcategory_path(owner, path):
+            return True
+        if _is_input_interpol_locked_subcategory_path(owner, path):
             return True
     if isinstance(path, tuple) and len(path) == 3 and path[0] == "__group__":
         list_path = path[1] if isinstance(path[1], list) else []

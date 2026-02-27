@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-27 (theme prewarm now includes Phase 3 guardrails for bounded find-index warmup and interaction-aware deferred data warmup).
+Last sync: 2026-02-27 (theme prewarm includes Phase 3 guardrails; INPUT Network DEVICE now supports locked BLUE TABLE and INTERPOL routing anchors).
 
 | Module | Purpose |
 | --- | --- |

@@ -171,6 +171,10 @@ def _is_input_network_bcc_domains_item(owner: Any, group: Any, item: Any) -> boo
         return False
     if str(group or "").strip().upper() != "DEVICE":
         return False
+    return _is_network_device_bcc_anchor_item(item)
+
+
+def _is_network_device_bcc_anchor_item(item: Any) -> bool:
     if not isinstance(item, dict):
         return False
     ip = str(item.get("ip", "") or "").strip()
@@ -180,26 +184,65 @@ def _is_input_network_bcc_domains_item(owner: Any, group: Any, item: Any) -> boo
     return str(name or "").strip().casefold() == "bcc.com"
 
 
-def _is_input_network_bcc_subdomain_item(owner: Any, group: Any, item: Any) -> bool:
-    if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
-        return False
-    if str(group or "").strip().upper() != "DEVICE":
-        return False
+def _is_input_network_blue_table_domain_item(item: Any) -> bool:
     if not isinstance(item, dict):
         return False
     name = str(_network_row_display_name(item, "DEVICE") or "").strip().casefold()
-    return bool(name) and name.endswith(".bcc.com")
+    return bool(name) and (name == "thebluetable.com" or name.endswith(".thebluetable.com"))
 
 
-def _is_input_network_device_item_hidden(owner: Any, group: Any, pos: int, item: Any) -> bool:
+def _input_network_device_anchor_positions(items: list[tuple[int, Any]]) -> dict[str, int | None]:
+    anchors: dict[str, int | None] = {
+        "geo_ip": 0 if items else None,
+        "bcc_domains": None,
+        "blue_table": None,
+        "interpol": None,
+    }
+    first_blue_subdomain_pos: int | None = None
+    for pos, (_idx, item) in enumerate(items):
+        if anchors["bcc_domains"] is None and _is_network_device_bcc_anchor_item(item):
+            anchors["bcc_domains"] = pos
+        if not _is_input_network_blue_table_domain_item(item):
+            continue
+        name = str(_network_row_display_name(item, "DEVICE") or "").strip().casefold()
+        if name == "thebluetable.com":
+            anchors["blue_table"] = pos
+            break
+        if first_blue_subdomain_pos is None:
+            first_blue_subdomain_pos = pos
+    if anchors["blue_table"] is None:
+        anchors["blue_table"] = first_blue_subdomain_pos
+    blue_anchor = anchors["blue_table"]
+    if blue_anchor is not None:
+        for pos in range(int(blue_anchor) + 1, len(items)):
+            anchors["interpol"] = pos
+            break
+    return anchors
+
+
+def _is_input_network_device_item_hidden(
+    owner: Any,
+    group: Any,
+    pos: int,
+    item: Any,
+    *,
+    anchor_positions: dict[str, int | None] | None = None,
+) -> bool:
     """Hide interim DEVICE subcategories in INPUT mode until their concepts are implemented."""
     if str(getattr(owner, "_editor_mode", "JSON")).upper() != "INPUT":
         return False
     if str(group or "").strip().upper() != "DEVICE":
         return False
-    is_primary_geoip = int(pos) == 0
-    is_bcc_domains = _is_input_network_bcc_domains_item(owner, group, item)
-    return not (is_primary_geoip or is_bcc_domains)
+    anchors = anchor_positions if isinstance(anchor_positions, dict) else {}
+    is_primary_geoip = int(pos) == int(anchors.get("geo_ip", 0))
+    is_bcc_domains = (
+        int(pos) == int(anchors.get("bcc_domains"))
+        if anchors.get("bcc_domains") is not None
+        else _is_input_network_bcc_domains_item(owner, group, item)
+    )
+    is_blue_table = int(pos) == int(anchors.get("blue_table")) if anchors.get("blue_table") is not None else False
+    is_interpol = int(pos) == int(anchors.get("interpol")) if anchors.get("interpol") is not None else False
+    return not (is_primary_geoip or is_bcc_domains or is_blue_table or is_interpol)
 
 
 def load_tree_marker_icon(
@@ -346,11 +389,18 @@ def populate_children(owner: Any, item_id: Any) -> Any:
                 and str(path[0] or "").strip().casefold() == "network"
                 and str(group or "").strip().casefold() == "device"
             )
+            device_anchor_positions = _input_network_device_anchor_positions(items) if is_input_device_group else {}
             visible_items = (
                 [
                     pair
                     for pos, pair in enumerate(items)
-                    if not _is_input_network_device_item_hidden(owner, group, pos, pair[1])
+                    if not _is_input_network_device_item_hidden(
+                        owner,
+                        group,
+                        pos,
+                        pair[1],
+                        anchor_positions=device_anchor_positions,
+                    )
                 ]
                 if is_input_device_group
                 else items
@@ -363,16 +413,45 @@ def populate_children(owner: Any, item_id: Any) -> Any:
             )
             owner.item_to_path[group_id] = ("__group__", path, group)
             for pos, (idx, item) in enumerate(items):
-                if _is_input_network_device_item_hidden(owner, group, pos, item):
+                if _is_input_network_device_item_hidden(
+                    owner,
+                    group,
+                    pos,
+                    item,
+                    anchor_positions=device_anchor_positions,
+                ):
                     continue
                 label = ""
-                is_input_device_primary = is_input_device_group and pos == 0
-                is_input_device_bcc_domains = _is_input_network_bcc_domains_item(owner, group, item)
+                is_input_device_primary = is_input_device_group and (
+                    device_anchor_positions.get("geo_ip") is not None
+                    and int(pos) == int(device_anchor_positions.get("geo_ip"))
+                )
+                is_input_device_bcc_domains = is_input_device_group and (
+                    device_anchor_positions.get("bcc_domains") is not None
+                    and int(pos) == int(device_anchor_positions.get("bcc_domains"))
+                )
+                is_input_device_blue_table = is_input_device_group and (
+                    device_anchor_positions.get("blue_table") is not None
+                    and int(pos) == int(device_anchor_positions.get("blue_table"))
+                )
+                is_input_device_interpol = is_input_device_group and (
+                    device_anchor_positions.get("interpol") is not None
+                    and int(pos) == int(device_anchor_positions.get("interpol"))
+                )
                 if is_input_device_primary:
                     label = "GEO IP"
                 elif is_input_device_bcc_domains:
                     label = "BCC DOMAINS"
-                if isinstance(item, dict) and not (is_input_device_primary or is_input_device_bcc_domains):
+                elif is_input_device_blue_table:
+                    label = "BLUE TABLE"
+                elif is_input_device_interpol:
+                    label = "INTERPOL"
+                if isinstance(item, dict) and not (
+                    is_input_device_primary
+                    or is_input_device_bcc_domains
+                    or is_input_device_blue_table
+                    or is_input_device_interpol
+                ):
                     if group in ("ROUTER", "DEVICE", "FIREWALL", "SPLITTER"):
                         ip = item.get("ip")
                         match group:
@@ -406,7 +485,12 @@ def populate_children(owner: Any, item_id: Any) -> Any:
                     label = f"Item {idx + 1}"
                 child_id = owner.tree.insert(group_id, "end", text=label, tags=("tree-sub-level",))
                 owner.item_to_path[child_id] = (list(path) if isinstance(path, list) else []) + [idx]
-                if not (is_input_device_primary or is_input_device_bcc_domains):
+                if not (
+                    is_input_device_primary
+                    or is_input_device_bcc_domains
+                    or is_input_device_blue_table
+                    or is_input_device_interpol
+                ):
                     owner._add_placeholder_if_container(child_id, item)
     elif isinstance(value, list):
         labeler = resolve_list_labeler(owner, path)

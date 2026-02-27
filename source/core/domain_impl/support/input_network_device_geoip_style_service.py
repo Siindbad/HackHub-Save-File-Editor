@@ -234,10 +234,10 @@ def render_geoip_input(owner: Any, host: Any, normalized_path: Any, payload: dic
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     is_kamue = variant == "KAMUE"
 
-    panel_bg = "#110a1d" if is_kamue else "#070f18"
+    panel_bg = "#0d0816" if is_kamue else "#050b12"
     frame_edge = "#55357f" if is_kamue else "#1c3d5d"
     card_edge = "#664392" if is_kamue else "#255073"
-    card_bg = "#1a112b" if is_kamue else "#0a1826"
+    card_bg = "#150e24" if is_kamue else "#07121e"
     key_fg = "#af97d2" if is_kamue else "#89b1d3"
     value_fg = "#d8c7ee" if is_kamue else "#cfe5ff"
     label_fg = "#d39b55"

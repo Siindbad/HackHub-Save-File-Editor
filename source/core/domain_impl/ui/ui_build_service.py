@@ -511,6 +511,15 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
 
     # NOTE: Keep footer packed before body; reversing this reintroduced footer overlap on resize.
     body.pack(fill="both", expand=True, padx=4, pady=(0, 8))
+    try:
+        owner.root.update_idletasks()
+        initial_sash_x = int(body.sashpos(0))
+        if initial_sash_x > 10 and getattr(owner, "_input_mode_paned_fixed_sash_x", None) is None:
+            # Capture the canonical INPUT split once after layout settles.
+            owner._input_mode_paned_fixed_sash_x = initial_sash_x
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        pass
 
     owner.root.bind("<Control-plus>", lambda e: owner.increase_font_size())
     owner.root.bind("<Control-equal>", lambda e: owner.increase_font_size())  # Ctrl+= on some keyboards
