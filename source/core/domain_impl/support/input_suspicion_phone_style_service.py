@@ -232,6 +232,20 @@ def render_skypersky_input(owner: Any, host: Any, normalized_path: Any, value: A
     return True
 
 
+def prewarm_preview_assets(owner: Any) -> None:
+    asset_specs = (
+        ("assets", "phone", "sin_phone_sus.png", 308),
+        ("assets", "phone", "kam_phone_sus.png", 308),
+        ("assets", "phone", "sin_phone.png", 308),
+        ("assets", "skype", "skypersky.png", 540),
+        ("assets", "skype", "skypersky_kam.png", 540),
+    )
+    base_dir = owner._resource_base_dir()
+    for seg0, seg1, filename, max_width in asset_specs:
+        path = os.path.join(base_dir, seg0, seg1, filename)
+        _load_phone_photo(owner, path, max_width=max_width)
+
+
 def _skypersky_payload_from_value(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         protecting_raw = value.get("protecting", False)

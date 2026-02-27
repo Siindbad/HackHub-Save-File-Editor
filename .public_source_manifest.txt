@@ -497,6 +497,9 @@ source/assets/phone/sin_phone_sus.png
 source/assets/sindbadlogo.png
 source/assets/sininno.png
 source/assets/skmainlogo2.png
+source/assets/skype/skypersky.png
+source/assets/skype/skypersky_input_preview.html
+source/assets/skype/skypersky_kam.png
 source/assets/windows-longpath.manifest
 source/core/README.md
 source/core/__init__.py

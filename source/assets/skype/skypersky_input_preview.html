@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Skypersky INPUT Concept</title>
+  <style>
+    :root {
+      --si-bg: #0f131a;
+      --si-panel: #161b24;
+      --si-fg: #e6f6ff;
+      --si-border: #4e6e86;
+      --si-select: #2f3a4d;
+
+      --ka-bg: #06040d;
+      --ka-panel: #0d061c;
+      --ka-fg: #eee8ff;
+      --ka-border: #6b37b6;
+      --ka-select: #2d155f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background:
+        radial-gradient(1200px 480px at 10% -10%, rgba(80, 160, 220, 0.18), transparent 60%),
+        radial-gradient(900px 460px at 95% 0%, rgba(130, 80, 200, 0.16), transparent 60%),
+        #0a0d12;
+      color: #d7e4ef;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 18px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .card {
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid;
+      backdrop-filter: blur(2px);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+      min-height: 560px;
+      position: relative;
+    }
+
+    .card h2 {
+      margin: 0;
+      padding: 10px 14px;
+      font-size: 13px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      border-bottom: 1px solid;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 520px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .image-shell {
+      position: relative;
+      width: min(96%, 840px);
+      display: inline-block;
+      line-height: 0;
+      /* Tune these to align the overlay frame to the PNG's inner dialog walls. */
+      --inner-left: 6.8%;
+      --inner-right: 6.8%;
+      --inner-top: 18.8%;
+      --inner-bottom: 14.0%;
+    }
+
+    .stage img {
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+      filter: saturate(1.05);
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .overlay {
+      position: absolute;
+      left: var(--inner-left);
+      right: var(--inner-right);
+      top: var(--inner-top);
+      bottom: var(--inner-bottom);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 14px 12px;
+      border-radius: 8px;
+      border: 1px solid;
+      text-align: center;
+      background: linear-gradient(180deg, rgba(18, 24, 34, 0.9), rgba(12, 17, 25, 0.88));
+    }
+
+    .label {
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      font-size: 14px;
+    }
+
+    .toggle {
+      width: 150px;
+      border-radius: 999px;
+      border: 1px solid;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.24);
+    }
+
+    .toggle button {
+      appearance: none;
+      border: 0;
+      padding: 7px 0;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: inherit;
+      background: transparent;
+      transition: background-color 120ms ease, opacity 120ms ease;
+      opacity: 0.76;
+    }
+
+    .toggle button.active { opacity: 1; }
+
+    .si {
+      border-color: var(--si-border);
+      background: linear-gradient(180deg, rgba(15, 19, 26, 0.9), rgba(15, 19, 26, 0.82));
+    }
+    .si h2 { border-color: var(--si-border); color: var(--si-fg); background: rgba(19, 34, 48, 0.62); }
+    .si .overlay { border-color: var(--si-border); color: var(--si-fg); background: linear-gradient(180deg, rgba(22, 27, 36, 0.93), rgba(17, 24, 33, 0.92)); }
+    .si .toggle { border-color: var(--si-border); }
+    .si .toggle button.active { background: var(--si-select); }
+
+    .ka {
+      border-color: var(--ka-border);
+      background: linear-gradient(180deg, rgba(6, 4, 13, 0.92), rgba(6, 4, 13, 0.84));
+    }
+    .ka h2 { border-color: var(--ka-border); color: var(--ka-fg); background: rgba(42, 20, 80, 0.52); }
+    .ka .overlay { border-color: var(--ka-border); color: var(--ka-fg); background: linear-gradient(180deg, rgba(13, 6, 28, 0.94), rgba(18, 8, 37, 0.93)); }
+    .ka .toggle { border-color: var(--ka-border); }
+    .ka .toggle button.active { background: var(--ka-select); }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <section class="card si" data-theme="siindbad">
+      <h2>SIINDBAD Theme Concept</h2>
+      <div class="stage">
+        <div class="image-shell">
+          <img src="./skypersky.png" alt="Skypersky UI" />
+          <div class="overlay">
+            <div class="label">PROTECTION</div>
+            <div class="toggle" role="group" aria-label="Protection toggle">
+              <button type="button" data-value="false" class="active">Off</button>
+              <button type="button" data-value="true">On</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card ka" data-theme="kamue">
+      <h2>KAMUE Theme Concept</h2>
+      <div class="stage">
+        <div class="image-shell">
+          <img src="./skypersky.png" alt="Skypersky UI" />
+          <div class="overlay">
+            <div class="label">PROTECTION</div>
+            <div class="toggle" role="group" aria-label="Protection toggle">
+              <button type="button" data-value="false" class="active">Off</button>
+              <button type="button" data-value="true">On</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    document.querySelectorAll('.card').forEach((card) => {
+      const buttons = card.querySelectorAll('.toggle button');
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+          buttons.forEach((b) => b.classList.remove('active'));
+          button.classList.add('active');
+        });
+      });
+    });
+  </script>
+</body>
+</html>

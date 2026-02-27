@@ -1046,6 +1046,13 @@ if button._siindbad_base_image is None:
             total_rows=total_rows,
         )
 
+    def _prewarm_input_mode_assets(self):
+        try:
+            input_network_router_style_service.prewarm_router_assets(self)
+            input_suspicion_phone_style_service.prewarm_preview_assets(self)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            return
+
     def _refresh_input_mode_fields(self, path, value):
         host = getattr(self, "_input_mode_fields_host", None)
         if host is None:
@@ -1083,6 +1090,7 @@ if button._siindbad_base_image is None:
                 for row_slot in list(getattr(self, "_input_mode_router_row_pool", []) or [])
                 if isinstance(row_slot, dict)
             }
+            pool_children.update(input_network_router_style_service.router_pool_children(self, host))
             for child in list(host.winfo_children()):
                 if child in pool_children or child in keep_database_children:
                     continue
@@ -1396,6 +1404,10 @@ if button._siindbad_base_image is None:
         self._input_mode_router_prewarm_after_id = None
         if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
             return
+        try:
+            self._prewarm_input_mode_assets()
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            pass
         host = getattr(self, "_input_mode_fields_host", None)
         if host is None:
             return
@@ -1411,11 +1423,19 @@ if button._siindbad_base_image is None:
         ]
         if not routers:
             return
-        rows = self._collect_network_router_input_rows(["Network"], routers)
+        max_rows = max(1, int(getattr(self, "_router_input_max_rows", 60) or 60))
+        rows = self._collect_network_router_input_rows(["Network"], routers, max_rows=max_rows)
         if not rows:
             return
-        # Keep startup/open responsive: prewarm only a small router subset.
-        prewarm_limit = max(1, min(8, int(getattr(self, "_router_input_prewarm_row_limit", 4) or 4)))
+        # Prewarm enough pooled rows to keep first ROUTER open smooth without scroll-time injection.
+        prewarm_limit = max(
+            1,
+            min(
+                len(rows),
+                int(getattr(self, "_router_input_prewarm_row_limit_cap", max_rows) or max_rows),
+                int(getattr(self, "_router_input_prewarm_row_limit", max_rows) or max_rows),
+            ),
+        )
         prewarm_rows = list(rows[:prewarm_limit])
         if not prewarm_rows:
             return
@@ -2163,6 +2183,7 @@ if button._siindbad_base_image is None:
                 except _EXPECTED_APP_ERRORS:
                     setattr(self, attr, None)
             setattr(self, attr, None)
+        self._topbar_align_pending_delay_ms = None
 
     def _on_root_destroy(self, event):
         if getattr(self, "_shutdown_cleanup_done", False):
@@ -4697,6 +4718,7 @@ if button._siindbad_base_image is None:
         self._find_button_default_padx = None
         self._find_entry_width_override = None
         self._topbar_align_after_id = None
+        self._topbar_align_pending_delay_ms = None
         self._siindbad_button_icons = {}
         self._siindbad_button_icon_signature = None
 
@@ -4933,6 +4955,18 @@ if button._siindbad_base_image is None:
         self._input_mode_router_settle_after_id = None
         self._input_mode_scroll_drag_after_id = None
         self._input_mode_scroll_drag_active = False
+        self._input_mode_router_row_pool = []
+        self._input_mode_router_pool_host = None
+        self._input_mode_router_shell = None
+        self._input_mode_router_art_cache = {}
+        self._input_suspicion_phone_photo_cache = {}
+        # ROUTER INPUT prewarm defaults:
+        # - max rows caps per-render workload
+        # - prewarm row limit primes pooled rows for smooth first ROUTER open
+        self._router_input_max_rows = 60
+        self._router_input_prewarm_row_limit = 60
+        self._router_input_prewarm_row_limit_cap = 60
+        self._router_input_prewarm_delay_ms = 180
         self._input_mode_router_virtual_rows = []
         self._input_mode_router_virtual_next_index = 0
         self._input_mode_router_virtual_total_rows = 0
@@ -5072,20 +5106,28 @@ if button._siindbad_base_image is None:
         root = getattr(self, "root", None)
         if root is None:
             return
+        request_delay = max(0, int(delay_ms))
         existing = getattr(self, "_topbar_align_after_id", None)
+        pending_delay = getattr(self, "_topbar_align_pending_delay_ms", None)
+        # Coalesce repeated configure bursts; keep the earliest already-scheduled alignment.
+        if existing and pending_delay is not None and request_delay >= int(pending_delay):
+            return
         if existing:
             try:
                 root.after_cancel(existing)
             except _EXPECTED_APP_ERRORS:
                 pass
         self._topbar_align_after_id = None
+        self._topbar_align_pending_delay_ms = None
         try:
             self._topbar_align_after_id = root.after(
-                max(0, int(delay_ms)),
+                request_delay,
                 self._align_topbar_to_logo,
             )
+            self._topbar_align_pending_delay_ms = request_delay
         except _EXPECTED_APP_ERRORS:
             self._topbar_align_after_id = None
+            self._topbar_align_pending_delay_ms = None
 
     @staticmethod
     def _window_is_maximized(window):
@@ -5213,6 +5255,7 @@ if button._siindbad_base_image is None:
 
     def _align_topbar_to_logo(self):
         self._topbar_align_after_id = None
+        self._topbar_align_pending_delay_ms = None
         self._apply_toolbar_layout_mode(force=False)
 
     @staticmethod

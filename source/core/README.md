@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-27 (startup loader prewarm policy now gates reveal on full theme readiness).
+Last sync: 2026-02-27 (theme prewarm now includes Phase 3 guardrails for bounded find-index warmup and interaction-aware deferred data warmup).
 
 | Module | Purpose |
 | --- | --- |

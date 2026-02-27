@@ -148,8 +148,15 @@ def reset_router_row_pool(owner: Any) -> None:
             row_frame.destroy()
         except (tk.TclError, RuntimeError, AttributeError):
             continue
+    router_shell = getattr(owner, "_input_mode_router_shell", None)
+    if router_shell is not None:
+        try:
+            router_shell.destroy()
+        except (tk.TclError, RuntimeError, AttributeError):
+            pass
     owner._input_mode_router_row_pool = []
     owner._input_mode_router_pool_host = None
+    owner._input_mode_router_shell = None
     owner._input_mode_router_rendered_count = 0
 
 
@@ -186,30 +193,53 @@ def _router_style(owner: Any) -> dict[str, Any]:
     }
 
 
-def _ensure_router_pool(owner: Any, host: Any) -> list[dict[str, Any]]:
+def _ensure_router_pool(owner: Any, host: Any, *, style: dict[str, Any]) -> tuple[list[dict[str, Any]], Any]:
     if getattr(owner, "_input_mode_router_pool_host", None) is not host:
         for child in host.winfo_children():
             child.destroy()
         owner._input_mode_router_row_pool = []
         owner._input_mode_router_pool_host = host
+        owner._input_mode_router_shell = None
         owner._input_mode_router_rendered_count = 0
+    shell = getattr(owner, "_input_mode_router_shell", None)
+    if shell is None or not isinstance(shell, tk.Frame):
+        shell = tk.Frame(host, bg=style["panel_bg"], bd=0, highlightthickness=0)
+        owner._input_mode_router_shell = shell
+    else:
+        try:
+            if shell.master is not host:
+                shell.destroy()
+                shell = tk.Frame(host, bg=style["panel_bg"], bd=0, highlightthickness=0)
+                owner._input_mode_router_shell = shell
+        except (tk.TclError, RuntimeError, AttributeError):
+            shell = tk.Frame(host, bg=style["panel_bg"], bd=0, highlightthickness=0)
+            owner._input_mode_router_shell = shell
+    try:
+        shell.configure(bg=style["panel_bg"])
+    except (tk.TclError, RuntimeError, AttributeError):
+        pass
     pool = getattr(owner, "_input_mode_router_row_pool", None)
     if not isinstance(pool, list):
         pool = []
         owner._input_mode_router_row_pool = pool
-    return pool
+    return pool, shell
+
+
+def router_pool_children(owner: Any, host: Any) -> set[Any]:
+    if getattr(owner, "_input_mode_router_pool_host", None) is not host:
+        return set()
+    shell = getattr(owner, "_input_mode_router_shell", None)
+    if shell is None:
+        return set()
+    return {shell}
 
 
 def prepare_router_render_host(owner: Any, host: Any, *, reset_pool: bool = False) -> None:
     if bool(reset_pool):
         reset_router_row_pool(owner)
-    pool = _ensure_router_pool(owner, host)
-    for row_slot in pool:
-        row_frame = row_slot.get("row_frame")
-        if row_frame is None:
-            continue
-        if row_frame.winfo_manager() == "pack":
-            row_frame.pack_forget()
+    _pool, shell = _ensure_router_pool(owner, host, style=_router_style(owner))
+    if shell.winfo_manager() != "pack":
+        shell.pack(fill="x", expand=False)
     owner._input_mode_router_rendered_count = 0
 
 
@@ -218,17 +248,14 @@ def suspend_router_render_host(owner: Any, host: Any) -> set[Any]:
     if getattr(owner, "_input_mode_router_pool_host", None) is not host:
         return set()
     keep_children: set[Any] = set()
-    pool = list(getattr(owner, "_input_mode_router_row_pool", []) or [])
-    for row_slot in pool:
-        row_frame = row_slot.get("row_frame")
-        if row_frame is None:
-            continue
+    shell = getattr(owner, "_input_mode_router_shell", None)
+    if shell is not None:
         try:
-            if row_frame.winfo_manager() == "pack":
-                row_frame.pack_forget()
-            keep_children.add(row_frame)
+            if shell.winfo_manager() == "pack":
+                shell.pack_forget()
+            keep_children.add(shell)
         except (tk.TclError, RuntimeError, AttributeError):
-            continue
+            pass
     owner._input_mode_router_rendered_count = 0
     return keep_children
 
@@ -383,40 +410,13 @@ def _set_art_label_image(label: Any, photo: Any, *, show: bool, padx: int = 7, p
 
 
 def _render_secure_access_logo(owner: Any, row_slot: dict[str, Any]) -> None:
-    cell = row_slot["version_logo_cell"]
     label = row_slot["version_logo_label"]
-    cell_width = int(cell.winfo_width())
-    cell_height = int(cell.winfo_height())
-    if cell_width <= 8 or cell_height <= 8:
-        # Geometry is not settled yet; paint a safe default, then retry after layout.
-        secure_photo = _load_router_art_photo(
-            owner,
-            _router_asset_path(owner, "secure_access.png"),
-            max_width=_SECURE_ACCESS_MAX_WIDTH - _SECURE_ACCESS_CELL_MARGIN_X,
-            max_height=_SECURE_ACCESS_MAX_HEIGHT - _SECURE_ACCESS_CELL_MARGIN_Y,
-            allow_upscale=True,
-            fit_mode="contain",
-            stretch=True,
-        )
-        _set_art_label_image(label, secure_photo, show=True, padx=0, pady=(0, 0))
-        if not bool(getattr(label, "_hh_logo_refresh_pending", False)):
-            setattr(label, "_hh_logo_refresh_pending", True)
-
-            def _retry() -> None:
-                setattr(label, "_hh_logo_refresh_pending", False)
-                _render_secure_access_logo(owner, row_slot)
-
-            cell.after(20, _retry)
-        return
-
-    # Keep the frame size stable: grow logo within the cell but cap height to avoid row expansion.
-    target_width = max(20, min(cell_width - _SECURE_ACCESS_CELL_MARGIN_X, _SECURE_ACCESS_MAX_WIDTH))
-    target_height = max(16, min(cell_height - _SECURE_ACCESS_CELL_MARGIN_Y, _SECURE_ACCESS_MAX_HEIGHT))
+    # Use a stable target size to avoid per-row geometry retry loops during large ROUTER renders.
     secure_photo = _load_router_art_photo(
         owner,
         _router_asset_path(owner, "secure_access.png"),
-        max_width=target_width,
-        max_height=target_height,
+        max_width=_SECURE_ACCESS_MAX_WIDTH - _SECURE_ACCESS_CELL_MARGIN_X,
+        max_height=_SECURE_ACCESS_MAX_HEIGHT - _SECURE_ACCESS_CELL_MARGIN_Y,
         allow_upscale=True,
         fit_mode="contain",
         stretch=True,
@@ -575,7 +575,6 @@ def _build_router_row_slot(owner: Any, host: Any, style: dict[str, Any]) -> dict
         "version_logo_label": version_logo_label,
         "field_specs": [],
     }
-    version_logo_cell.bind("<Configure>", lambda _event: _schedule_secure_access_logo_refresh(owner, row_slot), add="+")
     return row_slot
 
 
@@ -756,7 +755,12 @@ def render_router_input_rows(
 ) -> Any:
     # NOTE: Keep this pooled path. Full destroy/recreate caused visible stalls on ROUTER-heavy saves.
     style = _router_style(owner)
-    pool = _ensure_router_pool(owner, host)
+    pool, shell = _ensure_router_pool(owner, host, style=style)
+    try:
+        if shell.winfo_manager() != "pack":
+            shell.pack(fill="x", expand=False)
+    except (tk.TclError, RuntimeError, AttributeError):
+        pass
     base_path = list(normalized_path or [])
     start = max(0, int(start_index or 0))
     rows = list(row_defs or [])
@@ -764,7 +768,7 @@ def render_router_input_rows(
     for offset, row in enumerate(rows):
         row_index = start + offset
         while len(pool) <= row_index:
-            pool.append(_build_router_row_slot(owner, host, style))
+            pool.append(_build_router_row_slot(owner, shell, style))
         row_slot = pool[row_index]
         row_fp = _row_fingerprint(row)
         style_key = (
@@ -813,3 +817,21 @@ def render_router_input_rows(
         return
 
     _rebuild_owner_specs(owner, pool, rendered_count)
+
+
+def prewarm_router_assets(owner: Any) -> None:
+    _load_router_art_photo(
+        owner,
+        _router_asset_path(owner, "router1.png"),
+        max_width=190,
+        max_height=84,
+    )
+    _load_router_art_photo(
+        owner,
+        _router_asset_path(owner, "secure_access.png"),
+        max_width=_SECURE_ACCESS_MAX_WIDTH - _SECURE_ACCESS_CELL_MARGIN_X,
+        max_height=_SECURE_ACCESS_MAX_HEIGHT - _SECURE_ACCESS_CELL_MARGIN_Y,
+        allow_upscale=True,
+        fit_mode="contain",
+        stretch=True,
+    )

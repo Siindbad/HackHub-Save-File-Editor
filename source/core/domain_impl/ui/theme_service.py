@@ -2,6 +2,7 @@ from tkinter import ttk
 import tkinter as tk
 from collections import deque
 import hashlib
+import json
 import time
 import sys
 import os
@@ -9,6 +10,11 @@ import ctypes
 from typing import Any
 from core import startup_loader as startup_loader_core
 from core.exceptions import EXPECTED_ERRORS
+import core.domain_impl.json.document_io_service as document_io_service
+
+PHASE1_FIND_INDEX_MAX_ITEMS = 1200
+PHASE2_DATA_PREWARM_DELAY_MS = 220
+PHASE2_DATA_PREWARM_RETRY_DELAY_MS = 320
 
 
 def is_prewarm_complete(owner: Any) -> bool:
@@ -53,6 +59,41 @@ def get_cached_rgba_image(owner: Any, path: Any, image_module: Any) -> Any:
             return rgba.copy()
         except (OSError, ValueError, TypeError, AttributeError):
             return rgba
+
+
+def _bounded_sequence(entries: Any, max_items: int) -> list[Any]:
+        if not isinstance(entries, list):
+            return []
+        use_max_items = max(1, int(max_items or 1))
+        if len(entries) <= use_max_items:
+            return list(entries)
+        return list(entries[:use_max_items])
+
+
+def _is_toolbar_interaction_active(owner: Any) -> bool:
+        try:
+            toolbar_buttons = dict(getattr(owner, "_toolbar_buttons", {}) or {})
+            pointer_fn = getattr(owner, "_pointer_within_widget", None)
+            for button in toolbar_buttons.values():
+                if button is None:
+                    continue
+                try:
+                    if not button.winfo_exists():
+                        continue
+                except (tk.TclError, RuntimeError, AttributeError):
+                    continue
+                if bool(getattr(button, "_siindbad_scan_running", False)):
+                    return True
+                if callable(pointer_fn):
+                    try:
+                        if pointer_fn(button):
+                            return True
+                    except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                        pass
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            return False
+        return False
+
 
 def theme_palette_for_variant(variant: Any) -> Any:
     use_variant = str(variant).upper()
@@ -648,6 +689,71 @@ def _execute_theme_prewarm_task(owner: Any, task):
                 if hover_path and os.path.isfile(hover_path):
                     owner._load_toolbar_button_image(hover_path, max_width=fw, max_height=fh, stretch_to_fit=True)
                 return
+            if kind == "font_metrics":
+                # Warm font-family/metric lookups once so first context/find/menu paints stay hot.
+                for method_name in (
+                    "_preferred_mono_family",
+                    "_credit_name_font",
+                    "_footer_badge_chip_font",
+                    "_font_dropdown_number_font",
+                    "_readme_font_for_theme",
+                ):
+                    method = getattr(owner, method_name, None)
+                    if not callable(method):
+                        continue
+                    try:
+                        method()
+                    except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                        pass
+                return
+            if kind == "context_menu":
+                build_menu = getattr(owner, "_build_text_context_menu", None)
+                if callable(build_menu):
+                    try:
+                        build_menu()
+                    except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                        pass
+                style_menu = getattr(owner, "_style_text_context_menu", None)
+                if callable(style_menu):
+                    try:
+                        style_menu()
+                    except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                        pass
+                popup = getattr(owner, "_text_context_menu", None)
+                if popup is None:
+                    return
+                try:
+                    if popup.winfo_exists():
+                        popup.update_idletasks()
+                        popup.withdraw()
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    pass
+                return
+            if kind == "find_index":
+                build_index = getattr(owner, "_build_find_search_index", None)
+                if not callable(build_index):
+                    return
+                try:
+                    index_entries = build_index()
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    return
+                if isinstance(index_entries, list):
+                    max_items = max(
+                        1,
+                        int(
+                            getattr(
+                                owner,
+                                "_theme_prewarm_find_index_max_items",
+                                PHASE1_FIND_INDEX_MAX_ITEMS,
+                            )
+                            or PHASE1_FIND_INDEX_MAX_ITEMS
+                        ),
+                    )
+                    bounded_entries = _bounded_sequence(index_entries, max_items=max_items)
+                    owner._find_search_entries = bounded_entries
+                    owner._theme_prewarm_find_index_count = len(bounded_entries)
+                    owner._theme_prewarm_find_index_truncated = len(index_entries) > len(bounded_entries)
+                return
             if kind == "logo":
                 logo_path = owner._find_logo_path()
                 if logo_path:
@@ -692,8 +798,104 @@ def _execute_theme_prewarm_task(owner: Any, task):
             owner._theme = original_theme
 
 
+def _run_phase1_ui_prewarm(owner: Any) -> None:
+        if bool(getattr(owner, "_theme_phase1_ui_prewarm_done", False)):
+            return
+        active_variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+        if active_variant not in ("SIINDBAD", "KAMUE"):
+            active_variant = "SIINDBAD"
+        # Keep this one-time warmup scoped to first-use UI interactions.
+        for kind in ("font_metrics", "context_menu", "find_index"):
+            try:
+                _execute_theme_prewarm_task(
+                    owner,
+                    {"variant": active_variant, "kind": kind},
+                )
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+        owner._theme_phase1_ui_prewarm_done = True
+
+
+def _is_loader_overlay_visible(owner: Any) -> bool:
+        try:
+            overlay = getattr(owner, "_startup_loader_overlay", None)
+            return bool(overlay is not None and overlay.winfo_exists())
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            return False
+
+
+def _run_phase2_data_path_prewarm(owner: Any) -> None:
+        if bool(getattr(owner, "_theme_phase2_data_prewarm_done", False)):
+            return
+        sample_payload = {
+            "Meta": {"version": 1, "name": "warmup"},
+            "Flags": {"isMine": True},
+            "Users": [{"id": 1, "name": "user_1"}],
+        }
+        try:
+            pretty_text = document_io_service.build_pretty_json_payload(sample_payload)
+            compact_bytes = document_io_service.build_compact_json_bytes(sample_payload)
+            # Parse both text and compact bytes to warm first-open JSON decode paths.
+            json.loads(str(pretty_text))
+            json.loads(bytes(compact_bytes).decode("utf-8"))
+        except (ValueError, TypeError, RuntimeError, AttributeError):
+            pass
+        prewarm_input_assets = getattr(owner, "_prewarm_input_mode_assets", None)
+        if callable(prewarm_input_assets):
+            try:
+                prewarm_input_assets()
+            except (ValueError, TypeError, RuntimeError, AttributeError):
+                pass
+        owner._theme_phase2_data_prewarm_done = True
+
+
+def _schedule_phase2_data_path_prewarm(owner: Any) -> None:
+        if bool(getattr(owner, "_theme_phase2_data_prewarm_done", False)):
+            return
+        after_id = getattr(owner, "_theme_phase2_data_prewarm_after_id", None)
+        if after_id:
+            return
+        root = getattr(owner, "root", None)
+        if root is None:
+            _run_phase2_data_path_prewarm(owner)
+            return
+        delay_ms = max(
+            120,
+            int(getattr(owner, "_theme_phase2_data_prewarm_delay_ms", PHASE2_DATA_PREWARM_DELAY_MS) or PHASE2_DATA_PREWARM_DELAY_MS),
+        )
+        retry_ms = max(
+            delay_ms,
+            int(
+                getattr(
+                    owner,
+                    "_theme_phase2_data_prewarm_retry_delay_ms",
+                    PHASE2_DATA_PREWARM_RETRY_DELAY_MS,
+                )
+                or PHASE2_DATA_PREWARM_RETRY_DELAY_MS
+            ),
+        )
+
+        def _run_or_defer() -> None:
+            owner._theme_phase2_data_prewarm_after_id = None
+            if _is_loader_overlay_visible(owner) or _is_toolbar_interaction_active(owner):
+                try:
+                    owner._theme_phase2_data_prewarm_after_id = root.after(retry_ms, _run_or_defer)
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    owner._theme_phase2_data_prewarm_after_id = None
+                return
+            _run_phase2_data_path_prewarm(owner)
+
+        try:
+            owner._theme_phase2_data_prewarm_after_id = root.after(delay_ms, _run_or_defer)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            owner._theme_phase2_data_prewarm_after_id = None
+            _run_phase2_data_path_prewarm(owner)
+
+
 def _run_theme_asset_prewarm(owner: Any):
         owner._theme_prewarm_after_id = None
+        _run_phase1_ui_prewarm(owner)
+        _schedule_phase2_data_path_prewarm(owner)
         queue = list(getattr(owner, "_theme_prewarm_queue", []))
         raw_tasks = getattr(owner, "_theme_prewarm_tasks", None)
         if isinstance(raw_tasks, deque):
@@ -725,33 +927,15 @@ def _run_theme_asset_prewarm(owner: Any):
         # is truly hot and does not trigger first-use sprite/render spikes.
         owner._theme_prewarm_render_mode = "full"
         # Keep initial toolbar hover smooth: defer prewarm ticks while pointer/scan is active.
-        try:
-            toolbar_buttons = dict(getattr(owner, "_toolbar_buttons", {}) or {})
-            pointer_fn = getattr(owner, "_pointer_within_widget", None)
-            interaction_active = False
-            for button in toolbar_buttons.values():
-                if button is None:
-                    continue
-                try:
-                    if not button.winfo_exists():
-                        continue
-                except (tk.TclError, RuntimeError, AttributeError):
-                    continue
-                if bool(getattr(button, "_siindbad_scan_running", False)):
-                    interaction_active = True
-                    break
-                if callable(pointer_fn):
-                    try:
-                        if pointer_fn(button):
-                            interaction_active = True
-                            break
-                    except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                        pass
-            if interaction_active:
-                owner._theme_prewarm_after_id = owner.root.after(max(80, int(next_tick_ms) * 2), owner._run_theme_asset_prewarm)
-                return
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            pass
+        if _is_toolbar_interaction_active(owner):
+            try:
+                owner._theme_prewarm_after_id = owner.root.after(
+                    max(80, int(next_tick_ms) * 2),
+                    owner._run_theme_asset_prewarm,
+                )
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                owner._theme_prewarm_after_id = None
+            return
         deadline = time.perf_counter() + (float(budget_ms) / 1000.0)
         done_counts = dict(getattr(owner, "_theme_prewarm_done_by_variant", {}))
         totals = dict(getattr(owner, "_theme_prewarm_total_by_variant", {}))
