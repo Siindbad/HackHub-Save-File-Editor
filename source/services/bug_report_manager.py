@@ -5,16 +5,16 @@ from __future__ import annotations
 from typing import Any
 
 from core.domain_impl.support import bug_report_api_service
-from core.domain_impl.support import bug_report_browser_service
-from core.domain_impl.support import bug_report_context_service
-from core.domain_impl.support import bug_report_cooldown_service
-from core.domain_impl.support import bug_report_service
-from core.domain_impl.support import bug_report_submission_service
-from core.domain_impl.support import bug_report_ui_service
+from core.domain_impl.support import telemetry_core as bug_report_browser_service
+from core.domain_impl.support import telemetry_core as bug_report_context_service
+from core.domain_impl.support import telemetry_core as bug_report_cooldown_service
+from core.domain_impl.support import telemetry_core as bug_report_service
+from core.domain_impl.support import telemetry_core as bug_report_submission_service
+from core.domain_impl.support import telemetry_core as bug_report_ui_service
 from core.domain_impl.support import clipboard_service
-from core.domain_impl.support import crash_logging_service
-from core.domain_impl.support import crash_offer_service
-from core.domain_impl.support import crash_report_service
+from core.domain_impl.support import telemetry_core as crash_logging_service
+from core.domain_impl.support import telemetry_core as crash_offer_service
+from core.domain_impl.support import telemetry_core as crash_report_service
 from core.domain_impl.support import diag_log_housekeeping_service
 from core.domain_impl.support import error_hook_service
 from core.domain_impl.support import error_overlay_service

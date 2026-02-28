@@ -10,7 +10,7 @@ import ctypes
 from typing import Any
 from core import startup_loader as startup_loader_core
 from core.exceptions import EXPECTED_ERRORS
-import core.domain_impl.json.document_io_service as document_io_service
+import core.domain_impl.json.json_io_core as document_io_service
 
 PHASE1_FIND_INDEX_MAX_ITEMS = 1200
 PHASE2_DATA_PREWARM_DELAY_MS = 220

@@ -10,16 +10,16 @@ from typing import Any, Callable
 from core import json_diagnostics as json_diag_core
 from core import json_error_diagnostics_core
 from core.domain_impl.infra import input_mode_diag_service
-from core.domain_impl.json import json_closer_symbol_service
-from core.domain_impl.json import json_colon_comma_service
-from core.domain_impl.json import json_diagnostics_service
-from core.domain_impl.json import json_edit_flow_service
-from core.domain_impl.json import json_error_diag_service
-from core.domain_impl.json import json_open_symbol_service
-from core.domain_impl.json import json_property_key_rule_service
-from core.domain_impl.json import json_repair_service
-from core.domain_impl.json import json_scalar_tail_service
-from core.domain_impl.json import json_top_level_close_service
+from core.domain_impl.json import json_diagnostics_core as json_closer_symbol_service
+from core.domain_impl.json import json_diagnostics_core as json_colon_comma_service
+from core.domain_impl.json import json_diagnostics_core as json_diagnostics_service
+from core.domain_impl.json import json_io_core as json_edit_flow_service
+from core.domain_impl.json import json_diagnostics_core as json_error_diag_service
+from core.domain_impl.json import json_diagnostics_core as json_open_symbol_service
+from core.domain_impl.json import json_diagnostics_core as json_property_key_rule_service
+from core.domain_impl.json import json_diagnostics_core as json_repair_service
+from core.domain_impl.json import json_diagnostics_core as json_scalar_tail_service
+from core.domain_impl.json import json_diagnostics_core as json_top_level_close_service
 from core.domain_impl.support import editor_purge_service
 from core.domain_impl.support import error_overlay_service
 from core.domain_impl.ui import tree_view_service

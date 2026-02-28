@@ -1,3 +1,24 @@
+"""Consolidated JSON domain pillar: json_view_core.
+
+Contains merged logic from split JSON domain services.
+"""
+
+
+# --- Merged from json_error_highlight_render_service.py ---
+"""JSON highlight renderer service."""
+from typing import Any
+
+
+# Rendering helpers keep Tk-tag application out of decision code.
+def apply_json_error_highlight(owner: Any, exc: Any, line: Any, start_index: Any, end_index: Any, note: Any=None) -> Any:
+    return owner._apply_json_error_highlight(exc, line, start_index, end_index, note=note)
+
+
+def log_json_error(owner: Any, exc: Any, target_line: Any, note: Any="") -> Any:
+    return owner._log_json_error(exc, target_line, note=note)
+
+
+# --- Merged from json_view_render_service.py ---
 """JSON view rendering helpers for editor text widget flows."""
 
 import json
@@ -83,3 +104,24 @@ def schedule_json_view_lock_state(owner: Any, path: Any, render_seq: Any=None) -
         owner._json_lock_apply_after_id = None
         owner._apply_json_view_key_highlights(snapshot_path)
         owner._apply_json_view_value_highlights(snapshot_path)
+
+
+# --- Merged from json_view_service.py ---
+from typing import Any
+from core.exceptions import EXPECTED_ERRORS
+import logging
+_LOG = logging.getLogger(__name__)
+
+NO_FILE_LOADED_MESSAGE = "No File Loaded. Open A .HHSAV File Before Continuing."
+
+
+def show_json_no_file_message(text_widget: Any) -> Any:
+    try:
+        text_widget.delete("1.0", "end")
+        text_widget.insert("1.0", NO_FILE_LOADED_MESSAGE)
+        text_widget.edit_modified(False)
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        return
+
+__all__ = [name for name in globals() if not name.startswith("__")]

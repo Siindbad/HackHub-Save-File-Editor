@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-28 (bug-report dialog trigger/payload/cooldown orchestration, JSON repair-dispatch wiring, and document async-load session/apply helpers are routed through dedicated service/core modules alongside loader/pane-lock/asset/render dispatch services).
+Last sync: 2026-02-28 (domain-master consolidation is active: update flow routes through `update_engine_core`, telemetry flow routes through `telemetry_core`, and JSON orchestration routes through master pillar modules with no legacy shim imports).
 
 | Module | Purpose |
 | --- | --- |

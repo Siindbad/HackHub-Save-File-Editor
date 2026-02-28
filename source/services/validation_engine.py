@@ -3,8 +3,8 @@
 from core.domain_impl.support import highlight_label_service
 from core.domain_impl.support import label_format_service
 from core.domain_impl.support import version_format_service
-from core.domain_impl.json import json_validation_feedback_service
-from core.domain_impl.json import validation_service
+from core.domain_impl.json import json_diagnostics_core as json_validation_feedback_service
+from core.domain_impl.json import json_io_core as validation_service
 
 
 class ValidationEngine:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from core.domain_impl.json import document_io_service
+from core.domain_impl.json import json_io_core as document_io_service
 from core.domain_impl.support import editor_mode_switch_service
 from core.domain_impl.support import editor_purge_service
 

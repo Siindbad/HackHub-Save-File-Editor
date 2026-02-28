@@ -12,15 +12,15 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Any
 
 from core.exceptions import EXPECTED_ERRORS
-from core.domain_impl.json import document_io_service
-from core.domain_impl.json import json_apply_commit_service
-from core.domain_impl.json import json_path_service
-from core.domain_impl.json import json_parse_feedback_service
-from core.domain_impl.json import json_quoted_item_tail_service
-from core.domain_impl.json import json_scalar_tail_service
-from core.domain_impl.json import json_validation_feedback_service
-from core.domain_impl.json import json_view_service
-from core.domain_impl.json import json_diagnostics_service
+from core.domain_impl.json import json_io_core as document_io_service
+from core.domain_impl.json import json_io_core as json_apply_commit_service
+from core.domain_impl.json import json_io_core as json_path_service
+from core.domain_impl.json import json_diagnostics_core as json_parse_feedback_service
+from core.domain_impl.json import json_diagnostics_core as json_quoted_item_tail_service
+from core.domain_impl.json import json_diagnostics_core as json_scalar_tail_service
+from core.domain_impl.json import json_diagnostics_core as json_validation_feedback_service
+from core.domain_impl.json import json_view_core as json_view_service
+from core.domain_impl.json import json_diagnostics_core as json_diagnostics_service
 from core.domain_impl.ui import footer_service
 from core.domain_impl.ui import loader_service
 from core.domain_impl.ui import toolbar_service
@@ -30,18 +30,18 @@ from core.domain_impl.ui import tree_view_service
 from core.domain_impl.ui import ui_build_service
 from core.domain_impl.ui import theme_service
 from core.domain_impl.infra import runtime_log_service
-from core.domain_impl.infra import update_headers_service
-from core.domain_impl.infra import update_release_info_service
-from core.domain_impl.infra import update_ui_service
+from core.domain_impl.infra import update_engine_core as update_headers_service
+from core.domain_impl.infra import update_engine_core as update_release_info_service
+from core.domain_impl.infra import update_engine_core as update_ui_service
 from core.domain_impl.infra import windows_runtime_service
 from core.domain_impl.infra import input_mode_service
-from core.domain_impl.support import crash_offer_service
-from core.domain_impl.support import bug_report_cooldown_service
+from core.domain_impl.support import telemetry_core as crash_offer_service
+from core.domain_impl.support import telemetry_core as bug_report_cooldown_service
 from core.domain_impl.support import error_hook_service
 from core.domain_impl.support import error_overlay_service
 from core.domain_impl.support import error_service
 from core.domain_impl.support import highlight_label_service
-from core.domain_impl.json import validation_service
+from core.domain_impl.json import json_io_core as validation_service
 
 _LOG = logging.getLogger(__name__)
 
@@ -126,6 +126,11 @@ def _input_network_device_anchor_positions(items: list[tuple[int, Any]]) -> dict
         return anchors
 
 
+def _anchor_matches(pos: int, anchor: int | None) -> bool:
+        """Compare index and optional anchor position without Optional[int] cast warnings."""
+        return anchor is not None and int(pos) == int(anchor)
+
+
 def _is_input_network_device_item_hidden(
     owner: Any,
     group: Any,
@@ -139,14 +144,14 @@ def _is_input_network_device_item_hidden(
         if str(group or "").strip().upper() != "DEVICE":
             return False
         anchors = anchor_positions if isinstance(anchor_positions, dict) else {}
-        is_primary_geoip = int(pos) == int(anchors.get("geo_ip", 0))
+        is_primary_geoip = _anchor_matches(pos, anchors.get("geo_ip"))
         is_bcc_domains = (
-            int(pos) == int(anchors.get("bcc_domains"))
-            if anchors.get("bcc_domains") is not None
+            _anchor_matches(pos, anchors.get("bcc_domains"))
+            if anchors.get("bcc_domains", None) is not None
             else _is_input_network_bcc_domains_item(owner, group, item)
         )
-        is_blue_table = int(pos) == int(anchors.get("blue_table")) if anchors.get("blue_table") is not None else False
-        is_interpol = int(pos) == int(anchors.get("interpol")) if anchors.get("interpol") is not None else False
+        is_blue_table = _anchor_matches(pos, anchors.get("blue_table"))
+        is_interpol = _anchor_matches(pos, anchors.get("interpol"))
         return not (is_primary_geoip or is_bcc_domains or is_blue_table or is_interpol)
 
 
@@ -283,19 +288,19 @@ def _append_find_search_entries(owner: Any, path, value, entries):
                     label = ""
                     is_input_device_primary = is_input_device_group and (
                         device_anchor_positions.get("geo_ip") is not None
-                        and int(pos) == int(device_anchor_positions.get("geo_ip"))
+                        and _anchor_matches(pos, device_anchor_positions.get("geo_ip"))
                     )
                     is_input_device_bcc_domains = is_input_device_group and (
                         device_anchor_positions.get("bcc_domains") is not None
-                        and int(pos) == int(device_anchor_positions.get("bcc_domains"))
+                        and _anchor_matches(pos, device_anchor_positions.get("bcc_domains"))
                     )
                     is_input_device_blue_table = is_input_device_group and (
                         device_anchor_positions.get("blue_table") is not None
-                        and int(pos) == int(device_anchor_positions.get("blue_table"))
+                        and _anchor_matches(pos, device_anchor_positions.get("blue_table"))
                     )
                     is_input_device_interpol = is_input_device_group and (
                         device_anchor_positions.get("interpol") is not None
-                        and int(pos) == int(device_anchor_positions.get("interpol"))
+                        and _anchor_matches(pos, device_anchor_positions.get("interpol"))
                     )
                     if is_input_device_primary:
                         label = "GEO IP"

@@ -1,22 +1,22 @@
 """JSON diagnostics and repair domain module."""
 
-from core.domain_impl.json import json_apply_commit_service
-from core.domain_impl.json import json_closer_symbol_service
-from core.domain_impl.json import json_colon_comma_service
-from core.domain_impl.json import json_diagnostics_service
-from core.domain_impl.json import json_edit_flow_service
-from core.domain_impl.json import json_error_diag_service
-from core.domain_impl.json import json_error_highlight_render_service
-from core.domain_impl.json import json_nearby_line_service
-from core.domain_impl.json import json_open_symbol_service
-from core.domain_impl.json import json_parse_feedback_service
-from core.domain_impl.json import json_path_service
-from core.domain_impl.json import json_property_key_rule_service
-from core.domain_impl.json import json_quoted_item_tail_service
-from core.domain_impl.json import json_repair_service
-from core.domain_impl.json import json_scalar_tail_service
-from core.domain_impl.json import json_top_level_close_service
-from core.domain_impl.json import json_validation_feedback_service
+from core.domain_impl.json import json_io_core as json_apply_commit_service
+from core.domain_impl.json import json_diagnostics_core as json_closer_symbol_service
+from core.domain_impl.json import json_diagnostics_core as json_colon_comma_service
+from core.domain_impl.json import json_diagnostics_core as json_diagnostics_service
+from core.domain_impl.json import json_io_core as json_edit_flow_service
+from core.domain_impl.json import json_diagnostics_core as json_error_diag_service
+from core.domain_impl.json import json_view_core as json_error_highlight_render_service
+from core.domain_impl.json import json_diagnostics_core as json_nearby_line_service
+from core.domain_impl.json import json_diagnostics_core as json_open_symbol_service
+from core.domain_impl.json import json_diagnostics_core as json_parse_feedback_service
+from core.domain_impl.json import json_io_core as json_path_service
+from core.domain_impl.json import json_diagnostics_core as json_property_key_rule_service
+from core.domain_impl.json import json_diagnostics_core as json_quoted_item_tail_service
+from core.domain_impl.json import json_diagnostics_core as json_repair_service
+from core.domain_impl.json import json_diagnostics_core as json_scalar_tail_service
+from core.domain_impl.json import json_diagnostics_core as json_top_level_close_service
+from core.domain_impl.json import json_diagnostics_core as json_validation_feedback_service
 from core.domain_impl.support import json_repair_dispatch_service
 
 
