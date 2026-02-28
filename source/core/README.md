@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-28 (post-consolidation cleanup removed legacy compatibility shims and package alias wiring; update/telemetry/JSON domains now route directly through master modules).
+Last sync: 2026-02-28 (post-consolidation cleanup removed legacy compatibility shims and package alias wiring; update/telemetry/JSON domains now route directly through master modules; constants include v1.3.9 release version update).
 
 | Module | Purpose |
 | --- | --- |

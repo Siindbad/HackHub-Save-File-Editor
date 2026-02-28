@@ -60,21 +60,25 @@ there HackTheCube web address if they deleted the email.
 =================================================================================
 
 [ CHANGE LOGS ]
-[ Version 1.3.8 ]
+[ Version 1.3.9 ]
 =================================================================================
 
-- Updated diagnostics to daily files and retained only today and yesterday logs.
-- Added browser fallback prompt to open direct update download page.
-- Added structured update failure logging with details to diagnostics logs.
-- HOTFIX: Added clear download/install/restart status and persistent update overlay.
-- HOTFIX: Updated version/changelog/disclaimer to include missed 1.3.2 items.
-- Fixed JSON Find Next to cycle global value matches across categories and include.
-- Fixed protected-folder updates by adding admin elevation retry and silent ZIP apply.
-- Fixed style-B maximize toolbar flow.
-- HOTFIX: Updater verification.
-- Added delegation contracts and roadmap status updates to lock Phase 4 boundaries.
-- Added Phase 6 delegation contracts and roadmap status updates for next-phase handoff.
-- Added session and uptime diagnostics with sanitized exception-chain and hashed.
+- Added a clearer BANK layout so identity and transaction details are easier to read.
+- Added a read-only BCC table with ID, Name, and Email columns.
+- Added an INTERPOL view with Name, Email, and Position details.
+- Added in-phone controls with simple On/Off toggles for Cellular and Hotspot.
+- Fixed grouped Network path resolution.
+- Fixed SIN/KAMUE ROUTER bleed by syncing readonly entry backgrounds on theme switch.
+- Fixed bug report screenshot uploads.
+- Improved startup and file-open responsiveness to reduce initial lag.
+- Improved first-load Input Mode performance for network/device sections.
+- Improved search so results narrow down as you type.
+- Added Geo IP and BCC Domains sections in Network view for easier device lookup.
+- Added Skypersky INPUT layout.
+- Added BLUE TABLE and INTERPOL locked sections under Network devices.
+- Bank balance edits now keep numbers clean and accept currency-style pastes.
+- Fixed INPUT fixed-position sash lock.
+- Fixed INPUT tree remap after max-to-min restore and reduced startup white flicker.
 
 [ DISCLAIMER ]
 =================================================================================
