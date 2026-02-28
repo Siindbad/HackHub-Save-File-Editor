@@ -3,6 +3,48 @@
 from typing import Any
 
 
+def is_database_input_style_path(path: Any) -> bool:
+    """Return whether path targets a Database branch eligible for INPUT matrix/table rendering."""
+    normalized = list(path or [])
+    if not normalized:
+        return False
+    if str(normalized[0]) != "Database":
+        return False
+    # Root Database now shows subcategory selector; style render is subcategory-only.
+    if len(normalized) == 1:
+        return False
+    # Support clicking a Database entry node (e.g., first item -> Grades matrix).
+    if len(normalized) == 2 and isinstance(normalized[1], int):
+        return True
+    return len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]) == "Grades"
+
+
+def is_input_database_locked_subcategory_path(owner: Any, path: Any) -> bool:
+    """Return whether INPUT path points at a locked Database subcategory root row."""
+    normalized = list(path or [])
+    if len(normalized) != 2:
+        return False
+    if owner._input_mode_root_key_for_path(normalized) != "database":
+        return False
+    entry = owner._get_value(normalized)
+    if not isinstance(entry, dict):
+        return False
+    tables = entry.get("tables")
+    if not isinstance(tables, dict) or not tables:
+        return False
+    first_table = str(next(iter(tables.keys()))).strip().casefold()
+    return first_table in {"grades", "users", "customers"}
+
+
+def is_database_table_rows_path(path: Any) -> bool:
+    """Return whether path points to Database tables rows collection."""
+    if not isinstance(path, list):
+        return False
+    if len(path) < 4:
+        return False
+    return str(path[0]) == "Database" and str(path[2]) == "tables"
+
+
 def refresh_input_mode_fields(
     owner: Any,
     path: Any,

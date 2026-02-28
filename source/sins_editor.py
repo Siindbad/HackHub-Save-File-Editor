@@ -67,6 +67,8 @@ startup_loader_ui_service = editor_ui_core.EDITOR_UI.startup_loader_ui_service
 toolbar_service = editor_ui_core.EDITOR_UI.toolbar_service
 ui_build_service = editor_ui_core.EDITOR_UI.ui_build_service
 ui_dispatch_service = editor_ui_core.EDITOR_UI.ui_dispatch_service
+ui_factory_service = editor_ui_core.EDITOR_UI.ui_factory_service
+UI_FACTORY = ui_factory_service
 input_mode_diag_service = input_mode_manager.INPUT_MODE.input_mode_diag_service
 input_mode_find_service = input_mode_manager.INPUT_MODE.input_mode_find_service
 input_mode_render_dispatch_service = input_mode_manager.INPUT_MODE.input_mode_render_dispatch_service
@@ -88,6 +90,7 @@ json_repair_service = json_engine.JSON_ENGINE.json_repair_service
 json_scalar_tail_service = json_engine.JSON_ENGINE.json_scalar_tail_service
 json_top_level_close_service = json_engine.JSON_ENGINE.json_top_level_close_service
 json_validation_feedback_service = json_engine.JSON_ENGINE.json_validation_feedback_service
+json_repair_dispatch_service = json_engine.JSON_ENGINE.repair_dispatch
 json_find_nav_service = json_view_manager.JSON_VIEW.json_find_nav_service
 json_find_service = json_view_manager.JSON_VIEW.json_find_service
 json_text_find_service = json_view_manager.JSON_VIEW.json_text_find_service
@@ -110,9 +113,11 @@ input_network_device_geoip_style_service = theme_manager.THEME.input_network_dev
 input_network_router_style_service = theme_manager.THEME.input_network_router_style_service
 input_suspicion_phone_style_service = theme_manager.THEME.input_suspicion_phone_style_service
 theme_asset_service = theme_manager.THEME.theme_asset_service
+color_utility_service = theme_manager.THEME.color_utility_service
 theme_service = theme_manager.THEME.theme_service
 tree_engine_service = tree_manager.TREE.tree_engine_service
 tree_mode_service = tree_manager.TREE.tree_mode_service
+tree_navigation_service = tree_manager.TREE.tree_navigation_service
 tree_policy_service = tree_manager.TREE.tree_policy_service
 tree_view_service = tree_manager.TREE.tree_view_service
 update_asset_service = update_orchestrator.UPDATE.update_asset_service
@@ -191,8 +196,9 @@ def _strip_invalid_trailing_chars(value_str):
 
 
 def _module_resource_base_dir():
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return sys._MEIPASS
+    meipass_dir = getattr(sys, "_MEIPASS", None)
+    if getattr(sys, "frozen", False) and isinstance(meipass_dir, str) and meipass_dir:
+        return meipass_dir
     return os.path.dirname(os.path.abspath(__file__))
 
 
@@ -357,11 +363,7 @@ if button._siindbad_base_image is None:
         self.data = None
         self.path = None
         self.item_to_path = {}
-        self._init_chrome_runtime_state()
-        self._init_footer_bugreport_runtime_state()
-        self._init_text_context_runtime_state()
-        self._init_theme_update_runtime_state()
-        self._init_editor_session_runtime_state()
+        self._init_runtime_services()
 
         self._install_global_error_hooks()
 
@@ -383,6 +385,18 @@ if button._siindbad_base_image is None:
             self.load_file(path)
         else:
             self._maybe_warn_windows_long_paths_disabled()
+
+    def _init_runtime_services(self):
+        """Initialize grouped runtime state buckets through service-oriented clusters."""
+        self.TREE_NAV = tree_navigation_service.bind(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
+        self._init_chrome_runtime_state()
+        self._init_footer_bugreport_runtime_state()
+        self._init_text_context_runtime_state()
+        self._init_theme_update_runtime_state()
+        self._init_editor_session_runtime_state()
 
     @staticmethod
     def _is_windows_long_paths_enabled():
@@ -742,62 +756,6 @@ if button._siindbad_base_image is None:
             max_fields=max_fields,
         )
 
-    def _style_input_mode_row_widgets(self, label_widget, input_widget, input_container=None):
-        theme = getattr(self, "_theme", {})
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        label_size = self._input_mode_font_size(8, min_size=7, max_size=16)
-        input_size = self._input_mode_font_size(8, min_size=7, max_size=16)
-        label_family = self._resolve_font_family(
-            ["Tektur SemiBold", "Tektur Med", "Tektur", "Segoe UI Semibold", "Segoe UI"],
-            self._credit_name_font()[0],
-        )
-        input_family = self._resolve_font_family(
-            ["Segoe UI", "Bahnschrift", "Segoe UI Semibold"],
-            self._credit_name_font()[0],
-        )
-        if variant == "KAMUE":
-            label_fg = "#d5bfff"
-            field_bg = theme.get("panel", "#0d061c")
-            field_fg = "#f0e4ff"
-            field_edge = "#6b4596"
-        else:
-            label_fg = "#9cc7eb"
-            field_bg = theme.get("panel", "#161b24")
-            field_fg = "#d7ecff"
-            field_edge = "#2f6ea0"
-        panel = theme.get("panel", "#161b24")
-        try:
-            label_widget.configure(
-                bg=panel,
-                fg=label_fg,
-                font=(label_family, label_size, "bold"),
-            )
-        except (tk.TclError, RuntimeError, AttributeError):
-            pass
-        try:
-            if input_container is not None:
-                input_container.configure(
-                    bg=panel,
-                    bd=0,
-                    highlightthickness=0,
-                )
-        except (tk.TclError, RuntimeError, AttributeError):
-            pass
-        try:
-            input_widget.configure(
-                bg=field_bg,
-                fg=field_fg,
-                insertbackground=field_fg,
-                relief="flat",
-                bd=0,
-                highlightthickness=1,
-                highlightbackground=field_edge,
-                highlightcolor=field_edge,
-                font=(input_family, input_size, "bold"),
-            )
-        except (tk.TclError, RuntimeError, AttributeError):
-            pass
-
     def _input_mode_font_size(self, base_size, min_size=7, max_size=18):
         # Keep INPUT rows synced with editor FONT +/- without breaking compact layouts.
         try:
@@ -828,39 +786,21 @@ if button._siindbad_base_image is None:
 
     @staticmethod
     def _is_database_input_style_path(path):
-        normalized = list(path or [])
-        if not normalized:
-            return False
-        if str(normalized[0]) != "Database":
-            return False
-        # Root Database now shows subcategory selector; style render is subcategory-only.
-        if len(normalized) == 1:
-            return False
-        # Support clicking a Database entry node (e.g., first item -> Grades matrix).
-        if len(normalized) == 2 and isinstance(normalized[1], int):
-            return True
-        return len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]) == "Grades"
+        return input_mode_render_dispatch_service.is_database_input_style_path(path)
 
     def _database_root_entry_label(self, idx, item):
-        variant = str(getattr(self, "_tree_style_variant", "B"))
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return label_format_service.database_label(idx, item, variant)
-        if isinstance(item, dict):
-            tables = item.get("tables")
-            if isinstance(tables, dict) and tables:
-                first_table = str(next(iter(tables.keys()))).strip().casefold()
-                if first_table == "grades":
-                    return "Grades"
-                if first_table == "users":
-                    return "BCC"
-                if first_table == "customers":
-                    return "INTERPOL"
-        return label_format_service.database_label(idx, item, variant)
+        return label_format_service.database_root_entry_label(
+            idx,
+            item,
+            tree_style_variant=getattr(self, "_tree_style_variant", "B"),
+            editor_mode=getattr(self, "_editor_mode", "JSON"),
+        )
 
     def _collect_database_grades_matrix(self, value, max_rows=40):
-        return input_database_style_service.collect_database_grades_matrix(
+        return input_mode_service.collect_database_grades_matrix(
             value,
             max_rows=max_rows,
+            input_database_style_service=input_database_style_service,
         )
 
     def _render_database_grades_input_matrix(self, host, normalized_path, matrix_payload):
@@ -872,9 +812,10 @@ if button._siindbad_base_image is None:
         )
 
     def _collect_database_bcc_payload(self, value, max_rows=200):
-        return input_database_bcc_style_service.collect_database_bcc_payload(
+        return input_mode_service.collect_database_bcc_payload(
             value,
             max_rows=max_rows,
+            input_database_bcc_style_service=input_database_bcc_style_service,
         )
 
     def _render_database_bcc_table(self, host, normalized_path, payload):
@@ -886,9 +827,10 @@ if button._siindbad_base_image is None:
         )
 
     def _collect_database_interpol_payload(self, value, max_rows=200):
-        return input_database_bcc_style_service.collect_database_interpol_payload(
+        return input_mode_service.collect_database_interpol_payload(
             value,
             max_rows=max_rows,
+            input_database_bcc_style_service=input_database_bcc_style_service,
         )
 
     def _render_database_interpol_table(self, host, normalized_path, payload):
@@ -900,45 +842,33 @@ if button._siindbad_base_image is None:
         )
 
     def _database_grades_matrix_for_input_path(self, path, value):
-        normalized = list(path or [])
-        if not normalized:
-            return None
-        if str(normalized[0]) != "Database":
-            return None
-        if len(normalized) == 1:
-            return None
-        if len(normalized) == 2 and isinstance(normalized[1], int):
-            return self._collect_database_grades_matrix(value)
-        if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]) == "Grades":
-            return self._collect_database_grades_matrix(value)
-        return None
+        return input_mode_service.database_grades_matrix_for_input_path(
+            path,
+            value,
+            input_database_style_service=input_database_style_service,
+        )
 
     def _database_bcc_payload_for_input_path(self, path, value):
-        normalized = list(path or [])
-        if not normalized:
-            return None
-        if str(normalized[0]) != "Database":
-            return None
-        if len(normalized) == 2 and isinstance(normalized[1], int):
-            return self._collect_database_bcc_payload(value)
-        if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]).casefold() == "users":
-            return self._collect_database_bcc_payload(value)
-        return None
+        return input_mode_service.database_bcc_payload_for_input_path(
+            path,
+            value,
+            input_database_bcc_style_service=input_database_bcc_style_service,
+        )
 
     def _database_interpol_payload_for_input_path(self, path, value):
-        normalized = list(path or [])
-        if not normalized:
-            return None
-        if str(normalized[0]) != "Database":
-            return None
-        if len(normalized) == 2 and isinstance(normalized[1], int):
-            return self._collect_database_interpol_payload(value)
-        if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]).casefold() == "customers":
-            return self._collect_database_interpol_payload(value)
-        return None
+        return input_mode_service.database_interpol_payload_for_input_path(
+            path,
+            value,
+            input_database_bcc_style_service=input_database_bcc_style_service,
+        )
 
     def _is_network_router_input_style_payload(self, path, value):
-        return input_network_router_style_service.is_network_router_group_payload(self, path, value)
+        return input_mode_service.is_network_router_input_style_payload(
+            self,
+            path,
+            value,
+            input_network_router_style_service=input_network_router_style_service,
+        )
 
     def _is_suspicion_input_style_path(self, path):
         return input_suspicion_phone_style_service.is_suspicion_input_path(self, path)
@@ -974,25 +904,33 @@ if button._siindbad_base_image is None:
         )
 
     def _is_network_device_input_style_payload(self, path, value):
-        normalized = list(path or [])
-        if len(normalized) != 1:
-            return False
-        if self._input_mode_root_key_for_path(normalized) != "network":
-            return False
-        if not isinstance(value, list) or not value:
-            return False
-        return all(isinstance(item, dict) and str(item.get("type", "")).upper() == "DEVICE" for item in value)
+        return input_mode_service.is_network_device_input_style_payload(self, path, value)
 
     def _is_network_firewall_input_style_payload(self, path, value):
-        return input_network_firewall_style_service.is_network_firewall_group_payload(self, path, value)
+        return input_mode_service.is_network_firewall_input_style_payload(
+            self,
+            path,
+            value,
+            input_network_firewall_style_service=input_network_firewall_style_service,
+        )
 
     def _is_network_geoip_input_style_payload(self, path, value):
         # GEO IP concept applies only to first Network DEVICE row.
-        return input_network_device_geoip_style_service.is_network_geoip_payload(self, path, value)
+        return input_mode_service.is_network_geoip_input_style_payload(
+            self,
+            path,
+            value,
+            input_network_device_geoip_style_service=input_network_device_geoip_style_service,
+        )
 
     def _is_network_bcc_domains_input_style_payload(self, path, value):
         # BCC DOMAINS concept applies only to the locked bcc.com row.
-        return input_network_device_bcc_style_service.is_network_bcc_domains_payload(self, path, value)
+        return input_mode_service.is_network_bcc_domains_input_style_payload(
+            self,
+            path,
+            value,
+            input_network_device_bcc_style_service=input_network_device_bcc_style_service,
+        )
 
     def _collect_network_bcc_domains_payload(self, normalized_path, value):
         return input_network_device_bcc_style_service.collect_bcc_domains_payload(self, normalized_path, value)
@@ -1002,7 +940,12 @@ if button._siindbad_base_image is None:
 
     def _is_network_blue_table_input_style_payload(self, path, value):
         # BLUE TABLE concept applies to the locked thebluetable.com anchor row.
-        return input_network_device_bcc_style_service.is_network_blue_table_payload(self, path, value)
+        return input_mode_service.is_network_blue_table_input_style_payload(
+            self,
+            path,
+            value,
+            input_network_device_bcc_style_service=input_network_device_bcc_style_service,
+        )
 
     def _collect_network_blue_table_payload(self, normalized_path, value):
         return input_network_device_bcc_style_service.collect_blue_table_payload(self, normalized_path, value)
@@ -1012,7 +955,12 @@ if button._siindbad_base_image is None:
 
     def _is_network_interpol_input_style_payload(self, path, value):
         # INTERPOL concept applies to the locked row directly under BLUE TABLE.
-        return input_network_device_bcc_style_service.is_network_interpol_payload(self, path, value)
+        return input_mode_service.is_network_interpol_input_style_payload(
+            self,
+            path,
+            value,
+            input_network_device_bcc_style_service=input_network_device_bcc_style_service,
+        )
 
     def _collect_network_interpol_payload(self, normalized_path, value):
         return input_network_device_bcc_style_service.collect_interpol_payload(self, normalized_path, value)
@@ -2478,173 +2426,6 @@ if button._siindbad_base_image is None:
     def _read_diag_log_tail(self, max_chars=8000):
         return editor_purge_service._read_diag_log_tail(self, max_chars)
 
-    def _build_bug_report_markdown(
-        self,
-        summary,
-        details,
-        include_diag=True,
-        discord_contact="",
-        crash_tail="",
-        screenshot_url="",
-        screenshot_filename="",
-        screenshot_note="",
-    ):
-        return bug_report_context_service.build_bug_report_markdown(
-            summary=summary,
-            details=details,
-            include_diag=include_diag,
-            discord_contact=discord_contact,
-            crash_tail=crash_tail,
-            screenshot_url=screenshot_url,
-            screenshot_filename=screenshot_filename,
-            screenshot_note=screenshot_note,
-            app_version=self.APP_VERSION,
-            theme_variant=str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper(),
-            selected_path=self._selected_tree_path_text(),
-            last_json_error=getattr(self, "_last_json_error_msg", ""),
-            last_highlight_note=getattr(self, "_last_error_highlight_note", ""),
-            python_version=platform.python_version(),
-            platform_text=platform.platform(),
-            read_diag_log_tail=self._read_diag_log_tail,
-            bug_report_builder=bug_report_service.build_bug_report_markdown,
-        )
-
-    def _sanitize_bug_screenshot_slug(self, value):
-        return bug_report_service.sanitize_bug_screenshot_slug(value)
-
-    def _build_bug_screenshot_repo_path(self, source_filename, summary=""):
-        return bug_report_service.build_bug_screenshot_repo_path(
-            source_filename,
-            summary=summary,
-            uploads_dir=getattr(self, "BUG_REPORT_UPLOADS_DIR", "bug-uploads"),
-        )
-
-    def _validate_bug_screenshot_file(self, path):
-        return bug_report_service.validate_bug_screenshot_file(
-            path,
-            allowed_extensions=getattr(self, "BUG_REPORT_SCREENSHOT_ALLOWED_EXTENSIONS", ()),
-            max_bytes=getattr(self, "BUG_REPORT_SCREENSHOT_MAX_BYTES", 5 * 1024 * 1024),
-            max_dimension=getattr(self, "BUG_REPORT_SCREENSHOT_MAX_DIMENSION", 4096),
-        )
-
-    def _detect_bug_screenshot_magic_ext(self, source_path):
-        return bug_report_service.detect_bug_screenshot_magic_ext(source_path)
-
-    def _validate_bug_screenshot_dimensions(self, source_path):
-        return bug_report_service.validate_bug_screenshot_dimensions(
-            source_path,
-            max_dimension=getattr(self, "BUG_REPORT_SCREENSHOT_MAX_DIMENSION", 4096),
-        )
-
-    def _prepare_bug_screenshot_upload_bytes(self, source_path, detected_ext):
-        return bug_report_service.prepare_bug_screenshot_upload_bytes(
-            source_path,
-            detected_ext,
-            max_bytes=getattr(self, "BUG_REPORT_SCREENSHOT_MAX_BYTES", 5 * 1024 * 1024),
-        )
-
-    def _upload_bug_screenshot(self, source_path, summary=""):
-        return bug_report_api_service.upload_bug_screenshot(
-            source_path=source_path,
-            summary=summary,
-            token_env_name=JsonEditor._bug_report_token_env_name(self),
-            owner=self.BUG_REPORT_GITHUB_OWNER,
-            repo=self.BUG_REPORT_GITHUB_REPO,
-            branch=getattr(self, "BUG_REPORT_UPLOAD_BRANCH", "main"),
-            validate_file_fn=self._validate_bug_screenshot_file,
-            detect_magic_ext_fn=self._detect_bug_screenshot_magic_ext,
-            build_repo_path_fn=self._build_bug_screenshot_repo_path,
-            prepare_upload_bytes_fn=self._prepare_bug_screenshot_upload_bytes,
-        )
-
-    def _submit_bug_report_issue(self, title, body_markdown):
-        return bug_report_api_service.submit_bug_report_issue(
-            token_env_name=JsonEditor._bug_report_token_env_name(self),
-            owner=self.BUG_REPORT_GITHUB_OWNER,
-            repo=self.BUG_REPORT_GITHUB_REPO,
-            labels=self.BUG_REPORT_LABELS,
-            title=title,
-            body_markdown=body_markdown,
-            open_browser_fn=self._open_bug_report_in_browser,
-        )
-
-    def _submit_bug_report_discord_forum(
-        self,
-        *,
-        summary,
-        details,
-        issue_url,
-        include_diag=False,
-        diag_tail="",
-        crash_tail="",
-        discord_contact="",
-        screenshot_url="",
-        screenshot_filename="",
-        screenshot_note="",
-    ):
-        # Optional Discord Forum mirror for bug reports; enable via env webhook.
-        return bug_report_api_service.submit_bug_report_discord_forum(
-            webhook_env_name=getattr(self, "BUG_REPORT_DISCORD_WEBHOOK_ENV", "DISCORD_BUGREPORT_WEBHOOK"),
-            summary=summary,
-            details=details,
-            issue_url=issue_url,
-            app_version=getattr(self, "APP_VERSION", ""),
-            theme_variant=str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper(),
-            selected_path=self._selected_tree_path_text(),
-            last_json_error=getattr(self, "_last_json_error_msg", ""),
-            last_highlight_note=getattr(self, "_last_error_highlight_note", ""),
-            now_text=time.strftime("%Y-%m-%d %H:%M:%S"),
-            python_version=platform.python_version(),
-            platform_text=platform.platform(),
-            include_diag=bool(include_diag),
-            diag_tail=str(diag_tail or ""),
-            crash_tail=str(crash_tail or ""),
-            discord_contact=str(discord_contact or ""),
-            screenshot_url=screenshot_url,
-            screenshot_filename=screenshot_filename,
-            screenshot_note=screenshot_note,
-            forum_tag_ids_raw=os.getenv(getattr(self, "BUG_REPORT_DISCORD_FORUM_TAG_IDS_ENV", ""), ""),
-        )
-
-    def _bug_report_new_issue_url(self, title, body_markdown, include_body=True):
-        return bug_report_service.build_bug_report_new_issue_url(
-            owner=self.BUG_REPORT_GITHUB_OWNER,
-            repo=self.BUG_REPORT_GITHUB_REPO,
-            labels=self.BUG_REPORT_LABELS,
-            title=title,
-            body_markdown=body_markdown,
-            include_body=include_body,
-        )
-
-    def _copy_bug_report_body_to_clipboard(self, body_markdown):
-        return clipboard_service.copy_text_to_clipboard(
-            payload=body_markdown,
-            root=getattr(self, "root", None),
-            expected_errors=_EXPECTED_APP_ERRORS,
-        )
-
-    def _open_bug_report_in_browser(self, title, body_markdown):
-        # Privacy fallback: open clean issue form and rely on clipboard for full report text.
-        return bug_report_browser_service.open_bug_report_in_browser(
-            title=title,
-            body_markdown=body_markdown,
-            copy_to_clipboard_fn=lambda body: JsonEditor._copy_bug_report_body_to_clipboard(self, body),
-            build_issue_url_fn=self._bug_report_new_issue_url,
-            open_bug_report_browser_fn=bug_report_api_service.open_bug_report_in_browser,
-            open_new_tab_fn=webbrowser.open_new_tab,
-        )
-
-    def _bug_report_submit_cooldown_remaining(self, now_monotonic=None):
-        now_val = time.monotonic() if now_monotonic is None else now_monotonic
-        return bug_report_cooldown_service.submit_cooldown_remaining(
-            self._last_bug_report_submit_monotonic,
-            self.BUG_REPORT_SUBMIT_COOLDOWN_SECONDS,
-            now_val,
-        )
-
-    def _mark_bug_report_submit_now(self, now_monotonic=None):
-        return editor_purge_service._mark_bug_report_submit_now(self, now_monotonic)
-
     def _open_bug_report_dialog(
         self,
         summary_prefill="",
@@ -2652,11 +2433,15 @@ if button._siindbad_base_image is None:
         include_diag_default=True,
         crash_tail="",
     ):
-        return bug_report_ui_service.open_bug_report_dialog(
+        return bug_report_manager.trigger_report_flow(
             self,
             tk=tk,
             filedialog=filedialog,
             messagebox=messagebox,
+            threading_module=threading,
+            time_module=time,
+            platform_module=platform,
+            os_module=os,
             summary_prefill=summary_prefill,
             details_prefill=details_prefill,
             include_diag_default=include_diag_default,
@@ -2710,56 +2495,13 @@ if button._siindbad_base_image is None:
                 pass
 
     def _show_bug_submit_splash(self, message="BUG REPORT SUBMITTED", duration_ms=1600):
-        self._hide_bug_submit_splash()
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        theme = getattr(self, "_theme", {}) or {}
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "KAMUE":
-            bg = "#12091d"
-            fg = theme.get("title_bar_fg", "#eee8ff")
-            border = "#e0b8ff"
-        else:
-            bg = "#0f1f2d"
-            fg = theme.get("title_bar_fg", "#e6f6ff")
-            border = "#b5f3ff"
-        try:
-            root.update_idletasks()
-            splash = tk.Frame(
-                root,
-                bg=bg,
-                bd=0,
-                highlightthickness=2,
-                highlightbackground=border,
-                highlightcolor=border,
-            )
-            label = tk.Label(
-                splash,
-                text=str(message or "BUG REPORT SUBMITTED"),
-                bg=bg,
-                fg=fg,
-                font=(self._preferred_mono_family(), 12, "bold"),
-                padx=24,
-                pady=12,
-            )
-            label.pack(fill="both", expand=True)
-            splash.update_idletasks()
-            sw = max(int(splash.winfo_reqwidth()), 300)
-            sh = max(int(splash.winfo_reqheight()), 56)
-            rw = max(int(root.winfo_width()), 1)
-            rh = max(int(root.winfo_height()), 1)
-            x = max(int((rw - sw) / 2), 8)
-            y = max(int((rh - sh) / 2), 8)
-            splash.place(x=x, y=y, width=sw, height=sh)
-            splash.lift()
-            self._bug_submit_splash = splash
-            self._bug_submit_splash_after_id = root.after(
-                max(700, int(duration_ms)),
-                self._hide_bug_submit_splash,
-            )
-        except _EXPECTED_APP_ERRORS:
-            self._hide_bug_submit_splash()
+        ui_factory_service.show_bug_submit_splash(
+            self,
+            message=message,
+            duration_ms=duration_ms,
+            tk_module=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _bug_report_header_pulse_palette(self):
         theme = getattr(self, "_theme", {}) or {}
@@ -2974,146 +2716,22 @@ if button._siindbad_base_image is None:
         )
 
     def _apply_tree_style(self, style=None, panel=None, tree_fg=None, select_bg=None, select_fg=None):
-        if style is None:
-            try:
-                style = ttk.Style(self.root)
-            except _EXPECTED_APP_ERRORS:
-                return
-        theme = getattr(self, "_theme", {}) or {}
-        panel = panel or theme.get("panel", "#161b24")
-        if tree_fg is None:
-            tree_fg = theme.get("tree_fg", theme.get("fg", "#e6e6e6"))
-        select_bg = select_bg or theme.get("select_bg", "#2f3a4d")
-        select_fg = select_fg or theme.get("select_fg", "#ffffff")
-
-        profile = self._tree_font_profile()
-        tree_font_family = self._tree_font_family(profile["is_variant_b"])
-        tree_sub_font_family = self._tree_sub_font_family()
-        if profile["main_weight"] == "normal":
-            tree_font = (tree_font_family, profile["main_size"])
-        else:
-            tree_font = (tree_font_family, profile["main_size"], profile["main_weight"])
-        style.configure(
-            "Treeview",
-            background=panel,
-            fieldbackground=panel,
-            foreground=tree_fg,
-            font=tree_font,
-            rowheight=profile["row_height"],
-            padding=(0, int(getattr(self, "_tree_content_top_gap", 2) or 0), 0, 0),
-            bordercolor=panel,
-            lightcolor=panel,
-            darkcolor=panel,
+        tree_widget = getattr(self, "tree", None)
+        return UI_FACTORY.apply_styles(
+            self,
+            tree_widget,
+            ttk_module=ttk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+            style=style,
+            panel=panel,
+            tree_fg=tree_fg,
+            select_bg=select_bg,
+            select_fg=select_fg,
         )
-        self._apply_tree_indicator_layout(style)
-        style.map(
-            "Treeview",
-            background=[("selected", select_bg)],
-            foreground=[("selected", select_fg)],
-        )
-        self._configure_tree_level_fonts(
-            tree_font_family=tree_font_family,
-            tree_sub_font_family=tree_sub_font_family,
-            main_size=profile["main_size"],
-            sub_size=profile["sub_size"],
-            main_weight=profile["main_weight"],
-            sub_weight=profile["sub_weight"],
-        )
-
-    def _configure_tree_level_fonts(
-        self,
-        tree_font_family=None,
-        tree_sub_font_family=None,
-        main_size=None,
-        sub_size=None,
-        main_weight=None,
-        sub_weight=None,
-    ):
-        tree = getattr(self, "tree", None)
-        if tree is None:
-            return
-        try:
-            if not tree.winfo_exists():
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-        profile = self._tree_font_profile()
-        family_main = tree_font_family or self._tree_font_family(profile["is_variant_b"])
-        family_sub = tree_sub_font_family or self._tree_sub_font_family()
-        use_main_size = profile["main_size"] if main_size is None else int(main_size)
-        use_sub_size = profile["sub_size"] if sub_size is None else int(sub_size)
-        use_main_weight = profile["main_weight"] if main_weight is None else str(main_weight)
-        use_sub_weight = profile["sub_weight"] if sub_weight is None else str(sub_weight)
-        main_font = (
-            (family_main, use_main_size, use_main_weight)
-            if use_main_weight != "normal"
-            else (family_main, use_main_size)
-        )
-        sub_font = (
-            (family_sub, use_sub_size, use_sub_weight)
-            if use_sub_weight != "normal"
-            else (family_sub, use_sub_size)
-        )
-        try:
-            tree.tag_configure("tree-main-level", font=main_font)
-            tree.tag_configure("tree-sub-level", font=sub_font)
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-    def _apply_tree_indicator_layout(self, style):
-        """Hide native indicator in TREE B so composite B2 icon pack provides branch arrows."""
-        try:
-            if self._tree_item_layout_default is None:
-                self._tree_item_layout_default = style.layout("Treeview.Item")
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        variant = str(getattr(self, "_tree_style_variant", "B")).upper()
-        if variant == "B":
-            if self._tree_item_layout_no_indicator is None:
-                self._tree_item_layout_no_indicator = [
-                    (
-                        "Treeitem.padding",
-                        {
-                            "sticky": "nswe",
-                            "children": [
-                                ("Treeitem.image", {"side": "left", "sticky": ""}),
-                                (
-                                    "Treeitem.focus",
-                                    {
-                                        "side": "left",
-                                        "sticky": "",
-                                        "children": [("Treeitem.text", {"side": "left", "sticky": ""})],
-                                    },
-                                ),
-                            ],
-                        },
-                    )
-                ]
-            try:
-                style.layout("Treeview.Item", self._tree_item_layout_no_indicator)
-            except _EXPECTED_APP_ERRORS:
-                pass
-            return
-
-        try:
-            if self._tree_item_layout_default:
-                style.layout("Treeview.Item", self._tree_item_layout_default)
-        except _EXPECTED_APP_ERRORS:
-            pass
 
     @staticmethod
     def _hex_to_colorref(hex_color):
-        value = str(hex_color).strip().lstrip("#")
-        if len(value) != 6:
-            return None
-        try:
-            red = int(value[0:2], 16)
-            green = int(value[2:4], 16)
-            blue = int(value[4:6], 16)
-        except ValueError:
-            return None
-        return (blue << 16) | (green << 8) | red
+        return color_utility_service.hex_to_colorref(hex_color)
 
     def _apply_windows_titlebar_theme(self, bg=None, fg=None, border=None, window_widget=None):
         return theme_service._apply_windows_titlebar_theme(self, bg, fg, border, window_widget)
@@ -3564,13 +3182,12 @@ if button._siindbad_base_image is None:
 
     @staticmethod
     def _blend_hex_color(color_a, color_b, ratio):
-        ratio = max(0.0, min(1.0, float(ratio)))
-        ra, ga, ba = JsonEditor._hex_to_rgb_tuple(color_a, default_rgb=(0, 0, 0))
-        rb, gb, bb = JsonEditor._hex_to_rgb_tuple(color_b, default_rgb=(0, 0, 0))
-        r = int(round(ra + ((rb - ra) * ratio)))
-        g = int(round(ga + ((gb - ga) * ratio)))
-        b = int(round(ba + ((bb - ba) * ratio)))
-        return f"#{r:02x}{g:02x}{b:02x}"
+        return color_utility_service.blend_hex_color(
+            color_a,
+            color_b,
+            ratio,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _start_text_context_menu_pulse(self):
         self._stop_text_context_menu_pulse()
@@ -3589,68 +3206,10 @@ if button._siindbad_base_image is None:
                     pass
 
     def _tick_text_context_menu_pulse(self):
-        self._text_context_menu_pulse_after_id = None
-        popup = getattr(self, "_text_context_menu", None)
-        if popup is None:
-            return
-        try:
-            if not popup.winfo_exists() or not popup.winfo_ismapped():
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-        palette = self._text_context_menu_palette()
-        hover_action = getattr(self, "_text_context_menu_hover_action", None)
-        if hover_action:
-            root = getattr(self, "root", None)
-            if root is None:
-                return
-            try:
-                self._text_context_menu_pulse_after_id = root.after(140, self._tick_text_context_menu_pulse)
-            except _EXPECTED_APP_ERRORS:
-                self._text_context_menu_pulse_after_id = None
-            return
-        else:
-            cycle_steps = 28
-            tick = int(getattr(self, "_text_context_menu_pulse_tick", 0))
-            half = cycle_steps / 2.0
-            pos = float(tick % cycle_steps)
-            if pos <= half:
-                amount = pos / half
-            else:
-                amount = (cycle_steps - pos) / half
-            border_base = palette.get("pulse_start_border", palette["border"])
-            inset_base = palette.get("pulse_start_inset", palette["inset_border"])
-            panel_base = palette.get("pulse_start_panel", palette["panel_border"])
-            border_color = self._blend_hex_color(border_base, palette["pulse_border"], amount)
-            inset_color = self._blend_hex_color(inset_base, palette["pulse_inset"], amount)
-            panel_color = self._blend_hex_color(panel_base, palette["pulse_inset"], amount * 0.75)
-            self._text_context_menu_pulse_tick = tick + 1
-        anchor = getattr(self, "_text_context_menu_anchor", None)
-        frame = getattr(self, "_text_context_menu_frame", None)
-        panel = getattr(self, "_text_context_menu_panel", None)
-        if anchor is not None:
-            try:
-                anchor.configure(highlightbackground=border_color, highlightcolor=border_color)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if frame is not None:
-            try:
-                frame.configure(highlightbackground=inset_color, highlightcolor=inset_color)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if panel is not None:
-            try:
-                panel.configure(highlightbackground=panel_color, highlightcolor=panel_color)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            delay_ms = 140 if hover_action else 100
-            self._text_context_menu_pulse_after_id = root.after(delay_ms, self._tick_text_context_menu_pulse)
-        except _EXPECTED_APP_ERRORS:
-            self._text_context_menu_pulse_after_id = None
+        text_context_action_service.tick_text_context_menu_pulse(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _hide_text_context_menu(self):
         self._stop_text_context_menu_pulse()
@@ -3893,39 +3452,12 @@ if button._siindbad_base_image is None:
             return
 
     def _on_input_context_paste(self):
-        widget = getattr(self, "_input_context_target_widget", None)
-        if widget is None:
-            return
-        if not bool(getattr(self, "_input_context_target_allow_paste", False)):
-            return
-        try:
-            pasted = self.root.clipboard_get()
-        except _EXPECTED_APP_ERRORS:
-            return
-        if pasted is None:
-            return
-        is_valid, safe_text, reason = clipboard_service.validate_clipboard_paste_payload(
-            pasted,
-            validation_service.validate_editor_text_payload,
+        text_context_action_service.on_input_context_paste(
+            self,
+            clipboard_service=clipboard_service,
+            validation_service=validation_service,
+            expected_errors=_EXPECTED_APP_ERRORS,
         )
-        if not is_valid:
-            self._show_error_overlay("Invalid Entry", reason)
-            return
-        try:
-            state = str(widget.cget("state")).lower()
-        except _EXPECTED_APP_ERRORS:
-            state = "normal"
-        if state in ("readonly", "disabled"):
-            return
-        try:
-            if self._input_widget_has_selection(widget):
-                widget.delete("sel.first", "sel.last")
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            widget.insert("insert", safe_text)
-        except _EXPECTED_APP_ERRORS:
-            return
 
     @staticmethod
     def _parse_suggestion_before_after(message):
@@ -3954,48 +3486,13 @@ if button._siindbad_base_image is None:
         return bool(payload and payload.get("after") is not None)
 
     def _apply_line_autofix(self, line_no, before_text, after_text):
-        if not line_no:
-            return False
-        raw_line = self._line_text(int(line_no))
-        if raw_line is None:
-            return False
-        indent = re.match(r"^\s*", raw_line).group(0) if raw_line else ""
-        before = str(before_text) if before_text is not None else ""
-        after = str(after_text or "")
-
-        new_line = None
-        caret_col = 0
-        if before and before in raw_line:
-            replace_at = raw_line.find(before)
-            new_line = raw_line.replace(before, after, 1)
-            caret_col = max(0, int(replace_at + len(after)))
-        elif before and raw_line.strip() == before.strip():
-            new_line = indent + after.lstrip()
-            caret_col = max(0, len(new_line))
-        elif not before:
-            new_line = indent + after.lstrip()
-            caret_col = max(0, len(new_line))
-        else:
-            stripped_raw = raw_line.strip()
-            if stripped_raw:
-                new_line = indent + after.lstrip()
-                caret_col = max(0, len(new_line))
-            else:
-                new_line = after
-                caret_col = max(0, len(new_line))
-        if new_line is None:
-            return False
-
-        try:
-            start_idx = f"{int(line_no)}.0"
-            self.text.delete(start_idx, f"{int(line_no)}.0 lineend")
-            self.text.insert(start_idx, new_line)
-            caret_col = min(max(int(caret_col), 0), len(new_line))
-            self.text.mark_set("insert", f"{int(line_no)}.{caret_col}")
-            self.text.see(f"{int(line_no)}.{caret_col}")
-            return True
-        except _EXPECTED_APP_ERRORS:
-            return False
+        return text_context_action_service.apply_line_autofix(
+            self,
+            line_no,
+            before_text,
+            after_text,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _restore_insert_index(self, restore_index, log_failure=False):
         """Best-effort cursor restore after local text rewrites or re-render passes."""
@@ -4340,7 +3837,7 @@ if button._siindbad_base_image is None:
             except _EXPECTED_APP_ERRORS:
                 legacy_path = None
         if legacy_path:
-            paths.append(legacy_path)
+            paths.append(str(legacy_path))
         for path in paths:
             if not os.path.isfile(path):
                 continue
@@ -4350,6 +3847,8 @@ if button._siindbad_base_image is None:
                     data = reader(path, encoding="utf-8")
                 else:
                     data = windows_runtime_service.read_json_file(path=path, encoding="utf-8")
+                if not isinstance(data, dict):
+                    continue
                 fs = data.get("font_size")
                 if isinstance(fs, int) and 6 <= fs <= 32:
                     self._font_size = fs
@@ -4439,13 +3938,11 @@ if button._siindbad_base_image is None:
 
     @staticmethod
     def _hex_to_rgb_tuple(hex_color, default_rgb=(220, 235, 245)):
-        try:
-            raw = str(hex_color).strip().lstrip("#")
-            if len(raw) != 6:
-                return default_rgb
-            return (int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16))
-        except _EXPECTED_APP_ERRORS:
-            return default_rgb
+        return color_utility_service.hex_to_rgb_tuple(
+            hex_color,
+            default_rgb=default_rgb,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     @staticmethod
     def _normalize_root_tree_key(value):
@@ -4900,7 +4397,15 @@ if button._siindbad_base_image is None:
         if style == "B":
             spec = self._siindbad_b_search_spec()
             if spec:
-                return int(spec.get("width", 172))
+                width_value = spec.get("width", 172)
+                if isinstance(width_value, int):
+                    return width_value
+                if isinstance(width_value, (float, str)):
+                    try:
+                        return int(width_value)
+                    except _EXPECTED_APP_ERRORS:
+                        return 172
+                return 172
             return 172
         return 156
 
@@ -5016,7 +4521,9 @@ if button._siindbad_base_image is None:
         if style == "B":
             spec = self._siindbad_b_search_spec()
             if spec:
-                search_spec_width = spec.get("width", 172)
+                width_value = spec.get("width", 172)
+                if isinstance(width_value, int):
+                    search_spec_width = width_value
         return layout_topbar_core.resolve_find_entry_base_width(
             style=style,
             search_spec_width=search_spec_width,
@@ -5181,7 +4688,7 @@ if button._siindbad_base_image is None:
         input_box = search.get("input_box")
         if width <= 0 or height <= 0:
             return None
-        spec = {"width": width, "height": height}
+        spec: dict[str, object] = {"width": width, "height": height}
         if base_path and os.path.isfile(base_path):
             spec["base_path"] = base_path
             try:
@@ -5571,142 +5078,13 @@ if button._siindbad_base_image is None:
         return label
 
     def _render_font_control(self):
-        parent = self._font_control_host
-        if parent is None or not parent.winfo_exists():
-            return
-        for child in parent.winfo_children():
-            child.destroy()
-
-        self._font_stepper_label = None
-        self._font_size_value_label = None
-        self.font_size_combo = None
-        self.font_size_var = None
-
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        style = self._siindbad_effective_style()
-        if variant == "SIINDBAD" and style == "B":
-            # SIINDBAD Variant-B uses generated font sprite + hitboxes.
-            self._toolbar_button_images = {}
-            if not self._load_siindbad_b_font_sprite_image():
-                self._load_toolbar_button_images_from_assets(
-                    style="B",
-                    mapping={"font": (("font2b", "font2", "font"), 146, 34, True)},
-                )
-            self._make_font_stepper(parent).pack(side="left")
-            return
-        if variant == "SIINDBAD":
-            self._make_siindbad_font_stepper(parent).pack(side="left")
-            return
-        if variant == "KAMUE":
-            theme = getattr(self, "_theme", {})
-            bg = theme.get("bg", "#0f131a")
-            panel = theme.get("panel", "#161b24")
-            fg = theme.get("fg", "#e6e6e6")
-            # Keep the previous balanced look, but slightly shaded darker.
-            border = theme.get("find_border", "#cfb5ee")
-            inner_border = theme.get("logo_border_outer", "#6b37b6")
-            label_family = self._resolve_font_family(
-                ["Segoe UI Semibold", "Segoe UI Bold", "Segoe UI"],
-                self._preferred_mono_family(),
-            )
-
-            host = tk.Frame(
-                parent,
-                bg=bg,
-                bd=0,
-                highlightthickness=1,
-                highlightbackground=border,
-                highlightcolor=border,
-                width=124,
-                height=self._siindbad_b_button_height("find", default_height=33),
-            )
-            host.pack(side="left")
-            host.pack_propagate(False)
-            # Add a subtle dark tint under the border to shade it without over-purple shift.
-            shade_layer = tk.Frame(host, bg="#0b0615", bd=0, highlightthickness=0)
-            shade_layer.place(x=0, y=0, relwidth=1, relheight=1)
-
-            inner = tk.Frame(
-                host,
-                bg=panel,
-                bd=0,
-                highlightthickness=1,
-                highlightbackground=inner_border,
-                highlightcolor=inner_border,
-            )
-            inner.pack(fill="both", expand=True, padx=1, pady=1)
-            controls = tk.Frame(inner, bg=panel, bd=0, highlightthickness=0)
-            controls.place(relx=0.5, rely=0.5, anchor="center")
-
-            label = tk.Label(
-                controls,
-                text="FONT",
-                bg=panel,
-                fg=fg,
-                font=(label_family, 10, "bold"),
-                bd=0,
-                highlightthickness=0,
-            )
-            label.pack(side="left", padx=(1, 3))
-
-            values = tuple(str(i) for i in range(6, 33))
-            self.font_size_var = tk.StringVar(value=str(int(self._font_size)))
-            combo_style = "Kamue.FontSize.TCombobox"
-            number_font = self._font_dropdown_number_font()
-            style = ttk.Style(self.root)
-            style.configure(
-                combo_style,
-                fieldbackground=panel,
-                foreground=fg,
-                background=panel,
-                bordercolor=inner_border,
-                arrowcolor=fg,
-                lightcolor=panel,
-                darkcolor=panel,
-                padding=1,
-                font=number_font,
-            )
-            style.map(
-                combo_style,
-                fieldbackground=[("readonly", panel), ("active", panel)],
-                foreground=[("readonly", fg), ("active", fg)],
-                selectforeground=[("readonly", fg)],
-                selectbackground=[("readonly", theme.get("select_bg", "#2f3a4d"))],
-                arrowcolor=[("readonly", fg), ("active", fg)],
-                bordercolor=[("readonly", inner_border), ("active", border)],
-            )
-            combo = ttk.Combobox(
-                controls,
-                textvariable=self.font_size_var,
-                values=values,
-                state="readonly",
-                width=5,
-                style=combo_style,
-                font=number_font,
-                justify="center",
-            )
-            combo.pack(side="left", padx=(0, 1), pady=0)
-            combo.bind("<<ComboboxSelected>>", self._on_font_size_selected)
-            select_bg = theme.get("select_bg", "#2f3a4d")
-            select_fg = theme.get("select_fg", "#ffffff")
-            self._style_combobox_popdown(
-                combo,
-                bg=panel,
-                fg=fg,
-                select_bg=select_bg,
-                select_fg=select_fg,
-                font=number_font,
-            )
-            combo.bind(
-                "<Button-1>",
-                lambda _evt, cb=combo, bg_color=panel, fg_color=fg, sb=select_bg, sf=select_fg, nf=number_font:
-                    self._style_combobox_popdown(cb, bg=bg_color, fg=fg_color, select_bg=sb, select_fg=sf, font=nf),
-                add="+",
-            )
-            self.font_size_combo = combo
-            return
-
-        self._make_font_stepper(parent).pack(side="left")
+        return UI_FACTORY.build_font_control(
+            self,
+            self._font_control_host,
+            tk_module=tk,
+            ttk_module=ttk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _style_combobox_popdown(self, combo, bg, fg, select_bg, select_fg, font=None):
         """Style the ttk.Combobox dropdown listbox to match current theme."""
@@ -6008,61 +5386,12 @@ if button._siindbad_base_image is None:
         )
 
     def _build_bug_report_chip(self, parent):
-        self._bug_report_host = parent
-        theme = getattr(self, "_theme", {})
-        spec = self._footer_visual_spec()
-        chip_colors = self._bug_chip_palette(getattr(self, "_app_theme_variant", "SIINDBAD"))
-        title = tk.Label(
+        return ui_factory_service.build_bug_report_chip(
+            self,
             parent,
-            text="REPORT :",
-            bg=theme.get("credit_bg", "#0b1118"),
-            fg=theme.get("credit_label_fg", "#b5cade"),
-            font=spec["label_font"],
-            bd=0,
-            highlightthickness=0,
+            tk_module=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
         )
-        title.pack(side="left", padx=(0, spec["label_gap"]))
-        self._bug_report_label = title
-        chip = tk.Frame(
-            parent,
-            bg=chip_colors["bg"],
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=chip_colors["border"],
-            highlightcolor=chip_colors["border"],
-        )
-        icon_label = tk.Label(
-            chip,
-            text="",
-            bg=chip_colors["bg"],
-            fg=chip_colors["fg"],
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-        )
-        icon_label.pack(side="left", padx=(spec["chip_icon_left_pad"], spec["chip_icon_gap"]), pady=0)
-        text_label = tk.Label(
-            chip,
-            text="SUBMIT A BUG",
-            bg=chip_colors["bg"],
-            fg=chip_colors["fg"],
-            font=spec["chip_font"],
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-        )
-        text_label.pack(side="left", padx=(0, spec["chip_text_right_pad"]), pady=0)
-        for widget in (chip, icon_label, text_label):
-            widget.bind("<Button-1>", lambda _event: self._open_bug_report_dialog())
-            try:
-                widget.configure(cursor="hand2")
-            except _EXPECTED_APP_ERRORS:
-                pass
-        chip.pack(side="left")
-        self._bug_report_chip = chip
-        self._bug_report_chip_icon_label = icon_label
-        self._bug_report_chip_text_label = text_label
-        self._sync_bug_report_chip_colors()
 
     def _sync_bug_report_chip_colors(self):
         chip = getattr(self, "_bug_report_chip", None)
@@ -6351,58 +5680,6 @@ if button._siindbad_base_image is None:
     def _next_startup_loader_line(self, ready=False):
         return editor_purge_service._next_startup_loader_line(self, ready)
 
-    def _startup_loader_title_photo(self, text, scale=1.0):
-        cache = getattr(self, "_startup_loader_title_cache", None)
-        if cache is None:
-            cache = {}
-            self._startup_loader_title_cache = cache
-        scale = max(0.5, min(1.5, float(scale or 1.0)))
-        key = f"{str(text or '')}|{int(round(scale * 100.0))}"
-        cached = cache.get(key)
-        if cached is not None:
-            return cached
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            draw_module = importlib.import_module("PIL.ImageDraw")
-            font_module = importlib.import_module("PIL.ImageFont")
-            image_tk_module = importlib.import_module("PIL.ImageTk")
-        except (ImportError, AttributeError):
-            self._bounded_cache_put(cache, key, None, max_items=16)
-            return None
-
-        font_paths = [
-            os.path.join(self._resource_base_dir(), "assets", "fonts", "Orbitron-Bold.ttf"),
-            os.path.join(self._resource_base_dir(), "assets", "fonts", "Rajdhani-SemiBold.ttf"),
-        ]
-        text_font = None
-        font_size = max(12, int(round(20 * scale)))
-        for path in font_paths:
-            try:
-                if os.path.isfile(path):
-                    text_font = font_module.truetype(path, font_size)
-                    break
-            except (OSError, ValueError, TypeError, AttributeError):
-                continue
-        if text_font is None:
-            self._bounded_cache_put(cache, key, None, max_items=16)
-            return None
-
-        try:
-            canvas_w = max(240, int(round(430 * scale)))
-            canvas_h = max(24, int(round(32 * scale)))
-            canvas = image_module.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-            draw = draw_module.Draw(canvas)
-            # Soft neon halo behind core title text.
-            draw.text((1, 1), str(text or ""), font=text_font, fill=(54, 186, 255, 74))
-            draw.text((2, 1), str(text or ""), font=text_font, fill=(168, 133, 255, 46))
-            draw.text((0, 0), str(text or ""), font=text_font, fill=(226, 244, 255, 255))
-            photo = image_tk_module.PhotoImage(canvas)
-            self._bounded_cache_put(cache, key, photo, max_items=16)
-            return photo
-        except (OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
-            self._bounded_cache_put(cache, key, None, max_items=16)
-            return None
-
     def _show_startup_loader(self):
         return startup_loader_ui_service.show_startup_loader(
             self,
@@ -6475,43 +5752,6 @@ if button._siindbad_base_image is None:
 
     def _tick_startup_loader_title(self):
         return editor_purge_service._tick_startup_loader_title(self)
-
-    def _startup_loader_rounded_fill_photo(self, color_hex, width_px, height_px):
-        width_px = max(1, int(width_px or 1))
-        height_px = max(1, int(height_px or 1))
-        cache = getattr(self, "_startup_loader_fill_photo_cache", None)
-        if not isinstance(cache, dict):
-            cache = {}
-            self._startup_loader_fill_photo_cache = cache
-        key = (str(color_hex or "").lower(), width_px, height_px)
-        cached = cache.get(key)
-        if cached is not None:
-            return cached
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            draw_module = importlib.import_module("PIL.ImageDraw")
-            image_tk_module = importlib.import_module("PIL.ImageTk")
-
-            aa = 3
-            big_w = width_px * aa
-            big_h = height_px * aa
-            radius = max(aa * 2, int(round(min(big_w, big_h) * 0.38)))
-            rgba = image_module.new("RGBA", (big_w, big_h), (0, 0, 0, 0))
-            draw = draw_module.Draw(rgba)
-            fill_color = str(color_hex or "#4f90bf")
-            draw.rounded_rectangle(
-                (0, 0, max(0, big_w - 1), max(0, big_h - 1)),
-                radius=radius,
-                fill=fill_color,
-                outline=None,
-            )
-            rgba = rgba.resize((width_px, height_px), image_module.LANCZOS)
-            photo = image_tk_module.PhotoImage(rgba)
-            self._bounded_cache_put(cache, key, photo, max_items=256)
-            return photo
-        except (ImportError, OSError, ValueError, TypeError, AttributeError):
-            self._bounded_cache_put(cache, key, None, max_items=256)
-            return None
 
     def _startup_loader_rounded_panel_photo(
         self,
@@ -6629,7 +5869,6 @@ if button._siindbad_base_image is None:
         # overlay_exists = False
         # overlay_exists = bool(overlay.winfo_exists())
         # except (tk.TclError, RuntimeError, AttributeError, ValueError):
-        # self._auto_update_startup_enabled()
         return startup_loader_lifecycle_service.hide_startup_loader(
             self,
             tk_module=tk,
@@ -7033,7 +6272,7 @@ if button._siindbad_base_image is None:
                 bg = theme.get("bg", "#0f131a")
                 self.logo_label = tk.Label(
                     parent,
-                    image=self.logo_image,
+                    image=(self.logo_image if self.logo_image is not None else ""),
                     bg=bg,
                     bd=0,
                     highlightthickness=0,
@@ -7041,7 +6280,8 @@ if button._siindbad_base_image is None:
                 self.logo_label.pack(anchor="center", pady=0)
         else:
             try:
-                self.logo_label.configure(image=self.logo_image)
+                if self.logo_label is not None:
+                    self.logo_label.configure(image=(self.logo_image if self.logo_image is not None else ""))
             except _EXPECTED_APP_ERRORS:
                 pass
 
@@ -7261,124 +6501,54 @@ if button._siindbad_base_image is None:
             self.status.config(text=msg)
 
     def _begin_document_load_session(self) -> None:
-        depth = max(0, int(getattr(self, "_document_load_depth", 0) or 0)) + 1
-        self._document_load_depth = depth
-        self._document_load_in_progress = True
+        startup_loader_lifecycle_service.begin_document_load_session(self)
 
     def _end_document_load_session(self) -> None:
-        depth = max(0, int(getattr(self, "_document_load_depth", 0) or 0) - 1)
-        self._document_load_depth = depth
-        self._document_load_in_progress = bool(depth > 0)
-        if depth == 0:
-            self._document_load_last_completed_ts = time.perf_counter()
+        startup_loader_lifecycle_service.end_document_load_session(
+            self,
+            time_module=time,
+        )
 
     def _is_document_load_cooldown_active(self) -> bool:
-        if bool(getattr(self, "_document_load_in_progress", False)):
-            return True
-        last_completed_ts = float(getattr(self, "_document_load_last_completed_ts", 0.0) or 0.0)
-        if last_completed_ts <= 0.0:
-            return False
-        quiet_window_ms = max(0.0, float(getattr(self, "_document_load_quiet_window_ms", 220) or 220))
-        if quiet_window_ms <= 0.0:
-            return False
-        elapsed_ms = max(0.0, (time.perf_counter() - last_completed_ts) * 1000.0)
-        return elapsed_ms < quiet_window_ms
+        return startup_loader_lifecycle_service.is_document_load_cooldown_active(
+            self,
+            time_module=time,
+        )
 
     def _finish_load_file_async(self, request_id: int, path: str, payload: object, error_text: str) -> None:
-        self._document_load_async_after_id = None
-        self._document_load_async_result = None
-        active_request_id = int(getattr(self, "_active_document_load_request_id", 0) or 0)
-        if int(request_id) != active_request_id:
-            self._end_document_load_session()
-            return
-        self._active_document_load_request_id = 0
-        try:
-            if bool(getattr(self, "_shutdown_cleanup_done", False)):
-                return
-            if error_text:
-                messagebox.showerror("Load failed", str(error_text))
-                return
-            editor_purge_service.apply_loaded_document(self, path, payload)
-        finally:
-            self._end_document_load_session()
+        startup_loader_lifecycle_service.finish_document_load_async(
+            self,
+            request_id,
+            path,
+            payload,
+            error_text,
+            document_service_module=document_service,
+            messagebox_module=messagebox,
+            time_module=time,
+        )
 
     def _poll_load_file_async(self, request_id: int) -> None:
-        self._document_load_async_after_id = None
-        result = getattr(self, "_document_load_async_result", None)
-        if not isinstance(result, dict):
-            self._finish_load_file_async(request_id, "", None, "Load interrupted.")
-            return
-        if int(result.get("request_id", 0) or 0) != int(request_id):
-            self._finish_load_file_async(request_id, "", None, "Load request mismatch.")
-            return
-        if not bool(result.get("done", False)):
-            root = getattr(self, "root", None)
-            if root is None:
-                self._finish_load_file_async(request_id, "", None, "Load interrupted.")
-                return
-            try:
-                self._document_load_async_after_id = root.after(12, lambda rid=request_id: self._poll_load_file_async(rid))
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                self._document_load_async_after_id = None
-                self._finish_load_file_async(request_id, "", None, "Load interrupted.")
-            return
-        self._finish_load_file_async(
+        startup_loader_lifecycle_service.poll_document_load_async(
+            self,
             request_id,
-            str(result.get("path", "") or ""),
-            result.get("payload"),
-            str(result.get("error_text", "") or ""),
+            tk_module=tk,
+            document_service_module=document_service,
+            messagebox_module=messagebox,
+            time_module=time,
         )
 
     def _load_file_async(self, path: str) -> None:
-        use_path = str(path or "").strip()
-        if not use_path:
-            return
-        if bool(getattr(self, "_document_load_in_progress", False)):
-            self.set_status("Load already in progress.")
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            if not bool(root.winfo_exists()):
-                return
-        except (tk.TclError, RuntimeError, AttributeError):
-            return
-        request_id = int(getattr(self, "_document_load_request_seq", 0) or 0) + 1
-        self._document_load_request_seq = request_id
-        self._active_document_load_request_id = request_id
-        self._begin_document_load_session()
-        self.set_status(f"Loading {os.path.basename(use_path)}...")
-        self._document_load_async_result = {
-            "request_id": request_id,
-            "path": use_path,
-            "done": False,
-            "payload": None,
-            "error_text": "",
-        }
-
-        def _worker():
-            payload = None
-            error_text = ""
-            try:
-                payload = editor_purge_service.load_document_payload(use_path)
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
-                error_text = str(exc)
-            result = getattr(self, "_document_load_async_result", None)
-            if not isinstance(result, dict):
-                return
-            if int(result.get("request_id", 0) or 0) != int(request_id):
-                return
-            result["payload"] = payload
-            result["error_text"] = error_text
-            result["done"] = True
-
-        threading.Thread(target=_worker, daemon=True, name=f"load_file_{request_id}").start()
-        try:
-            self._document_load_async_after_id = root.after(12, lambda rid=request_id: self._poll_load_file_async(rid))
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            self._document_load_async_after_id = None
-            self._finish_load_file_async(request_id, "", None, "Could not start async load.")
+        startup_loader_lifecycle_service.load_file_async(
+            self,
+            path,
+            os_module=os,
+            threading_module=threading,
+            json_module=json,
+            tk_module=tk,
+            document_service_module=document_service,
+            messagebox_module=messagebox,
+            time_module=time,
+        )
 
     def open_file(self):
         path = filedialog.askopenfilename(
@@ -7450,7 +6620,7 @@ if button._siindbad_base_image is None:
         )
 
     @staticmethod
-    def _nudge_marker_image_y(image, delta_y=-1):
+    def _nudge_marker_image_y(image, delta_y=-1.0):
         """Shift marker pixels vertically while preserving image size."""
         try:
             dy = float(delta_y)
@@ -7478,19 +6648,7 @@ if button._siindbad_base_image is None:
         return tree_policy_service.should_use_input_red_arrow_for_path(self, path)
 
     def _is_input_database_locked_subcategory_path(self, path):
-        normalized = list(path or [])
-        if len(normalized) != 2:
-            return False
-        if self._input_mode_root_key_for_path(normalized) != "database":
-            return False
-        entry = self._get_value(normalized)
-        if not isinstance(entry, dict):
-            return False
-        tables = entry.get("tables")
-        if not isinstance(tables, dict) or not tables:
-            return False
-        first_table = str(next(iter(tables.keys()))).strip().casefold()
-        return first_table in {"grades", "users", "customers"}
+        return input_mode_render_dispatch_service.is_input_database_locked_subcategory_path(self, path)
 
     def _load_input_bank_red_arrow_icon(self, expandable=False, expanded=False):
         # INPUT-only Bank marker override: red arrow without affecting JSON marker assets.
@@ -7667,18 +6825,6 @@ if button._siindbad_base_image is None:
             items.extend(self._collect_tree_items(child))
         return items
 
-    def _has_loading_child(self, item_id):
-        children = self.tree.get_children(item_id)
-        if len(children) != 1:
-            return False
-        return self.tree.item(children[0], "text") == "(loading)"
-
-    def _ensure_all_loaded(self, root_id=""):
-        for child in self.tree.get_children(root_id):
-            if self._has_loading_child(child):
-                self._populate_children(child)
-            self._ensure_all_loaded(child)
-
     def _open_to_item(self, item_id):
         parent = self.tree.parent(item_id)
         while parent:
@@ -7692,144 +6838,54 @@ if button._siindbad_base_image is None:
 
     @staticmethod
     def _find_search_value_summary(value, max_tokens=24, max_chars=360):
-        # Keep JSON Find Next focused on local node content so one hot subtree
-        # does not flood matches and starve other categories (e.g. Phone).
-        tokens = []
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            text = str(value).strip()
-            if text:
-                tokens.append(text)
-        elif isinstance(value, dict):
-            for child in value.values():
-                if len(tokens) >= int(max_tokens):
-                    break
-                if isinstance(child, (str, int, float, bool)) or child is None:
-                    text = str(child).strip()
-                    if text:
-                        tokens.append(text)
-        elif isinstance(value, list):
-            for child in value:
-                if len(tokens) >= int(max_tokens):
-                    break
-                if isinstance(child, (str, int, float, bool)) or child is None:
-                    text = str(child).strip()
-                    if text:
-                        tokens.append(text)
-        joined = " ".join(tokens)
-        if len(joined) > int(max_chars):
-            return joined[: int(max_chars)]
-        return joined
+        return tree_navigation_service.find_search_value_summary(
+            value,
+            max_tokens=max_tokens,
+            max_chars=max_chars,
+        )
 
     def _append_find_search_entries(self, path, value, entries):
         return editor_purge_service._append_find_search_entries(self, path, value, entries)
 
     def _ensure_tree_item_for_path(self, target_path):
-        if not isinstance(target_path, list):
-            return None
-        current_item = ""
-        if not target_path:
-            return current_item
-
-        for depth, _key in enumerate(target_path):
-            if current_item:
-                if self._has_loading_child(current_item):
-                    self._populate_children(current_item)
-            elif not self.tree.get_children(""):
-                self._populate_children("")
-
-            prefix = target_path[: depth + 1]
-            next_item = None
-            for child in self.tree.get_children(current_item):
-                child_path = self.item_to_path.get(child)
-                if isinstance(child_path, list) and child_path == prefix:
-                    next_item = child
-                    break
-
-            if next_item is None:
-                self._populate_children(current_item)
-                for child in self.tree.get_children(current_item):
-                    child_path = self.item_to_path.get(child)
-                    if isinstance(child_path, list) and child_path == prefix:
-                        next_item = child
-                        break
-
-            if next_item is None:
-                # Network roots can bucket list rows under group nodes (ROUTER/DEVICE/etc.).
-                # Resolve those rows through the group node so Find Next can jump cross-category.
-                next_item = self._resolve_grouped_list_item(current_item, prefix)
-
-            if next_item is None:
-                return None
-            current_item = next_item
-        return current_item
+        TREE_NAV = getattr(self, "TREE_NAV", None)
+        if TREE_NAV is None:
+            TREE_NAV = tree_navigation_service.bind(
+                self,
+                expected_errors=_EXPECTED_APP_ERRORS,
+            )
+            self.TREE_NAV = TREE_NAV
+        return TREE_NAV.resolve_path(target_path)
 
     def _network_group_for_list_index(self, list_path, row_index):
-        if not isinstance(list_path, list) or not isinstance(row_index, int):
-            return None
-        try:
-            list_value = self._get_value(list_path)
-        except _EXPECTED_APP_ERRORS:
-            return None
-        if not isinstance(list_value, list):
-            return None
-        if row_index < 0 or row_index >= len(list_value):
-            return None
-        if not self._is_network_list(list_path, list_value):
-            return None
-        row = list_value[row_index]
-        if isinstance(row, dict):
-            group = str(row.get("type", "") or "").strip()
-            return group or "UNKNOWN"
-        return "UNKNOWN"
+        TREE_NAV = getattr(self, "TREE_NAV", None)
+        if TREE_NAV is None:
+            TREE_NAV = tree_navigation_service.bind(
+                self,
+                expected_errors=_EXPECTED_APP_ERRORS,
+            )
+            self.TREE_NAV = TREE_NAV
+        return TREE_NAV.get_group_for_index(list_path, row_index)
 
     def _resolve_grouped_list_item(self, current_item, prefix):
-        if not current_item:
-            return None
-        if not isinstance(prefix, list) or len(prefix) < 2:
-            return None
-        list_path = prefix[:-1]
-        row_index = prefix[-1]
-        if not isinstance(row_index, int):
-            return None
-        group = self._network_group_for_list_index(list_path, row_index)
-        if not group:
-            return None
-        group_item = self._ensure_tree_group_item_loaded(list_path, group)
-        if group_item is None:
-            return None
-        if self._has_loading_child(group_item):
-            self._populate_children(group_item)
-        for child in self.tree.get_children(group_item):
-            child_path = self.item_to_path.get(child)
-            if isinstance(child_path, list) and child_path == prefix:
-                return child
-        return None
+        TREE_NAV = getattr(self, "TREE_NAV", None)
+        if TREE_NAV is None:
+            TREE_NAV = tree_navigation_service.bind(
+                self,
+                expected_errors=_EXPECTED_APP_ERRORS,
+            )
+            self.TREE_NAV = TREE_NAV
+        return TREE_NAV.resolve_grouped_list_item(current_item, prefix)
 
     def _ensure_tree_group_item_loaded(self, list_path, group):
-        parent_id = self._ensure_tree_item_for_path(list_path)
-        if parent_id is None:
-            return None
-        if self._has_loading_child(parent_id):
-            self._populate_children(parent_id)
-
-        def _find_group_item():
-            for child in self.tree.get_children(parent_id):
-                item_path = self.item_to_path.get(child)
-                if (
-                    isinstance(item_path, tuple)
-                    and len(item_path) == 3
-                    and item_path[0] == "__group__"
-                    and item_path[1] == list_path
-                    and item_path[2] == group
-                ):
-                    return child
-            return None
-
-        group_item = _find_group_item()
-        if group_item is not None:
-            return group_item
-        self._populate_children(parent_id)
-        return _find_group_item()
+        TREE_NAV = getattr(self, "TREE_NAV", None)
+        if TREE_NAV is None:
+            TREE_NAV = tree_navigation_service.bind(
+                self,
+                expected_errors=_EXPECTED_APP_ERRORS,
+            )
+            self.TREE_NAV = TREE_NAV
+        return TREE_NAV.ensure_group_item_loaded(list_path, group)
 
     def find_next(self, event=None):
         return json_view_manager.JSON_VIEW.json_find_orchestrator_service.find_next(
@@ -7870,33 +6926,11 @@ if button._siindbad_base_image is None:
 
     @staticmethod
     def _is_database_table_rows_path(path):
-        if not isinstance(path, list):
-            return False
-        if len(path) < 4:
-            return False
-        return str(path[0]) == "Database" and str(path[2]) == "tables"
+        return input_mode_render_dispatch_service.is_database_table_rows_path(path)
 
     @staticmethod
     def _database_table_row_label(idx, item):
-        if isinstance(item, dict):
-            # Prefer first nested string value (email/name/etc.) before numeric ids.
-            first_scalar = None
-            for value_obj in item.values():
-                if not isinstance(value_obj, dict):
-                    continue
-                value = value_obj.get("value")
-                if isinstance(value, str):
-                    text = value.strip()
-                    if text:
-                        return text
-                if first_scalar is None and isinstance(value, (int, float)) and not isinstance(value, bool):
-                    first_scalar = str(value)
-            direct_value = item.get("value")
-            if isinstance(direct_value, (str, int, float)) and str(direct_value).strip():
-                return str(direct_value)
-            if first_scalar is not None:
-                return first_scalar
-        return f"[{idx}]"
+        return label_format_service.database_table_row_label(idx, item)
 
     def on_expand(self, event):
         item_id = self.tree.focus()
@@ -8005,614 +7039,7 @@ if button._siindbad_base_image is None:
     def _set_json_text_editable(self, editable=True):
         return json_diagnostics_service._set_json_text_editable(self, editable)
 
-    def _json_token_followed_by_colon(self, end_index, lookahead_chars=24):
-        return json_repair_service._json_token_followed_by_colon(self, end_index, lookahead_chars)
-
-    def _tag_json_locked_key_occurrences(self, key_name):
-        return json_diagnostics_service._tag_json_locked_key_occurrences(self, key_name)
-
-    def _tag_json_xy_key_occurrences(self, key_name):
-        return json_diagnostics_service._tag_json_xy_key_occurrences(self, key_name)
-
-    def _should_batch_tag_locked_keys(self, key_names):
-        return json_diagnostics_service._should_batch_tag_locked_keys(self, key_names)
-
-    def _tag_json_key_occurrences_batch(self, locked_key_names, xy_key_names=(), line_limit=None):
-        return json_diagnostics_service._tag_json_key_occurrences_batch(self, locked_key_names, xy_key_names, line_limit)
-
-    def _tag_json_string_value_literals(self, line_limit=None):
-        return json_diagnostics_service._tag_json_string_value_literals(self, line_limit)
-
-    def _tag_json_brace_tokens(self, line_limit=None):
-        return json_diagnostics_service._tag_json_brace_tokens(self, line_limit)
-
-    def _tag_json_boolean_literals(self, line_limit=None):
-        return json_diagnostics_service._tag_json_boolean_literals(self, line_limit)
-
-    def _tag_json_property_keys(self, line_limit=None):
-        return json_diagnostics_service._tag_json_property_keys(self, line_limit)
-
-    def _json_literal_offsets_after_key(self, key_end_index, literal_token, lookahead_chars=120, ignore_case=False):
-        return json_diagnostics_service._json_literal_offsets_after_key(self, key_end_index, literal_token, lookahead_chars, ignore_case)
-
-    def _tag_json_locked_value_occurrences(self, field_name, literal_value, ignore_case=False):
-        return json_diagnostics_service._tag_json_locked_value_occurrences(self, field_name, literal_value, ignore_case)
-
-    def _apply_json_view_lock_state(self, path):
-        return json_diagnostics_service._apply_json_view_lock_state(self, path)
-
-    def _apply_json_view_key_highlights(self, path, line_limit=None):
-        # Legacy wiring token kept for regression checks: xy_keys = ("x", "y") if len(use_path) == 1 else ()
-        return editor_purge_service._apply_json_view_key_highlights(self, path, line_limit)
-
-    def _apply_json_view_value_highlights(self, path):
-        return editor_purge_service._apply_json_view_value_highlights(self, path)
-
-    def _describe(self, value):
-        return json_diagnostics_service._describe(self, value)
-
-
-    def apply_edit(self):
-        return editor_purge_service.apply_edit(self)
-
-    def _extract_key_name_from_diag_line(self, line_text):
-        return json_diagnostics_service._extract_key_name_from_diag_line(self, line_text)
-
-    def _locked_field_name_from_parse_diag(self, path, diag):
-        return editor_purge_service._locked_field_name_from_parse_diag(self, path, diag)
-
-    def _find_lock_anchor_index(self, field_name, preferred_index=None):
-        return json_diagnostics_service._find_lock_anchor_index(self, field_name, preferred_index)
-
-    def _diag_line_mentions_locked_field(self, line_no, field_name):
-        return json_diagnostics_service._diag_line_mentions_locked_field(self, line_no, field_name)
-
-    def _maybe_restore_locked_parse_error(self, path, diag, exc=None):
-        # Parse-lock guard gate: delegated lock-restore flow preserves strict line/key gating.
-        return editor_purge_service._maybe_restore_locked_parse_error(self, path, diag, exc)
-
-    def _format_json_error(self, exc):
-        return json_error_diagnostics_core.format_json_error(self, exc)
-
-
-    def _example_for_error(self, exc):
-        return json_diagnostics_service._example_for_error(self, exc)
-
-    def _missing_colon_example(self, line_text):
-        return json_repair_service._missing_colon_example(self, line_text)
-
-    def _is_json_value_token_start(self, value_text):
-        return json_diagnostics_service._is_json_value_token_start(self, value_text)
-
-    def _missing_colon_key_value_span(self, line_text):
-        return json_repair_service._missing_colon_key_value_span(self, line_text)
-
-    def _line_has_missing_colon_key_value(self, line_text):
-        return self._missing_colon_key_value_span(line_text) is not None
-
-    def _find_nearby_missing_colon_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_missing_colon_line(self, lineno, lookback)
-
-    def _is_key_colon_comma_line(self, line_text):
-        return json_repair_service._is_key_colon_comma_line(self, line_text)
-
-    def _key_colon_comma_to_list_open(self, line_text):
-        return json_repair_service._key_colon_comma_to_list_open(self, line_text)
-
-    def _line_extra_quote_in_string_value(self, line_text):
-        return json_repair_service._line_extra_quote_in_string_value(self, line_text)
-
-    def _fix_extra_quote_to_comma(self, line_text):
-        return json_repair_service._fix_extra_quote_to_comma(self, line_text)
-
-    def _line_has_trailing_stray_quote_after_comma(self, line_text):
-        return json_repair_service._line_has_trailing_stray_quote_after_comma(self, line_text)
-
-    def _fix_trailing_stray_quote_after_comma(self, line_text):
-        return json_repair_service._fix_trailing_stray_quote_after_comma(self, line_text)
-
-    def _find_nearby_trailing_stray_quote_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_trailing_stray_quote_line(self, lineno, lookback)
-
-    def _line_has_duplicate_trailing_comma(self, line_text):
-        return json_repair_service._line_has_duplicate_trailing_comma(self, line_text)
-
-    def _fix_duplicate_trailing_comma(self, line_text):
-        return json_repair_service._fix_duplicate_trailing_comma(self, line_text)
-
-    def _find_nearby_duplicate_trailing_comma_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_duplicate_trailing_comma_line(self, lineno, lookback)
-
-    def _line_requires_trailing_comma(self, lineno):
-        return json_repair_service._line_requires_trailing_comma(self, lineno)
-
-    def _duplicate_comma_run_span(self, line_text, lineno=None):
-        return json_repair_service._duplicate_comma_run_span(self, line_text, lineno)
-
-    def _line_has_duplicate_comma_run(self, line_text, lineno=None):
-        return self._duplicate_comma_run_span(line_text, lineno=lineno) is not None
-
-    def _fix_duplicate_comma_run(self, line_text, lineno=None):
-        return json_repair_service._fix_duplicate_comma_run(self, line_text, lineno)
-
-    def _find_nearby_duplicate_comma_run_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_duplicate_comma_run_line(self, lineno, lookback)
-
-    def _comma_before_colon_span(self, line_text):
-        return json_colon_comma_service.comma_before_colon_span(line_text)
-
-    def _line_has_comma_before_colon(self, line_text):
-        return json_colon_comma_service.line_has_comma_before_colon(line_text)
-
-    def _fix_comma_before_colon(self, line_text):
-        return json_colon_comma_service.fix_comma_before_colon(line_text)
-
-    def _find_nearby_comma_before_colon_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_comma_before_colon_line(self, lineno, lookback)
-
-    def _comma_after_colon_span(self, line_text):
-        return json_colon_comma_service.comma_after_colon_span(line_text)
-
-    def _line_has_comma_after_colon(self, line_text):
-        return json_colon_comma_service.line_has_comma_after_colon(line_text)
-
-    def _fix_comma_after_colon(self, line_text):
-        return json_colon_comma_service.fix_comma_after_colon(line_text)
-
-    def _find_nearby_comma_after_colon_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_comma_after_colon_line(self, lineno, lookback)
-
-    def _analyze_invalid_prefix_after_colon(self, line_text):
-        return json_repair_service._analyze_invalid_prefix_after_colon(self, line_text)
-
-    def _line_has_invalid_prefix_after_colon(self, line_text):
-        return self._analyze_invalid_prefix_after_colon(line_text) is not None
-
-    def _fix_invalid_prefix_after_colon(self, line_text):
-        return json_repair_service._fix_invalid_prefix_after_colon(self, line_text)
-
-    def _find_nearby_invalid_prefix_after_colon_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_invalid_prefix_after_colon_line(self, lineno, lookback)
-
-    def _comma_before_closer_span(self, line_text):
-        return json_colon_comma_service.comma_before_closer_span(line_text)
-
-    def _line_has_comma_before_closer(self, line_text):
-        return json_colon_comma_service.line_has_comma_before_closer(line_text)
-
-    def _fix_comma_before_closer(self, line_text):
-        return json_colon_comma_service.fix_comma_before_closer(line_text)
-
-    def _find_nearby_comma_before_closer_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_comma_before_closer_line(self, lineno, lookback)
-
-    def _comma_line_invalid_tail_span(self, line_text):
-        return json_colon_comma_service.comma_line_invalid_tail_span(line_text)
-
-    def _line_has_comma_line_invalid_tail(self, line_text):
-        return json_colon_comma_service.line_has_comma_line_invalid_tail(line_text)
-
-    def _expected_missing_close_symbol(self, lineno):
-        return json_repair_service._expected_missing_close_symbol(self, lineno)
-
-    def _fix_comma_line_invalid_tail(self, line_text, lineno=None):
-        return json_repair_service._fix_comma_line_invalid_tail(self, line_text, lineno)
-
-    def _find_nearby_comma_line_invalid_tail_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_comma_line_invalid_tail_line(self, lineno, lookback)
-
-    def _missing_key_quote_before_colon_span(self, line_text):
-        return json_property_key_rule_service.missing_key_quote_before_colon_span(line_text)
-
-    def _line_has_missing_key_quote_before_colon(self, line_text):
-        return json_property_key_rule_service.line_has_missing_key_quote_before_colon(line_text)
-
-    def _fix_property_key_symbol_before_colon(self, line_text):
-        return json_property_key_rule_service.fix_property_key_symbol_before_colon(line_text)
-
-    def _find_nearby_missing_key_quote_before_colon_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_missing_key_quote_before_colon_line(self, lineno, lookback)
-
-    def _property_key_invalid_escape_span(self, line_text):
-        return json_property_key_rule_service.property_key_invalid_escape_span(line_text)
-
-    def _line_has_property_key_invalid_escape(self, line_text):
-        return json_property_key_rule_service.line_has_property_key_invalid_escape(line_text)
-
-    def _fix_property_key_invalid_escape(self, line_text):
-        return json_property_key_rule_service.fix_property_key_invalid_escape(line_text)
-
-    def _find_nearby_property_key_invalid_escape_line(self, lineno, lookback=2):
-        return json_diagnostics_service._find_nearby_property_key_invalid_escape_line(self, lineno, lookback)
-
-    def _missing_key_quote_before_colon_diag(self, line_no, colno=1):
-        return json_repair_service._missing_key_quote_before_colon_diag(self, line_no, colno)
-
-    def _quoted_item_invalid_tail_span(self, line_text):
-        return json_repair_service._quoted_item_invalid_tail_span(self, line_text)
-
-    def _line_has_invalid_tail_after_quoted_item(self, line_text):
-        return json_repair_service._line_has_invalid_tail_after_quoted_item(self, line_text)
-
-    def _fix_invalid_tail_after_quoted_item(self, line_text, lineno=None):
-        return editor_purge_service._fix_invalid_tail_after_quoted_item(self, line_text, lineno)
-
-    def _find_nearby_invalid_tail_after_quoted_item_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_invalid_tail_after_quoted_item_line(self, lineno, lookback)
-
-    def _line_has_illegal_trailing_comma_before_close(self, line_text, lineno):
-        return json_repair_service._line_has_illegal_trailing_comma_before_close(self, line_text, lineno)
-
-    def _trailing_comma_before_close_col(self, line_text):
-        return json_repair_service._trailing_comma_before_close_col(self, line_text)
-
-    def _fix_illegal_trailing_comma_before_close(self, line_text):
-        return json_repair_service._fix_illegal_trailing_comma_before_close(self, line_text)
-
-    def _find_nearby_illegal_trailing_comma_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_illegal_trailing_comma_line(self, lineno, lookback)
-
-    def _line_has_illegal_comma_after_top_level_close(self, line_text, lineno):
-        return json_repair_service._line_has_illegal_comma_after_top_level_close(self, line_text, lineno)
-
-    def _top_level_close_symbol_run_span(self, line_text):
-        return json_top_level_close_service.top_level_close_symbol_run_span(line_text)
-
-    def _line_has_top_level_close_symbol_run(self, line_text, lineno):
-        return json_repair_service._line_has_top_level_close_symbol_run(self, line_text, lineno)
-
-    def _fix_top_level_close_symbol_run(self, line_text):
-        return json_top_level_close_service.fix_top_level_close_symbol_run(line_text)
-
-    def _find_nearby_top_level_close_symbol_run_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_top_level_close_symbol_run_line(self, lineno, lookback)
-
-    def _comma_run_after_top_level_close_span(self, line_text):
-        return json_top_level_close_service.comma_run_after_top_level_close_span(line_text)
-
-    def _fix_illegal_comma_after_top_level_close(self, line_text):
-        return json_top_level_close_service.fix_illegal_comma_after_top_level_close(line_text)
-
-    def _find_nearby_illegal_comma_after_top_level_close_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_illegal_comma_after_top_level_close_line(self, lineno, lookback)
-
-    def _split_completed_scalar_value_tail(self, line_text):
-        return json_scalar_tail_service.split_completed_scalar_value_tail(line_text)
-
-    def _line_has_invalid_trailing_symbols_after_string_value(self, line_text):
-        return json_scalar_tail_service.line_has_invalid_trailing_symbols_after_string_value(line_text)
-
-    def _first_invalid_trailing_symbol_col(self, line_text, lineno=None):
-        return json_repair_service._first_invalid_trailing_symbol_col(self, line_text, lineno)
-
-    def _fix_invalid_trailing_symbols_after_string_value(self, line_text, lineno=None):
-        return editor_purge_service._fix_invalid_trailing_symbols_after_string_value(self, line_text, lineno)
-
-    def _find_nearby_invalid_trailing_symbols_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_invalid_trailing_symbols_line(self, lineno, lookback)
-
-    def _line_has_invalid_symbol_after_closer(self, line_text):
-        return json_closer_symbol_service.line_has_invalid_symbol_after_closer(line_text)
-
-    def _first_invalid_symbol_after_closer_col(self, line_text):
-        return json_closer_symbol_service.first_invalid_symbol_after_closer_col(line_text)
-
-    def _fix_invalid_symbol_after_closer(self, line_text):
-        return json_closer_symbol_service.fix_invalid_symbol_after_closer(line_text)
-
-    def _find_nearby_invalid_symbol_after_closer_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_invalid_symbol_after_closer_line(self, lineno, lookback)
-
-    def _invalid_symbol_after_open_span(self, line_text):
-        return json_open_symbol_service.invalid_symbol_after_open_span(line_text)
-
-    def _line_has_invalid_symbol_after_open(self, line_text):
-        return json_open_symbol_service.line_has_invalid_symbol_after_open(line_text)
-
-    def _fix_invalid_symbol_after_open(self, line_text):
-        return json_open_symbol_service.fix_invalid_symbol_after_open(line_text)
-
-    def _find_nearby_invalid_symbol_after_open_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_invalid_symbol_after_open_line(self, lineno, lookback)
-
-    def _find_nearby_extra_quote_in_value_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_extra_quote_in_value_line(self, lineno, lookback)
-
-    def _build_symbol_json_diagnostic(self, exc, lineno=None):
-        return json_error_diagnostics_core.build_symbol_json_diagnostic(self, exc, lineno=lineno)
-
-
-    def _build_json_diagnostic(self, exc):
-        return json_error_diagnostics_core.build_json_diagnostic(self, exc)
-
-
-    def _quote_unquoted_value(self, line_text):
-        return json_repair_service._quote_unquoted_value(self, line_text)
-
-    def _quote_unquoted_scalar_line(self, line_text):
-        return json_repair_service._quote_unquoted_scalar_line(self, line_text)
-
-    def _line_needs_value_quotes(self, line_text):
-        return json_diagnostics_service._line_needs_value_quotes(self, line_text)
-
-    def _missing_value_close_quote_insert_col(self, line_text):
-        return json_repair_service._missing_value_close_quote_insert_col(self, line_text)
-
-    def _missing_value_open_quote_insert_col(self, line_text):
-        return json_repair_service._missing_value_open_quote_insert_col(self, line_text)
-
-    def _find_nearby_missing_value_close_quote_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_missing_value_close_quote_line(self, lineno, lookback)
-
-    def _find_nearby_missing_value_open_quote_line(self, lineno, lookback=3):
-        return json_repair_service._find_nearby_missing_value_open_quote_line(self, lineno, lookback)
-
-    def _find_nearby_unquoted_value_line(self, lineno, lookback=3):
-        return json_diagnostics_service._find_nearby_unquoted_value_line(self, lineno, lookback)
-
-    def _suggest_json_literal_from_token(self, token):
-        return json_diag_core.suggest_json_literal_from_token(token)
-
-    def _boolean_literal_typo_diagnostic(self, line_text):
-        return json_diag_core.boolean_literal_typo_diagnostic(line_text)
-
-    def _find_nearby_boolean_literal_typo_line(self, lineno, lookback=3):
-        return json_diagnostics_service._find_nearby_boolean_literal_typo_line(self, lineno, lookback)
-
-    def _is_wrong_list_open_for_object(self, prev_text, next_text):
-        return json_diagnostics_service._is_wrong_list_open_for_object(self, prev_text, next_text)
-
-    def _find_wrong_list_open_line(self, lineno, lookback=3):
-        return json_diagnostics_service._find_wrong_list_open_line(self, lineno, lookback)
-
-    def _find_wrong_object_open_line(self, lineno, lookback=3):
-        return json_diagnostics_service._find_wrong_object_open_line(self, lineno, lookback)
-
-    def _expected_closer_before_position(self, target_line, target_col):
-        return json_diagnostics_service._expected_closer_before_position(self, target_line, target_col)
-
-    def _find_wrong_closing_symbol_line(self, lineno, lookback=2):
-        return json_repair_service._find_wrong_closing_symbol_line(self, lineno, lookback)
-
-    def _find_missing_list_close_before_object_end(self, lineno, lookback=4):
-        return json_repair_service._find_missing_list_close_before_object_end(self, lineno, lookback)
-
-    def _next_non_empty_line_number(self, start_line):
-        return json_diagnostics_service._next_non_empty_line_number(self, start_line)
-
-    def _missing_list_open_key_line(self, lineno):
-        return json_repair_service._missing_list_open_key_line(self, lineno)
-
-    @staticmethod
-    def _line_looks_like_object_property(line_text):
-        return bool(re.match(r'^"[^"]+"\s*:', str(line_text or "").strip()))
-
-    def _find_missing_container_open_after_key_line(self, lineno, lookback=6):
-        return json_repair_service._find_missing_container_open_after_key_line(self, lineno, lookback)
-
-    def _find_missing_list_open_after_key_line(self, lineno, lookback=6):
-        return json_repair_service._find_missing_list_open_after_key_line(self, lineno, lookback)
-
-    def _missing_close_example(self, msg):
-        return json_repair_service._missing_close_example(self, msg)
-
-    def _format_suggestion(self, header, before, after, header_only=False):
-        return json_diagnostics_service._format_suggestion(self, header, before, after, header_only)
-
-    def _suggestion_from_example(self, example, add_after=None, add_colon=False, quote_key=False):
-        return json_diagnostics_service._suggestion_from_example(self, example, add_after, add_colon, quote_key)
-    def _is_missing_object_open_at(self, lineno):
-        return json_repair_service._is_missing_object_open_at(self, lineno)
-
-    def _line_text(self, lineno):
-        return json_diagnostics_service._line_text(self, lineno)
-
-    def _line_has_missing_open_key_quote(self, line_text):
-        return json_repair_service._line_has_missing_open_key_quote(self, line_text)
-
-    def _missing_close_target_line_from_exc(self, exc, open_bracket, close_bracket):
-        return json_repair_service._missing_close_target_line_from_exc(self, exc, open_bracket, close_bracket)
-
-    def _missing_close_target_line_any(self, exc):
-        return json_repair_service._missing_close_target_line_any(self, exc)
-
-    def _missing_list_close_target_line(self, exc):
-        line, _idx = self._missing_close_insertion_point("[", "]", exc)
-        return line
-
-    def _unmatched_open_bracket_lines(self, open_bracket, close_bracket):
-        return json_diagnostics_service._unmatched_open_bracket_lines(self, open_bracket, close_bracket)
-
-    def _is_missing_list_close(self):
-        return bool(self._unmatched_open_bracket_lines("[", "]"))
-
-    def _is_missing_object_close(self):
-        return bool(self._unmatched_open_bracket_lines("{", "}"))
-
-    def _last_unmatched_bracket_line(self, open_bracket, close_bracket):
-        return json_diagnostics_service._last_unmatched_bracket_line(self, open_bracket, close_bracket)
-
-    def _line_indent_width(self, lineno):
-        raw = self._line_text(lineno)
-        return len(raw) - len(raw.lstrip(" \t"))
-
-    def _missing_close_insertion_point(self, open_bracket, close_bracket, exc=None):
-        return json_repair_service._missing_close_insertion_point(self, open_bracket, close_bracket, exc)
-
-    def _missing_object_close_target_line(self, exc):
-        line, _idx = self._missing_close_insertion_point("{", "}", exc)
-        return line
-
-    def _find_comma_only_line_before(self, start_line):
-        return json_repair_service._find_comma_only_line_before(self, start_line)
-
-    def _find_missing_comma_between_block_values_line(self, line):
-        return json_repair_service._find_missing_comma_between_block_values_line(self, line)
-
-    def _find_blank_line_before(self, start_line):
-        return json_diagnostics_service._find_blank_line_before(self, start_line)
-
-    def _closest_non_empty_line_before(self, start_line):
-        return json_diagnostics_service._closest_non_empty_line_before(self, start_line)
-
-    def _last_non_empty_line_number(self):
-        return json_diagnostics_service._last_non_empty_line_number(self)
-
-
-    def _missing_close_target_line(self, open_bracket, close_bracket):
-        return json_repair_service._missing_close_target_line(self, open_bracket, close_bracket)
-
-    def _is_missing_object_open(self, exc):
-        return json_repair_service._is_missing_object_open(self, exc)
-
-    def _is_missing_list_open(self, exc):
-        return json_repair_service._is_missing_list_open(self, exc)
-
-    def _is_missing_list_open_at_start(self, exc, allow_any_position=False):
-        return json_repair_service._is_missing_list_open_at_start(self, exc, allow_any_position)
-
-    def _missing_list_open_top_level(self):
-        return json_repair_service._missing_list_open_top_level(self)
-
-    def _missing_object_open_from_extra_data(self):
-        return json_repair_service._missing_object_open_from_extra_data(self)
-
-    def _first_non_ws_char(self):
-        return json_diagnostics_service._first_non_ws_char(self)
-
-    def _missing_list_open_from_extra_data(self):
-        return json_repair_service._missing_list_open_from_extra_data(self)
-
-    def _previous_non_empty_line(self, lineno):
-        return json_diagnostics_service._previous_non_empty_line(self, lineno)
-
-    def _next_non_empty_line(self, lineno):
-        return json_diagnostics_service._next_non_empty_line(self, lineno)
-
-    def _missing_object_example(self, lineno):
-        return json_repair_service._missing_object_example(self, lineno)
-
-    def _close_before_list(self, lineno):
-        return json_diagnostics_service._close_before_list(self, lineno)
-
-    def _quote_property_name(self, line_text):
-        return json_repair_service._quote_property_name(self, line_text)
-
-    def _highlight_custom_range(self, line, start_col, end_col):
-        return json_diagnostics_service._highlight_custom_range(self, line, start_col, end_col)
-
-    def _fix_missing_at(self, value, domain_roots=None):
-        return json_repair_service._fix_missing_at(self, value, domain_roots)
-
-    def _format_phone(self, value):
-        return json_repair_service._format_phone(self, value)
-
-    def _find_phone_format_issue(self):
-        return json_repair_service._find_phone_format_issue(self)
-
-    def _fix_missing_space_after_colon(self, line_text):
-        return json_repair_service._fix_missing_space_after_colon(self, line_text)
-
-    def _find_json_spacing_issue(self):
-        return json_repair_service._find_json_spacing_issue(self)
-
-    def _find_missing_email_at(self):
-        return json_repair_service._find_missing_email_at(self)
-
-    def _path_targets_email(self, path):
-        return json_repair_service._path_targets_email(self, path)
-
-    def _looks_like_email_candidate(self, value):
-        return json_repair_service._looks_like_email_candidate(self, value)
-
-    def _should_validate_email_path_value(self, path, value):
-        return json_repair_service._should_validate_email_path_value(self, path, value)
-
-    def _iter_candidate_email_values(self, node, rel_path=None):
-        return json_repair_service._iter_candidate_email_values(self, node, rel_path)
-
-    def _format_path_for_display(self, path):
-        return tree_view_service.format_path_for_display(path)
-
-    def _find_value_span_in_editor(self, value, preferred_key=None):
-        return json_diagnostics_service._find_value_span_in_editor(self, value, preferred_key)
-
-    def _find_invalid_email_in_value(self, base_path, value):
-        return json_repair_service._find_invalid_email_in_value(self, base_path, value)
-
-    def _best_domain_root_similarity(self, root):
-        return json_diagnostics_service._best_domain_root_similarity(self, root)
-
-    def _suggest_known_domain_from_local_and_domain(self, local, domain):
-        return json_diagnostics_service._suggest_known_domain_from_local_and_domain(self, local, domain)
-
-    def _suggest_email_for_malformed(self, value):
-        return json_repair_service._suggest_email_for_malformed(self, value)
-
-    def _validate_email_address(self, value):
-        return json_repair_service._validate_email_address(self, value)
-
-    def _is_valid_email_domain(self, domain):
-        return json_repair_service._is_valid_email_domain(self, domain)
-
-    def _find_invalid_email_format_issue(self):
-        return json_repair_service._find_invalid_email_format_issue(self)
-
-    def _fix_missing_quote(self, line_text):
-        return json_repair_service._fix_missing_quote(self, line_text)
-
-    def _unclosed_quoted_value_invalid_tail_span(self, line_text):
-        return json_repair_service._unclosed_quoted_value_invalid_tail_span(self, line_text)
-
-    def _find_nearby_unclosed_quoted_value_invalid_tail_line(self, lineno, lookback=2):
-        return json_repair_service._find_nearby_unclosed_quoted_value_invalid_tail_line(self, lineno, lookback)
-
-    def _comma_example_line(self, lineno):
-        return json_repair_service._comma_example_line(self, lineno)
-
-    def _symbol_error_focus_index(self, start_index, end_index):
-        return json_repair_service._symbol_error_focus_index(self, start_index, end_index)
-
-    def _apply_json_error_highlight(self, exc, line, start_index, end_index, note=""):
-        return json_diagnostics_service._apply_json_error_highlight(self, exc, line, start_index, end_index, note)
-
-    def _highlight_json_error(self, exc):
-        # Delegation contract token: json_error_highlight_core.highlight_json_error(
-        return json_diagnostics_service._highlight_json_error(self, exc)
-
-
-    def _place_error_pin(self, index):
-        return error_overlay_service.place_error_pin(self, index)
-
-    def _clear_error_pin(self):
-        error_overlay_service.clear_error_pin(self)
-
-    def _position_error_overlay(self, line):
-        error_overlay_service.position_error_overlay(self, line)
-
-    def _diag_system_from_note(self, note):
-        return json_diagnostics_service._diag_system_from_note(self, note)
-
-    def _log_json_error(self, exc, target_line, note=""):
-        return json_error_diag_service.log_json_error(self, exc, target_line, note=note)
-
-    def _log_json_error_emergency(self, exc, target_line, note=""):
-        return json_diagnostics_service._log_json_error_emergency(self, exc, target_line, note)
-
-    def _log_input_mode_edit_issue(self, path, exc):
-        input_mode_diag_service.log_input_mode_edit_issue(self, path, exc)
-
-    def _log_input_mode_apply_result(self, path, changed):
-        input_mode_diag_service.log_input_mode_apply_result(self, path, changed)
-
-    def _log_input_mode_apply_trace(self, stage, path, specs_count, changed=None):
-        return json_diagnostics_service._log_input_mode_apply_trace(self, stage, path, specs_count, changed)
-
-    def _begin_diag_action(self, action_name):
-        return json_diagnostics_service._begin_diag_action(self, action_name)
-
-    def _clear_json_error_highlight(self):
-        return json_diagnostics_service._clear_json_error_highlight(self)
+    # H-UI-05: extracted JSON repair/diagnostics routing is bound via json_engine.repair_dispatch.
 
     def _on_text_keypress(self, event):
         return json_diagnostics_service._on_text_keypress(self, event)
@@ -8760,6 +7187,15 @@ if button._siindbad_base_image is None:
             value_getter=self._get_value,
             network_types_set=self.network_types_set,
         )
+
+
+# H-UI-05: bind extracted JSON repair/diagnostic wrappers onto JsonEditor.
+for _repair_method_name in json_repair_dispatch_service.dispatch_method_names():
+    setattr(
+        JsonEditor,
+        _repair_method_name,
+        json_repair_dispatch_service.build_editor_method(_repair_method_name),
+    )
 
 
 def main():

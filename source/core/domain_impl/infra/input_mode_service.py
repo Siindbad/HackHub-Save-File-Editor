@@ -28,6 +28,200 @@ def format_input_path_label(rel_path: Any) -> Any:
     return "".join(parts)
 
 
+def collect_database_grades_matrix(
+    value: Any,
+    *,
+    max_rows: int = 40,
+    input_database_style_service: Any,
+) -> Any:
+    """Collect bounded Database Grades matrix payload for INPUT-mode rendering."""
+    return input_database_style_service.collect_database_grades_matrix(
+        value,
+        max_rows=max_rows,
+    )
+
+
+def collect_database_bcc_payload(
+    value: Any,
+    *,
+    max_rows: int = 200,
+    input_database_bcc_style_service: Any,
+) -> Any:
+    """Collect bounded Database BCC table payload for INPUT-mode rendering."""
+    return input_database_bcc_style_service.collect_database_bcc_payload(
+        value,
+        max_rows=max_rows,
+    )
+
+
+def collect_database_interpol_payload(
+    value: Any,
+    *,
+    max_rows: int = 200,
+    input_database_bcc_style_service: Any,
+) -> Any:
+    """Collect bounded Database INTERPOL table payload for INPUT-mode rendering."""
+    return input_database_bcc_style_service.collect_database_interpol_payload(
+        value,
+        max_rows=max_rows,
+    )
+
+
+def database_grades_matrix_for_input_path(
+    path: Any,
+    value: Any,
+    *,
+    input_database_style_service: Any,
+) -> Any:
+    """Resolve Database Grades payload only for matching INPUT-path scopes."""
+    normalized = list(path or [])
+    if not normalized:
+        return None
+    if str(normalized[0]) != "Database":
+        return None
+    if len(normalized) == 1:
+        return None
+    if len(normalized) == 2 and isinstance(normalized[1], int):
+        return collect_database_grades_matrix(
+            value,
+            input_database_style_service=input_database_style_service,
+        )
+    if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]) == "Grades":
+        return collect_database_grades_matrix(
+            value,
+            input_database_style_service=input_database_style_service,
+        )
+    return None
+
+
+def database_bcc_payload_for_input_path(
+    path: Any,
+    value: Any,
+    *,
+    input_database_bcc_style_service: Any,
+) -> Any:
+    """Resolve Database BCC payload only for matching INPUT-path scopes."""
+    normalized = list(path or [])
+    if not normalized:
+        return None
+    if str(normalized[0]) != "Database":
+        return None
+    if len(normalized) == 2 and isinstance(normalized[1], int):
+        return collect_database_bcc_payload(
+            value,
+            input_database_bcc_style_service=input_database_bcc_style_service,
+        )
+    if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]).casefold() == "users":
+        return collect_database_bcc_payload(
+            value,
+            input_database_bcc_style_service=input_database_bcc_style_service,
+        )
+    return None
+
+
+def database_interpol_payload_for_input_path(
+    path: Any,
+    value: Any,
+    *,
+    input_database_bcc_style_service: Any,
+) -> Any:
+    """Resolve Database INTERPOL payload only for matching INPUT-path scopes."""
+    normalized = list(path or [])
+    if not normalized:
+        return None
+    if str(normalized[0]) != "Database":
+        return None
+    if len(normalized) == 2 and isinstance(normalized[1], int):
+        return collect_database_interpol_payload(
+            value,
+            input_database_bcc_style_service=input_database_bcc_style_service,
+        )
+    if len(normalized) >= 4 and str(normalized[2]) == "tables" and str(normalized[3]).casefold() == "customers":
+        return collect_database_interpol_payload(
+            value,
+            input_database_bcc_style_service=input_database_bcc_style_service,
+        )
+    return None
+
+
+def is_network_router_input_style_payload(
+    owner: Any,
+    path: Any,
+    value: Any,
+    *,
+    input_network_router_style_service: Any,
+) -> bool:
+    """Return whether payload matches the grouped Network ROUTER INPUT shape."""
+    return bool(input_network_router_style_service.is_network_router_group_payload(owner, path, value))
+
+
+def is_network_device_input_style_payload(owner: Any, path: Any, value: Any) -> bool:
+    """Return whether payload is the root Network DEVICE collection for INPUT rendering."""
+    normalized = list(path or [])
+    if len(normalized) != 1:
+        return False
+    if owner._input_mode_root_key_for_path(normalized) != "network":
+        return False
+    if not isinstance(value, list) or not value:
+        return False
+    return all(isinstance(item, dict) and str(item.get("type", "")).upper() == "DEVICE" for item in value)
+
+
+def is_network_firewall_input_style_payload(
+    owner: Any,
+    path: Any,
+    value: Any,
+    *,
+    input_network_firewall_style_service: Any,
+) -> bool:
+    """Return whether payload matches grouped Network FIREWALL INPUT shape."""
+    return bool(input_network_firewall_style_service.is_network_firewall_group_payload(owner, path, value))
+
+
+def is_network_geoip_input_style_payload(
+    owner: Any,
+    path: Any,
+    value: Any,
+    *,
+    input_network_device_geoip_style_service: Any,
+) -> bool:
+    """Return whether payload maps to Network DEVICE GEO IP INPUT shape."""
+    return bool(input_network_device_geoip_style_service.is_network_geoip_payload(owner, path, value))
+
+
+def is_network_bcc_domains_input_style_payload(
+    owner: Any,
+    path: Any,
+    value: Any,
+    *,
+    input_network_device_bcc_style_service: Any,
+) -> bool:
+    """Return whether payload maps to locked Network BCC DOMAINS INPUT shape."""
+    return bool(input_network_device_bcc_style_service.is_network_bcc_domains_payload(owner, path, value))
+
+
+def is_network_blue_table_input_style_payload(
+    owner: Any,
+    path: Any,
+    value: Any,
+    *,
+    input_network_device_bcc_style_service: Any,
+) -> bool:
+    """Return whether payload maps to locked Network BLUE TABLE INPUT shape."""
+    return bool(input_network_device_bcc_style_service.is_network_blue_table_payload(owner, path, value))
+
+
+def is_network_interpol_input_style_payload(
+    owner: Any,
+    path: Any,
+    value: Any,
+    *,
+    input_network_device_bcc_style_service: Any,
+) -> bool:
+    """Return whether payload maps to locked Network INTERPOL INPUT shape."""
+    return bool(input_network_device_bcc_style_service.is_network_interpol_payload(owner, path, value))
+
+
 def collect_input_field_specs(value: Any, base_path: Any, max_fields: Any=24) -> Any:
     # Build a bounded list of editable scalar slots to keep INPUT view fast and stable.
     specs = []

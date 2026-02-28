@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-28 (extracted startup loader lifecycle, INPUT render dispatch, pane-lock state machine, and asset image/cache helpers into dedicated domain services).
+Last sync: 2026-02-28 (startup loader lifecycle owns async document-load session sequencing, while INPUT database/network payload routing plus tree path/group navigation and JSON repair-dispatch routing are extracted into infra/ui/support services alongside render dispatch, pane-lock state machine, and asset image/cache helpers).
 
 | Module | Purpose |
 | --- | --- |

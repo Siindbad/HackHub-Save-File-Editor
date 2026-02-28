@@ -22,6 +22,15 @@ def open_bug_report_dialog(
     details_prefill: Any="",
     include_diag_default: Any=True,
     crash_tail: Any="",
+    threading_module: Any=threading,
+    validate_bug_screenshot_file_fn: Any=None,
+    submit_cooldown_remaining_fn: Any=None,
+    mark_submit_now_fn: Any=None,
+    has_bug_report_token_fn: Any=None,
+    upload_bug_screenshot_fn: Any=None,
+    build_bug_report_markdown_fn: Any=None,
+    build_bug_report_issue_url_fn: Any=None,
+    submit_bug_report_discord_forum_fn: Any=None,
 ) -> Any:
     existing = getattr(owner, "_bug_report_dialog", None)
     if existing is not None:
@@ -186,7 +195,8 @@ def open_bug_report_dialog(
         if not file_path:
             return
         try:
-            validated = owner._validate_bug_screenshot_file(file_path)
+            validate_fn = validate_bug_screenshot_file_fn or owner._validate_bug_screenshot_file
+            validated = validate_fn(file_path)
         except EXPECTED_ERRORS as exc:
             messagebox.showwarning("Bug Report", str(exc))
             return
@@ -401,7 +411,8 @@ def open_bug_report_dialog(
     cancel_btn.pack(side="right", padx=1, pady=1)
 
     def submit_action() -> Any:
-        cooldown_remaining = owner._bug_report_submit_cooldown_remaining()
+        cooldown_fn = submit_cooldown_remaining_fn or owner._bug_report_submit_cooldown_remaining
+        cooldown_remaining = int(cooldown_fn() or 0)
         if cooldown_remaining > 0:
             unit = "second" if cooldown_remaining == 1 else "seconds"
             wait_msg = f"Please wait {cooldown_remaining} {unit} before sending another report."
@@ -417,7 +428,8 @@ def open_bug_report_dialog(
         screenshot_path = screenshot_var.get().strip()
         screenshot_file_name = os.path.basename(screenshot_path) if screenshot_path else ""
         issue_title = f"[Bug] {summary}"[:120]
-        owner._mark_bug_report_submit_now()
+        mark_submit_fn = mark_submit_now_fn or owner._mark_bug_report_submit_now
+        mark_submit_fn()
 
         def worker() -> Any:
             try:
@@ -428,10 +440,13 @@ def open_bug_report_dialog(
                 selected_name = screenshot_file_name
                 if screenshot_path:
                     try:
-                        owner._validate_bug_screenshot_file(screenshot_path)
-                        if owner._has_bug_report_token():
+                        validate_fn = validate_bug_screenshot_file_fn or owner._validate_bug_screenshot_file
+                        validate_fn(screenshot_path)
+                        has_token_fn = has_bug_report_token_fn or owner._has_bug_report_token
+                        if has_token_fn():
                             owner._ui_call(status_var.set, "Uploading screenshot...", wait=False)
-                            uploaded = owner._upload_bug_screenshot(screenshot_path, summary=summary)
+                            upload_fn = upload_bug_screenshot_fn or owner._upload_bug_screenshot
+                            uploaded = upload_fn(screenshot_path, summary=summary)
                             screenshot_url = str(uploaded.get("download_url", "")).strip()
                             selected_name = str(uploaded.get("filename", "")).strip() or selected_name
                         else:
@@ -441,7 +456,8 @@ def open_bug_report_dialog(
                             )
                     except EXPECTED_ERRORS as upload_exc:
                         screenshot_note = str(upload_exc)
-                body = owner._build_bug_report_markdown(
+                build_markdown_fn = build_bug_report_markdown_fn or owner._build_bug_report_markdown
+                body = build_markdown_fn(
                     summary=summary,
                     details=details,
                     include_diag=bool(include_diag_var.get()),
@@ -456,14 +472,16 @@ def open_bug_report_dialog(
                 owner._ui_call(status_var.set, "Submitting report...", wait=False)
                 # Discord-only bug report policy:
                 # build a clean GitHub issue-form URL for reference, but do not create GitHub issues from app submits.
-                issue_url = owner._bug_report_new_issue_url(
+                build_issue_url_fn = build_bug_report_issue_url_fn or owner._bug_report_new_issue_url
+                issue_url = build_issue_url_fn(
                     issue_title,
                     body,
                     include_body=False,
                 )
                 discord_mirror_note = ""
                 try:
-                    mirror_result = owner._submit_bug_report_discord_forum(
+                    submit_discord_forum_fn = submit_bug_report_discord_forum_fn or owner._submit_bug_report_discord_forum
+                    mirror_result = submit_discord_forum_fn(
                         summary=summary,
                         details=details,
                         issue_url=issue_url,
@@ -504,7 +522,7 @@ def open_bug_report_dialog(
             finally:
                 owner._ui_call(submit_btn.configure, state="normal", wait=False)
 
-        threading.Thread(target=worker, daemon=True).start()
+        threading_module.Thread(target=worker, daemon=True).start()
 
     submit_btn.configure(command=submit_action)
     if use_custom_chrome:

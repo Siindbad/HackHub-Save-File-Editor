@@ -10,6 +10,7 @@ from core.domain_impl.ui import startup_loader_ui_service
 from core.domain_impl.ui import toolbar_service
 from core.domain_impl.ui import ui_build_service
 from core.domain_impl.ui import ui_dispatch_service
+from core.domain_impl.ui import ui_factory_service
 
 
 class EditorUICore:
@@ -23,6 +24,7 @@ class EditorUICore:
     toolbar_service = toolbar_service
     ui_build_service = ui_build_service
     ui_dispatch_service = ui_dispatch_service
+    ui_factory_service = ui_factory_service
 
 
 EDITOR_UI = EditorUICore()

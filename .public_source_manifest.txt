@@ -566,6 +566,7 @@ source/core/domain_impl/support/bug_report_browser_service.py
 source/core/domain_impl/support/bug_report_context_service.py
 source/core/domain_impl/support/bug_report_cooldown_service.py
 source/core/domain_impl/support/bug_report_service.py
+source/core/domain_impl/support/bug_report_submission_service.py
 source/core/domain_impl/support/bug_report_ui_service.py
 source/core/domain_impl/support/clipboard_service.py
 source/core/domain_impl/support/crash_logging_service.py
@@ -587,10 +588,12 @@ source/core/domain_impl/support/input_network_device_geoip_style_service.py
 source/core/domain_impl/support/input_network_firewall_style_service.py
 source/core/domain_impl/support/input_network_router_style_service.py
 source/core/domain_impl/support/input_suspicion_phone_style_service.py
+source/core/domain_impl/support/json_repair_dispatch_service.py
 source/core/domain_impl/support/label_format_service.py
 source/core/domain_impl/support/version_format_service.py
 source/core/domain_impl/ui/__init__.py
 source/core/domain_impl/ui/asset_image_service.py
+source/core/domain_impl/ui/color_utility_service.py
 source/core/domain_impl/ui/footer_service.py
 source/core/domain_impl/ui/input_mode_paned_lock_service.py
 source/core/domain_impl/ui/loader_service.py
@@ -607,10 +610,12 @@ source/core/domain_impl/ui/theme_service.py
 source/core/domain_impl/ui/toolbar_service.py
 source/core/domain_impl/ui/tree_engine_service.py
 source/core/domain_impl/ui/tree_mode_service.py
+source/core/domain_impl/ui/tree_navigation_service.py
 source/core/domain_impl/ui/tree_policy_service.py
 source/core/domain_impl/ui/tree_view_service.py
 source/core/domain_impl/ui/ui_build_service.py
 source/core/domain_impl/ui/ui_dispatch_service.py
+source/core/domain_impl/ui/ui_factory_service.py
 source/core/editor_state.py
 source/core/exceptions.py
 source/core/json_diagnostics.py

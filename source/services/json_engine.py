@@ -17,6 +17,7 @@ from core.domain_impl.json import json_repair_service
 from core.domain_impl.json import json_scalar_tail_service
 from core.domain_impl.json import json_top_level_close_service
 from core.domain_impl.json import json_validation_feedback_service
+from core.domain_impl.support import json_repair_dispatch_service
 
 
 class JsonEngine:
@@ -37,6 +38,7 @@ class JsonEngine:
     json_scalar_tail_service = json_scalar_tail_service
     json_top_level_close_service = json_top_level_close_service
     json_validation_feedback_service = json_validation_feedback_service
+    repair_dispatch = json_repair_dispatch_service
 
 
 JSON_ENGINE = JsonEngine()

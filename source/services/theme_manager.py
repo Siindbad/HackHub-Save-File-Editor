@@ -8,11 +8,13 @@ from core.domain_impl.support import input_network_device_bcc_style_service
 from core.domain_impl.support import input_network_device_geoip_style_service
 from core.domain_impl.support import input_network_router_style_service
 from core.domain_impl.support import input_suspicion_phone_style_service
+from core.domain_impl.ui import color_utility_service
 from core.domain_impl.ui import theme_asset_service
 from core.domain_impl.ui import theme_service
 
 
 class ThemeManager:
+    color_utility_service = color_utility_service
     input_bank_style_service = input_bank_style_service
     input_database_bcc_style_service = input_database_bcc_style_service
     input_database_style_service = input_database_style_service

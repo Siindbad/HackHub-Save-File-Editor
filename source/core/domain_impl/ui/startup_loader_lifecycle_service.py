@@ -166,7 +166,8 @@ def hide_startup_loader(owner: Any, *, tk_module: Any, time_module: Any, startup
             statement = getattr(owner, "_startup_loader_statement_label", None)
             if statement is not None and statement.winfo_exists():
                 statement.configure(text="/startup shell handshake complete.")
-            overlay.update_idletasks()
+            if overlay is not None:
+                overlay.update_idletasks()
         except (tk_module.TclError, RuntimeError, AttributeError, ValueError):
             pass
         should_continue = startup_loader_core.should_continue_finish_animation(
@@ -271,3 +272,198 @@ def restore_startup_root_alpha(target: Any, *, tk_module: Any) -> None:
         target.attributes("-alpha", 1.0)
     except (tk_module.TclError, RuntimeError, AttributeError, TypeError, ValueError):
         return
+
+
+def begin_document_load_session(owner: Any) -> None:
+    """Mark the beginning of an async document-load session."""
+    depth = max(0, int(getattr(owner, "_document_load_depth", 0) or 0)) + 1
+    owner._document_load_depth = depth
+    owner._document_load_in_progress = True
+
+
+def end_document_load_session(owner: Any, *, time_module: Any) -> None:
+    """Mark the end of an async document-load session."""
+    depth = max(0, int(getattr(owner, "_document_load_depth", 0) or 0) - 1)
+    owner._document_load_depth = depth
+    owner._document_load_in_progress = bool(depth > 0)
+    if depth == 0:
+        owner._document_load_last_completed_ts = time_module.perf_counter()
+
+
+def is_document_load_cooldown_active(owner: Any, *, time_module: Any) -> bool:
+    """Report whether document-load quiet-window cooldown is still active."""
+    if bool(getattr(owner, "_document_load_in_progress", False)):
+        return True
+    last_completed_ts = float(getattr(owner, "_document_load_last_completed_ts", 0.0) or 0.0)
+    if last_completed_ts <= 0.0:
+        return False
+    quiet_window_ms = max(0.0, float(getattr(owner, "_document_load_quiet_window_ms", 220) or 220))
+    if quiet_window_ms <= 0.0:
+        return False
+    elapsed_ms = max(0.0, (time_module.perf_counter() - last_completed_ts) * 1000.0)
+    return elapsed_ms < quiet_window_ms
+
+
+def finish_document_load_async(
+    owner: Any,
+    request_id: int,
+    path: str,
+    payload: object,
+    error_text: str,
+    *,
+    document_service_module: Any,
+    messagebox_module: Any,
+    time_module: Any,
+) -> None:
+    """Finalize an async document-load request and apply result when still active."""
+    owner._document_load_async_after_id = None
+    owner._document_load_async_result = None
+    active_request_id = int(getattr(owner, "_active_document_load_request_id", 0) or 0)
+    if int(request_id) != active_request_id:
+        end_document_load_session(owner, time_module=time_module)
+        return
+    owner._active_document_load_request_id = 0
+    try:
+        document_service_module.apply_async_loaded_document(
+            owner,
+            path=str(path or ""),
+            payload=payload,
+            error_text=str(error_text or ""),
+            messagebox_module=messagebox_module,
+        )
+    finally:
+        end_document_load_session(owner, time_module=time_module)
+
+
+def poll_document_load_async(
+    owner: Any,
+    request_id: int,
+    *,
+    tk_module: Any,
+    document_service_module: Any,
+    messagebox_module: Any,
+    time_module: Any,
+) -> None:
+    """Poll async document-load completion and continue scheduling while pending."""
+    owner._document_load_async_after_id = None
+    result = getattr(owner, "_document_load_async_result", None)
+    if not isinstance(result, dict):
+        finish_document_load_async(
+            owner,
+            request_id,
+            "",
+            None,
+            "Load interrupted.",
+            document_service_module=document_service_module,
+            messagebox_module=messagebox_module,
+            time_module=time_module,
+        )
+        return
+    if int(result.get("request_id", 0) or 0) != int(request_id):
+        finish_document_load_async(
+            owner,
+            request_id,
+            "",
+            None,
+            "Load request mismatch.",
+            document_service_module=document_service_module,
+            messagebox_module=messagebox_module,
+            time_module=time_module,
+        )
+        return
+    if not bool(result.get("done", False)):
+        root = getattr(owner, "root", None)
+        if root is None:
+            finish_document_load_async(
+                owner,
+                request_id,
+                "",
+                None,
+                "Load interrupted.",
+                document_service_module=document_service_module,
+                messagebox_module=messagebox_module,
+                time_module=time_module,
+            )
+            return
+        try:
+            owner._document_load_async_after_id = root.after(12, lambda rid=request_id: owner._poll_load_file_async(rid))
+        except (tk_module.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            owner._document_load_async_after_id = None
+            finish_document_load_async(
+                owner,
+                request_id,
+                "",
+                None,
+                "Load interrupted.",
+                document_service_module=document_service_module,
+                messagebox_module=messagebox_module,
+                time_module=time_module,
+            )
+        return
+    finish_document_load_async(
+        owner,
+        request_id,
+        str(result.get("path", "") or ""),
+        result.get("payload"),
+        str(result.get("error_text", "") or ""),
+        document_service_module=document_service_module,
+        messagebox_module=messagebox_module,
+        time_module=time_module,
+    )
+
+
+def load_file_async(
+    owner: Any,
+    path: str,
+    *,
+    os_module: Any,
+    threading_module: Any,
+    json_module: Any,
+    tk_module: Any,
+    document_service_module: Any,
+    messagebox_module: Any,
+    time_module: Any,
+) -> None:
+    """Start async document load with request tracking and poll scheduling."""
+    use_path = str(path or "").strip()
+    if not use_path:
+        return
+    if bool(getattr(owner, "_document_load_in_progress", False)):
+        owner.set_status("Load already in progress.")
+        return
+    root = getattr(owner, "root", None)
+    if root is None:
+        return
+    try:
+        if not bool(root.winfo_exists()):
+            return
+    except (tk_module.TclError, RuntimeError, AttributeError):
+        return
+    request_id = int(getattr(owner, "_document_load_request_seq", 0) or 0) + 1
+    owner._document_load_request_seq = request_id
+    owner._active_document_load_request_id = request_id
+    begin_document_load_session(owner)
+    owner.set_status(f"Loading {os_module.path.basename(use_path)}...")
+    document_service_module.initialize_async_load_result(owner, request_id=request_id, path=use_path)
+
+    worker = document_service_module.build_async_document_load_worker(
+        owner,
+        request_id=request_id,
+        path=use_path,
+        json_module=json_module,
+    )
+    threading_module.Thread(target=worker, daemon=True, name=f"load_file_{request_id}").start()
+    try:
+        owner._document_load_async_after_id = root.after(12, lambda rid=request_id: owner._poll_load_file_async(rid))
+    except (tk_module.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+        owner._document_load_async_after_id = None
+        finish_document_load_async(
+            owner,
+            request_id,
+            "",
+            None,
+            "Could not start async load.",
+            document_service_module=document_service_module,
+            messagebox_module=messagebox_module,
+            time_module=time_module,
+        )

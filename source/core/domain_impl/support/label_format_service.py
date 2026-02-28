@@ -95,6 +95,54 @@ def database_label(idx: Any, item: Any, tree_style_variant: Any) -> Any:
     return f"[{idx}]"
 
 
+def database_root_entry_label(
+    idx: Any,
+    item: Any,
+    *,
+    tree_style_variant: Any,
+    editor_mode: Any,
+) -> Any:
+    """Return Database root row label with INPUT-mode subcategory aliases where applicable."""
+    variant = str(tree_style_variant or "B")
+    if str(editor_mode or "JSON").upper() != "INPUT":
+        return database_label(idx, item, variant)
+    if isinstance(item, dict):
+        tables = item.get("tables")
+        if isinstance(tables, dict) and tables:
+            first_table = str(next(iter(tables.keys()))).strip().casefold()
+            if first_table == "grades":
+                return "Grades"
+            if first_table == "users":
+                return "BCC"
+            if first_table == "customers":
+                return "INTERPOL"
+    return database_label(idx, item, variant)
+
+
+def database_table_row_label(idx: Any, item: Any) -> Any:
+    """Return Database row label preferring nested string values over numeric identifiers."""
+    _ = idx
+    if isinstance(item, dict):
+        # Prefer first nested string value (email/name/etc.) before numeric ids.
+        first_scalar = None
+        for value_obj in item.values():
+            if not isinstance(value_obj, dict):
+                continue
+            value = value_obj.get("value")
+            if isinstance(value, str):
+                text = value.strip()
+                if text:
+                    return text
+            if first_scalar is None and isinstance(value, (int, float)) and not isinstance(value, bool):
+                first_scalar = str(value)
+        direct_value = item.get("value")
+        if isinstance(direct_value, (str, int, float)) and str(direct_value).strip():
+            return str(direct_value)
+        if first_scalar is not None:
+            return first_scalar
+    return f"[{idx}]"
+
+
 def twotter_user_label(idx: Any, item: Any) -> Any:
     _ = idx
     if isinstance(item, dict):
