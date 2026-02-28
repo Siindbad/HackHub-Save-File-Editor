@@ -5024,8 +5024,8 @@ if button._siindbad_base_image is None:
             in ("1", "true", "yes", "on")
         )
         self._startup_loader_enabled = True
-        # Keep startup loader visible briefly for polish, but avoid delaying interactivity.
-        self._startup_loader_extra_hold_ms = 600
+        # Keep startup loader visible for a cinematic hold while prewarm catches up.
+        self._startup_loader_extra_hold_ms = 1600
         self._startup_loader_overlay = None
         self._startup_loader_pct_label = None
         self._startup_loader_statement_label = None
@@ -5046,14 +5046,21 @@ if button._siindbad_base_image is None:
         self._startup_loader_title_variant = "SIINDBAD"
         self._startup_loader_title_after_id = None
         self._startup_loader_title_cycle_ms = 4200
-        self._startup_loader_progress_interval_ms = 90
+        self._startup_loader_progress_interval_ms = 34
         self._startup_loader_statement_interval_loading_ms = 1450
         self._startup_loader_statement_interval_ready_ms = 1150
         # Loader finish phase: smooth progress to 100 before teardown.
         self._startup_loader_complete_dwell_ms = 260
+        # Keep 100% visible briefly so completion is perceptible before teardown.
+        self._startup_loader_finish_visible_hold_ms = 140
+        # Loader smoothing: keep visible progress moving forward without abrupt jumps.
+        self._startup_loader_display_pct = 0.0
+        self._startup_loader_last_progress_ts = 0.0
+        self._startup_loader_smooth_rate_pct_per_sec = 30.0
         self._startup_loader_finishing = False
         self._startup_loader_finish_started_ts = 0.0
         self._startup_loader_finish_start_pct = 0.0
+        self._startup_loader_finish_reached_100_ts = 0.0
         self._startup_loader_window_mode = bool(
             getattr(self.root, "_hh_use_startup_loader_window", False)
         )
@@ -6781,6 +6788,8 @@ if button._siindbad_base_image is None:
         overlay = getattr(self, "_startup_loader_overlay", None)
         if overlay is None or not overlay.winfo_exists():
             return
+        if bool(getattr(self, "_startup_loader_finishing", False)):
+            return
         self._update_startup_loader_progress()
         root = getattr(self, "root", None)
         if root is None:
@@ -6791,7 +6800,7 @@ if button._siindbad_base_image is None:
                 root.after_cancel(after_id)
             except (tk.TclError, RuntimeError, ValueError):
                 pass
-        interval = max(70, int(getattr(self, "_startup_loader_progress_interval_ms", 90) or 90))
+        interval = max(24, int(getattr(self, "_startup_loader_progress_interval_ms", 34) or 34))
         self._startup_loader_progress_after_id = root.after(interval, self._tick_startup_loader_progress)
 
     def _tick_startup_loader_statement(self):
@@ -6946,16 +6955,39 @@ if button._siindbad_base_image is None:
         done = max(0, min(done, total))
         return float(done) * 100.0 / float(total)
 
+    def _smooth_startup_loader_progress(self, target_pct: float, now_ts: float) -> float:
+        target = max(0.0, min(100.0, float(target_pct or 0.0)))
+        current = max(0.0, min(100.0, float(getattr(self, "_startup_loader_display_pct", 0.0) or 0.0)))
+        if target <= current:
+            self._startup_loader_last_progress_ts = float(now_ts)
+            self._startup_loader_display_pct = current
+            return current
+        last_ts = float(getattr(self, "_startup_loader_last_progress_ts", 0.0) or 0.0)
+        elapsed_ms = max(1.0, (float(now_ts) - last_ts) * 1000.0) if last_ts > 0 else 16.0
+        rate = max(
+            8.0,
+            float(getattr(self, "_startup_loader_smooth_rate_pct_per_sec", 55.0) or 55.0),
+        )
+        max_step = max(0.1, (rate * elapsed_ms) / 1000.0)
+        max_step = min(2.0, max_step)
+        smoothed = target if (target - current) <= max_step else current + max_step
+        smoothed = max(current, min(100.0, smoothed))
+        self._startup_loader_last_progress_ts = float(now_ts)
+        self._startup_loader_display_pct = smoothed
+        return smoothed
+
     def _update_startup_loader_progress(self):
         overlay = getattr(self, "_startup_loader_overlay", None)
         if overlay is None or not overlay.winfo_exists():
+            return
+        if bool(getattr(self, "_startup_loader_finishing", False)):
             return
         started = float(getattr(self, "_startup_loader_started_ts", 0.0) or 0.0)
         now = time.perf_counter()
         elapsed_ms = max(0.0, (now - started) * 1000.0) if started > 0 else 0.0
         timeline_ms = max(1000, int(getattr(self, "_startup_loader_extra_hold_ms", 1800) or 1800))
         ready = getattr(self, "_startup_loader_ready_ts", None) is not None
-        overall, top_pct, bottom_pct = startup_loader_core.compute_loader_progress(
+        overall, _top_pct, _bottom_pct = startup_loader_core.compute_loader_progress(
             elapsed_ms=elapsed_ms,
             timeline_ms=timeline_ms,
             ready=ready,
@@ -6963,13 +6995,15 @@ if button._siindbad_base_image is None:
             active_variant=getattr(self, "_app_theme_variant", "SIINDBAD"),
             variant_progress_getter=self._startup_loader_variant_progress,
         )
+        show_pct = self._smooth_startup_loader_progress(overall, now_ts=now)
+        top_pct, bottom_pct = startup_loader_core.compute_loader_fill_percentages(show_pct)
 
         self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_top_fill", None), top_pct)
         self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_bottom_fill", None), bottom_pct)
 
         pct_label = getattr(self, "_startup_loader_pct_label", None)
         if pct_label is not None and pct_label.winfo_exists():
-            pct_label.configure(text=f"{int(round(overall))}%")
+            pct_label.configure(text=f"{int(show_pct)}%")
 
     def _is_startup_full_load_ready(self):
         required = startup_loader_core.resolve_required_variants(
@@ -7033,6 +7067,13 @@ if button._siindbad_base_image is None:
             if not bool(getattr(self, "_startup_loader_finishing", False)):
                 self._startup_loader_finishing = True
                 self._startup_loader_finish_started_ts = float(now)
+                progress_after_id = getattr(self, "_startup_loader_progress_after_id", None)
+                if progress_after_id:
+                    try:
+                        root.after_cancel(progress_after_id)
+                    except (tk.TclError, RuntimeError, ValueError):
+                        pass
+                    self._startup_loader_progress_after_id = None
                 start_pct = 0.0
                 try:
                     pct_label = getattr(self, "_startup_loader_pct_label", None)
@@ -7041,7 +7082,12 @@ if button._siindbad_base_image is None:
                         start_pct = max(0.0, min(100.0, float(text or 0.0)))
                 except (tk.TclError, RuntimeError, AttributeError, ValueError, TypeError):
                     start_pct = 0.0
+                start_pct = max(
+                    start_pct,
+                    float(getattr(self, "_startup_loader_display_pct", 0.0) or 0.0),
+                )
                 self._startup_loader_finish_start_pct = float(start_pct)
+                self._startup_loader_finish_reached_100_ts = 0.0
             elapsed_ms = max(
                 0.0,
                 (float(now) - float(getattr(self, "_startup_loader_finish_started_ts", now) or now)) * 1000.0,
@@ -7050,19 +7096,44 @@ if button._siindbad_base_image is None:
             progress = max(0.0, min(1.0, elapsed_ms / dwell_ms))
             start_pct = float(getattr(self, "_startup_loader_finish_start_pct", 0.0) or 0.0)
             show_pct = start_pct + ((100.0 - start_pct) * progress)
+            show_pct = max(
+                float(getattr(self, "_startup_loader_display_pct", 0.0) or 0.0),
+                min(100.0, float(show_pct)),
+            )
+            show_pct = min(
+                show_pct,
+                float(getattr(self, "_startup_loader_display_pct", 0.0) or 0.0) + 2.0,
+            )
+            self._startup_loader_display_pct = show_pct
+            if show_pct >= 100.0:
+                if float(getattr(self, "_startup_loader_finish_reached_100_ts", 0.0) or 0.0) <= 0.0:
+                    self._startup_loader_finish_reached_100_ts = float(now)
+            else:
+                self._startup_loader_finish_reached_100_ts = 0.0
+            reached_100_ts = float(getattr(self, "_startup_loader_finish_reached_100_ts", 0.0) or 0.0)
+            hold_elapsed_ms = (
+                max(0.0, (float(now) - reached_100_ts) * 1000.0)
+                if reached_100_ts > 0.0
+                else 0.0
+            )
+            final_hold_ms = max(
+                0.0,
+                float(getattr(self, "_startup_loader_finish_visible_hold_ms", 140) or 140),
+            )
+            top_pct, bottom_pct = startup_loader_core.compute_loader_fill_percentages(show_pct)
             try:
-                self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_top_fill", None), show_pct)
-                self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_bottom_fill", None), show_pct)
+                self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_top_fill", None), top_pct)
+                self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_bottom_fill", None), bottom_pct)
                 pct_label = getattr(self, "_startup_loader_pct_label", None)
                 if pct_label is not None and pct_label.winfo_exists():
-                    pct_label.configure(text=f"{int(round(show_pct))}%")
+                    pct_label.configure(text=f"{int(show_pct)}%")
                 statement = getattr(self, "_startup_loader_statement_label", None)
                 if statement is not None and statement.winfo_exists():
                     statement.configure(text="/startup shell handshake complete.")
                 overlay.update_idletasks()
             except (tk.TclError, RuntimeError, AttributeError, ValueError):
                 pass
-            if progress < 1.0:
+            if startup_loader_core.should_continue_finish_animation(progress=progress, show_pct=show_pct) or hold_elapsed_ms < final_hold_ms:
                 self._startup_loader_hide_after_id = root.after(16, self._hide_startup_loader)
                 return
 
@@ -7132,9 +7203,12 @@ if button._siindbad_base_image is None:
         self._startup_loader_title_suffix_label = None
         self._startup_loader_top_fill = None
         self._startup_loader_bottom_fill = None
+        self._startup_loader_display_pct = 0.0
+        self._startup_loader_last_progress_ts = 0.0
         self._startup_loader_finishing = False
         self._startup_loader_finish_started_ts = 0.0
         self._startup_loader_finish_start_pct = 0.0
+        self._startup_loader_finish_reached_100_ts = 0.0
         deferred = startup_loader_core.normalize_deferred_variants_for_schedule(
             getattr(self, "_startup_loader_deferred_variants", set())
         )

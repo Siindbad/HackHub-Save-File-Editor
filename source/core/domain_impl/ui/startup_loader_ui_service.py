@@ -274,6 +274,12 @@ def show_startup_loader(owner: Any, tk: Any, time: Any, startup_loader_core: Any
     owner._startup_loader_bottom_fill = fill_bottom
     owner._startup_loader_started_ts = time.perf_counter()
     owner._startup_loader_ready_ts = None
+    owner._startup_loader_display_pct = 0.0
+    owner._startup_loader_last_progress_ts = 0.0
+    owner._startup_loader_finishing = False
+    owner._startup_loader_finish_started_ts = 0.0
+    owner._startup_loader_finish_start_pct = 0.0
+    owner._startup_loader_finish_reached_100_ts = 0.0
     owner._startup_loader_statement_index = 0
     owner._startup_loader_line_pool_loading = []
     owner._startup_loader_line_pool_ready = []

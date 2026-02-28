@@ -72,14 +72,18 @@ def compute_loader_progress(
             overall = min(overall, min(99.0, real_overall + 18.0))
         overall = max(0.0, overall)
 
-    if overall >= 100.0:
-        top_pct = 100.0
-        bottom_pct = 100.0
-    else:
-        top_pct = min(99.0, overall * 1.04)
-        bottom_pct = max(0.0, min(99.0, overall * 0.92 + 4.0))
+    top_pct, bottom_pct = compute_loader_fill_percentages(overall)
 
     return overall, top_pct, bottom_pct
+
+
+def compute_loader_fill_percentages(overall_pct: float) -> Tuple[float, float]:
+    overall = max(0.0, min(100.0, float(overall_pct or 0.0)))
+    if overall >= 100.0:
+        return 100.0, 100.0
+    top_pct = min(99.0, overall * 1.04)
+    bottom_pct = max(0.0, min(99.0, overall * 0.92 + 4.0))
+    return top_pct, bottom_pct
 
 
 def compute_loader_hide_hold_ms(elapsed_ms: float, timeline_ms: int, min_hold_ms: int = 250) -> int:
@@ -87,6 +91,14 @@ def compute_loader_hide_hold_ms(elapsed_ms: float, timeline_ms: int, min_hold_ms
     elapsed_ms = max(0.0, float(elapsed_ms or 0.0))
     remaining_ms = max(0, int(round(float(timeline_ms) - elapsed_ms)))
     return max(int(min_hold_ms), remaining_ms)
+
+
+def should_continue_finish_animation(progress: float, show_pct: float) -> bool:
+    progress_value = max(0.0, min(1.0, float(progress or 0.0)))
+    shown = max(0.0, min(100.0, float(show_pct or 0.0)))
+    # Finish phase must stay alive until both timeline dwell is done and
+    # the visible percentage has actually reached 100%.
+    return progress_value < 1.0 or shown < 100.0
 
 
 def normalize_deferred_variants_for_schedule(deferred_variants: Any) -> Tuple[str, ...]:
@@ -110,9 +122,10 @@ def prewarm_tick_policy(
 ) -> Any:
     if loader_visible:
         # Loader-visible mode should aggressively prewarm so reveal happens only
-        # after both variants are truly hot.
+        # after both variants are truly hot, but keep task bursts bounded so
+        # progress animation stays visually smooth.
         budget_ms = max(12, int(loader_budget_ms or 0))
-        max_tasks_this_tick = 8
+        max_tasks_this_tick = 4
         next_tick_ms = max(8, int(loader_tick_ms or 0))
     else:
         budget_ms = max(3, int(idle_budget_ms or 0))
