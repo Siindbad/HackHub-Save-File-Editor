@@ -583,6 +583,8 @@ source/core/layout_topbar.py
 source/core/startup_loader.py
 source/installer/sins_editor_installer.iss
 source/requirements-build.txt
+source/requirements-dev-tools.txt
+source/requirements-dev.txt
 source/services/README.md
 source/services/__init__.py
 source/services/bug_report_manager.py
