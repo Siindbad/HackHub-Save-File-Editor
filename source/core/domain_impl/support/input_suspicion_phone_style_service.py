@@ -688,18 +688,23 @@ def _load_phone_photo(owner, path, max_width=440):
     if not isinstance(cache, dict):
         cache = {}
         owner._input_suspicion_phone_photo_cache = cache
+    bounded_cache_put = getattr(owner, "_bounded_cache_put", None)
     key = (path, int(max_width))
     if key in cache:
         return cache[key]
     if not os.path.isfile(path):
-        cache[key] = None
+        if callable(bounded_cache_put):
+            bounded_cache_put(cache, key, None, max_items=96)
+        else:
+            cache[key] = None
         return None
 
     photo = None
     try:
         image_module = importlib.import_module("PIL.Image")
         image_tk_module = importlib.import_module("PIL.ImageTk")
-        image = image_module.open(path).convert("RGBA")
+        with image_module.open(path) as source:
+            image = source.convert("RGBA")
         width, height = image.size
         if width > max_width:
             ratio = max_width / float(width)
@@ -717,7 +722,10 @@ def _load_phone_photo(owner, path, max_width=440):
         except EXPECTED_ERRORS as exc:
             _LOG.debug('expected_error', exc_info=exc)
             photo = None
-    cache[key] = photo
+    if callable(bounded_cache_put):
+        bounded_cache_put(cache, key, photo, max_items=96)
+    else:
+        cache[key] = photo
     return photo
 
 

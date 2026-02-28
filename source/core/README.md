@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-28 (startup loader now enforces visible 100% completion before teardown with smoother progress cadence; theme prewarm includes Phase 3 guardrails; INPUT Network DEVICE supports locked BLUE TABLE/INTERPOL routing anchors; Bank INPUT balance now keeps raw numeric entry text with currency-prefix-safe coercion).
+Last sync: 2026-02-28 (added load-session aware prewarm deferral and document-load apply split for safer async open orchestration while keeping loader stability guardrails).
 
 | Module | Purpose |
 | --- | --- |

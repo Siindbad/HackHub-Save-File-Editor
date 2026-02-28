@@ -1442,6 +1442,15 @@ if button._siindbad_base_image is None:
         self._input_mode_router_prewarm_after_id = None
         if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
             return
+        if bool(self._is_document_load_cooldown_active()):
+            root = getattr(self, "root", None)
+            if root is not None:
+                try:
+                    delay_ms = max(120, int(getattr(self, "_router_input_prewarm_delay_ms", 180) or 180))
+                    self._input_mode_router_prewarm_after_id = root.after(delay_ms, self._run_router_input_prewarm)
+                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                    self._input_mode_router_prewarm_after_id = None
+            return
         try:
             self._prewarm_input_mode_assets()
         except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
@@ -2352,6 +2361,7 @@ if button._siindbad_base_image is None:
             "_input_mode_scroll_drag_after_id",
             "_input_mode_layout_finalize_after_id",
             "_input_mode_paned_recheck_after_id",
+            "_document_load_async_after_id",
         ):
             after_id = getattr(self, attr, None)
             if after_id:
@@ -2375,6 +2385,10 @@ if button._siindbad_base_image is None:
         self._destroy_text_context_menu()
         self._destroy_input_context_menu()
         self._cancel_scheduled_after_callbacks()
+        self._active_document_load_request_id = 0
+        self._document_load_depth = 0
+        self._document_load_in_progress = False
+        self._document_load_async_result = None
         # Enforce diagnostics day-file retention on app shutdown.
         self._purge_diag_logs_for_new_session()
 
@@ -5117,6 +5131,15 @@ if button._siindbad_base_image is None:
         self._session_started_monotonic = time.monotonic()
         self._last_callback_origin = ""
         self._crash_report_offer_after_id = None
+        # Document-load session state keeps prewarm work from competing with active file open.
+        self._document_load_depth = 0
+        self._document_load_in_progress = False
+        self._document_load_request_seq = 0
+        self._active_document_load_request_id = 0
+        self._document_load_async_after_id = None
+        self._document_load_async_result = None
+        self._document_load_last_completed_ts = 0.0
+        self._document_load_quiet_window_ms = 220
         self._list_labelers = tree_engine_service.default_list_labelers(self)
         # INPUT mode uses custom Database entry names (Grades/BCC/INTERPOL) while
         # JSON mode keeps canonical host-style labels through the same labeler hook.
@@ -8012,13 +8035,133 @@ if button._siindbad_base_image is None:
         if self.status is not None:
             self.status.config(text=msg)
 
+    def _begin_document_load_session(self) -> None:
+        depth = max(0, int(getattr(self, "_document_load_depth", 0) or 0)) + 1
+        self._document_load_depth = depth
+        self._document_load_in_progress = True
+
+    def _end_document_load_session(self) -> None:
+        depth = max(0, int(getattr(self, "_document_load_depth", 0) or 0) - 1)
+        self._document_load_depth = depth
+        self._document_load_in_progress = bool(depth > 0)
+        if depth == 0:
+            self._document_load_last_completed_ts = time.perf_counter()
+
+    def _is_document_load_cooldown_active(self) -> bool:
+        if bool(getattr(self, "_document_load_in_progress", False)):
+            return True
+        last_completed_ts = float(getattr(self, "_document_load_last_completed_ts", 0.0) or 0.0)
+        if last_completed_ts <= 0.0:
+            return False
+        quiet_window_ms = max(0.0, float(getattr(self, "_document_load_quiet_window_ms", 220) or 220))
+        if quiet_window_ms <= 0.0:
+            return False
+        elapsed_ms = max(0.0, (time.perf_counter() - last_completed_ts) * 1000.0)
+        return elapsed_ms < quiet_window_ms
+
+    def _finish_load_file_async(self, request_id: int, path: str, payload: object, error_text: str) -> None:
+        self._document_load_async_after_id = None
+        self._document_load_async_result = None
+        active_request_id = int(getattr(self, "_active_document_load_request_id", 0) or 0)
+        if int(request_id) != active_request_id:
+            self._end_document_load_session()
+            return
+        self._active_document_load_request_id = 0
+        try:
+            if bool(getattr(self, "_shutdown_cleanup_done", False)):
+                return
+            if error_text:
+                messagebox.showerror("Load failed", str(error_text))
+                return
+            editor_purge_service.apply_loaded_document(self, path, payload)
+        finally:
+            self._end_document_load_session()
+
+    def _poll_load_file_async(self, request_id: int) -> None:
+        self._document_load_async_after_id = None
+        result = getattr(self, "_document_load_async_result", None)
+        if not isinstance(result, dict):
+            self._finish_load_file_async(request_id, "", None, "Load interrupted.")
+            return
+        if int(result.get("request_id", 0) or 0) != int(request_id):
+            self._finish_load_file_async(request_id, "", None, "Load request mismatch.")
+            return
+        if not bool(result.get("done", False)):
+            root = getattr(self, "root", None)
+            if root is None:
+                self._finish_load_file_async(request_id, "", None, "Load interrupted.")
+                return
+            try:
+                self._document_load_async_after_id = root.after(12, lambda rid=request_id: self._poll_load_file_async(rid))
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                self._document_load_async_after_id = None
+                self._finish_load_file_async(request_id, "", None, "Load interrupted.")
+            return
+        self._finish_load_file_async(
+            request_id,
+            str(result.get("path", "") or ""),
+            result.get("payload"),
+            str(result.get("error_text", "") or ""),
+        )
+
+    def _load_file_async(self, path: str) -> None:
+        use_path = str(path or "").strip()
+        if not use_path:
+            return
+        if bool(getattr(self, "_document_load_in_progress", False)):
+            self.set_status("Load already in progress.")
+            return
+        root = getattr(self, "root", None)
+        if root is None:
+            return
+        try:
+            if not bool(root.winfo_exists()):
+                return
+        except (tk.TclError, RuntimeError, AttributeError):
+            return
+        request_id = int(getattr(self, "_document_load_request_seq", 0) or 0) + 1
+        self._document_load_request_seq = request_id
+        self._active_document_load_request_id = request_id
+        self._begin_document_load_session()
+        self.set_status(f"Loading {os.path.basename(use_path)}...")
+        self._document_load_async_result = {
+            "request_id": request_id,
+            "path": use_path,
+            "done": False,
+            "payload": None,
+            "error_text": "",
+        }
+
+        def _worker():
+            payload = None
+            error_text = ""
+            try:
+                payload = editor_purge_service.load_document_payload(use_path)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+                error_text = str(exc)
+            result = getattr(self, "_document_load_async_result", None)
+            if not isinstance(result, dict):
+                return
+            if int(result.get("request_id", 0) or 0) != int(request_id):
+                return
+            result["payload"] = payload
+            result["error_text"] = error_text
+            result["done"] = True
+
+        threading.Thread(target=_worker, daemon=True, name=f"load_file_{request_id}").start()
+        try:
+            self._document_load_async_after_id = root.after(12, lambda rid=request_id: self._poll_load_file_async(rid))
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            self._document_load_async_after_id = None
+            self._finish_load_file_async(request_id, "", None, "Could not start async load.")
+
     def open_file(self):
         path = filedialog.askopenfilename(
             title="Open File",
             filetypes=[("HackHub Save (.hhsav)", "*.hhsav")],
         )
         if path:
-            self.load_file(path)
+            self._load_file_async(path)
 
     def load_file(self, path):
         return editor_purge_service.load_file(self, path)

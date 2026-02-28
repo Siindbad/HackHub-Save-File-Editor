@@ -95,6 +95,25 @@ def _is_toolbar_interaction_active(owner: Any) -> bool:
         return False
 
 
+def _is_document_load_active_or_cooling(owner: Any) -> bool:
+        if bool(getattr(owner, "_document_load_in_progress", False)):
+            return True
+        cooldown_checker = getattr(owner, "_is_document_load_cooldown_active", None)
+        if callable(cooldown_checker):
+            try:
+                return bool(cooldown_checker())
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                return False
+        last_completed_ts = float(getattr(owner, "_document_load_last_completed_ts", 0.0) or 0.0)
+        if last_completed_ts <= 0.0:
+            return False
+        quiet_window_ms = max(0.0, float(getattr(owner, "_document_load_quiet_window_ms", 220) or 220))
+        if quiet_window_ms <= 0.0:
+            return False
+        elapsed_ms = max(0.0, (time.perf_counter() - last_completed_ts) * 1000.0)
+        return elapsed_ms < quiet_window_ms
+
+
 def theme_palette_for_variant(variant: Any) -> Any:
     use_variant = str(variant).upper()
     match use_variant:
@@ -877,7 +896,11 @@ def _schedule_phase2_data_path_prewarm(owner: Any) -> None:
 
         def _run_or_defer() -> None:
             owner._theme_phase2_data_prewarm_after_id = None
-            if _is_loader_overlay_visible(owner) or _is_toolbar_interaction_active(owner):
+            if (
+                _is_document_load_active_or_cooling(owner)
+                or _is_loader_overlay_visible(owner)
+                or _is_toolbar_interaction_active(owner)
+            ):
                 try:
                     owner._theme_phase2_data_prewarm_after_id = root.after(retry_ms, _run_or_defer)
                 except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
@@ -926,6 +949,16 @@ def _run_theme_asset_prewarm(owner: Any):
         # Build full bundles during startup prewarm so first manual theme switch
         # is truly hot and does not trigger first-use sprite/render spikes.
         owner._theme_prewarm_render_mode = "full"
+        # Defer startup prewarm while document-load work is active or in short post-load cooldown.
+        if _is_document_load_active_or_cooling(owner):
+            try:
+                owner._theme_prewarm_after_id = owner.root.after(
+                    max(80, int(next_tick_ms) * 2),
+                    owner._run_theme_asset_prewarm,
+                )
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                owner._theme_prewarm_after_id = None
+            return
         # Keep initial toolbar hover smooth: defer prewarm ticks while pointer/scan is active.
         if _is_toolbar_interaction_active(owner):
             try:

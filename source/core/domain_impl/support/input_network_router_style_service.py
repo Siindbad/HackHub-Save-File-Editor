@@ -301,19 +301,24 @@ def _load_router_art_photo(
     if not isinstance(cache, dict):
         cache = {}
         owner._input_mode_router_art_cache = cache
+    bounded_cache_put = getattr(owner, "_bounded_cache_put", None)
     mode = str(fit_mode or "contain").strip().lower()
     key = (str(path), int(max_width), int(max_height), bool(stretch), bool(allow_upscale), mode)
     if key in cache:
         return cache[key]
     if not os.path.isfile(path):
-        cache[key] = None
+        if callable(bounded_cache_put):
+            bounded_cache_put(cache, key, None, max_items=128)
+        else:
+            cache[key] = None
         return None
 
     photo = None
     try:
         image_module = importlib.import_module("PIL.Image")
         image_tk_module = importlib.import_module("PIL.ImageTk")
-        image = image_module.open(path).convert("RGBA")
+        with image_module.open(path) as source:
+            image = source.convert("RGBA")
         # Trim transparent padding so logos can truly fill target frames.
         bbox = image.getbbox()
         if bbox is not None:
@@ -391,7 +396,10 @@ def _load_router_art_photo(
             _LOG.debug("expected_error", exc_info=exc)
             photo = None
 
-    cache[key] = photo
+    if callable(bounded_cache_put):
+        bounded_cache_put(cache, key, photo, max_items=128)
+    else:
+        cache[key] = photo
     return photo
 
 

@@ -1060,13 +1060,14 @@ def _apply_json_view_value_highlights(owner: Any, path):
                 owner._tag_json_locked_value_occurrences(field_name, literal, ignore_case=ignore_case)
 
 
-def load_file(owner: Any, path):
-        try:
-            owner.data = document_io_service.load_document(path)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
-            messagebox.showerror("Load failed", str(exc))
-            return
+def load_document_payload(path: Any) -> Any:
+        """Load raw document payload through the canonical document I/O service."""
+        return document_io_service.load_document(path)
 
+
+def apply_loaded_document(owner: Any, path: Any, data: Any) -> Any:
+        """Apply loaded document payload to editor state and refresh dependent UI surfaces."""
+        owner.data = data
         owner.path = path
         owner.root.title(
             f"SIINDBAD's HackHub Editor - {os.path.basename(path)} - v{owner.APP_VERSION}"
@@ -1098,6 +1099,32 @@ def load_file(owner: Any, path):
         if callable(schedule_router_prewarm):
             schedule_router_prewarm()
         owner.set_status(str(getattr(owner, "STATUS_LOADED", "Loaded")))
+
+
+def load_file(owner: Any, path):
+        begin_document_load = getattr(owner, "_begin_document_load_session", None)
+        if callable(begin_document_load):
+            begin_document_load()
+        else:
+            setattr(owner, "_document_load_in_progress", True)
+        try:
+            loaded = load_document_payload(path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+            messagebox.showerror("Load failed", str(exc))
+            end_document_load = getattr(owner, "_end_document_load_session", None)
+            if callable(end_document_load):
+                end_document_load()
+            else:
+                setattr(owner, "_document_load_in_progress", False)
+            return
+        try:
+            apply_loaded_document(owner, path, loaded)
+        finally:
+            end_document_load = getattr(owner, "_end_document_load_session", None)
+            if callable(end_document_load):
+                end_document_load()
+            else:
+                setattr(owner, "_document_load_in_progress", False)
 
 
 def _current_overlay_suggestion(owner: Any):

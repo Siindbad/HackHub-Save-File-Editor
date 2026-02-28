@@ -1,4 +1,5 @@
 """INPUT-mode find helpers for widget indexing and viewport scrolling."""
+from collections import deque
 from typing import Any
 from core.exceptions import EXPECTED_ERRORS
 import logging
@@ -9,9 +10,9 @@ def find_first_entry_descendant(root_widget: Any, tk_module: Any) -> Any:
     """Return first entry descendant under root widget breadth-first."""
     if root_widget is None:
         return None
-    queue = [root_widget]
+    queue = deque([root_widget])
     while queue:
-        current = queue.pop(0)
+        current = queue.popleft()
         if isinstance(current, tk_module.Entry):
             return current
         try:
