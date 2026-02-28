@@ -83,6 +83,30 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
+def _format_balance_entry_value(balance: Any, expected_type: type[Any] | None) -> str:
+    # Keep the entry editable as raw numeric text (no '$' prefix / forced '.00').
+    if balance is None:
+        return ""
+    text = str(balance).strip()
+    if not text:
+        return ""
+    if expected_type is int:
+        try:
+            return str(int(_safe_float(text)))
+        except (TypeError, ValueError):
+            return text
+    if expected_type is float:
+        try:
+            number = _safe_float(text)
+        except (TypeError, ValueError):
+            return text
+        if float(number).is_integer():
+            return str(int(number))
+        compact = str(number).rstrip("0").rstrip(".")
+        return compact if compact else "0"
+    return text
+
+
 def _format_signed_amount(amount: float, is_positive: bool) -> str:
     sign = "+" if is_positive else "-"
     return f"{sign}${amount:,.2f}"
@@ -333,7 +357,8 @@ def _render_my_account_mirror(owner: Any, host: Any, normalized_path: Any, paylo
     )
     balance_shell.grid(row=0, column=3, sticky="ew", padx=4, pady=6)
     initial_balance = identity.get("balance")
-    balance_value = "" if initial_balance is None else f"${_safe_float(initial_balance):,.2f}"
+    balance_type = identity.get("balance_type", type(initial_balance))
+    balance_value = _format_balance_entry_value(initial_balance, balance_type)
     balance_var = tk.StringVar(value=balance_value)
     balance_entry = tk.Entry(
         balance_shell,
@@ -368,8 +393,18 @@ def _render_my_account_mirror(owner: Any, host: Any, normalized_path: Any, paylo
         inner_right = max(inner_left + 40, width - 10)
         _draw_rounded(balance_shell, inner_left, 24, inner_right, 50, radius=6, color=input_edge, splinesteps=32)
         _draw_rounded(balance_shell, inner_left + 1, 25, inner_right - 1, 49, radius=5, color=input_bg, splinesteps=32)
-        entry_w = max(72, (inner_right - inner_left) - 10)
-        balance_shell.coords(balance_entry_window, (inner_left + inner_right) // 2, 37)
+        balance_shell.create_text(
+            inner_left + 10,
+            37,
+            text="$",
+            fill=amount_pos,
+            font=(value_family, row_size, "bold"),
+            anchor="w",
+            tags=("face",),
+        )
+        entry_left = inner_left + 20
+        entry_w = max(62, (inner_right - entry_left) - 6)
+        balance_shell.coords(balance_entry_window, entry_left + (entry_w // 2), 37)
         balance_shell.itemconfigure(balance_entry_window, width=entry_w, height=19)
         balance_shell.lift(balance_entry_window)
 
@@ -383,7 +418,7 @@ def _render_my_account_mirror(owner: Any, host: Any, normalized_path: Any, paylo
             "rel_path": list(identity.get("balance_rel_path", [])),
             "abs_path": list(normalized_path) + list(identity.get("balance_rel_path", [])),
             "initial": initial_balance,
-            "type": identity.get("balance_type", type(initial_balance)),
+            "type": balance_type,
             "var": balance_var,
             "widget": balance_entry,
         }

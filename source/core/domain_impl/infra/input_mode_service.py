@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from core.exceptions import EXPECTED_ERRORS
 import logging
@@ -133,6 +134,46 @@ def strip_input_display_prefix(raw: Any) -> Any:
     return value
 
 
+def _normalize_numeric_text(raw: Any) -> str:
+    # Accept common finance-style entry patterns (currency, grouping separators).
+    text = str(raw).strip()
+    if not text:
+        return text
+    if text.startswith("(") and text.endswith(")"):
+        text = "-" + text[1:-1]
+    text = text.replace("$", "")
+    if text.upper().startswith("USD"):
+        text = text[3:]
+    text = text.replace(",", "")
+    text = text.replace(" ", "")
+    return text.strip()
+
+
+def _coerce_int_text(raw: Any) -> int:
+    text = _normalize_numeric_text(raw)
+    if text == "":
+        raise ValueError("integer value is required")
+    try:
+        value = Decimal(text)
+    except InvalidOperation as exc:
+        raise ValueError(f"invalid integer value: {raw!r}") from exc
+    integral = value.to_integral_value()
+    if value != integral:
+        raise ValueError("integer value cannot include a fractional component")
+    return int(integral)
+
+
+def _coerce_float_text(raw: Any) -> float:
+    text = _normalize_numeric_text(raw)
+    if text == "":
+        raise ValueError("numeric value is required")
+    try:
+        value = Decimal(text)
+    except InvalidOperation as exc:
+        raise ValueError(f"invalid numeric value: {raw!r}") from exc
+    return float(value)
+
+
 def coerce_input_field_value(spec: Any) -> Any:
     # Convert StringVar input back to the original scalar type for safe write-back.
     expected_type = spec.get("type", str)
@@ -153,9 +194,9 @@ def coerce_input_field_value(spec: Any) -> Any:
         raise ValueError("boolean must be true/false")
     raw = raw_display
     if expected_type is int:
-        return int(raw)
+        return _coerce_int_text(raw)
     if expected_type is float:
-        return float(raw)
+        return _coerce_float_text(raw)
     if expected_type is type(None):
         return None if str(raw).strip() == "" else str(raw)
     return str(raw)
