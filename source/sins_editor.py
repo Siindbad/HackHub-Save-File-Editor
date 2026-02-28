@@ -58,14 +58,18 @@ error_service = bug_report_manager.BUG_REPORT.error_service
 document_io_service = document_service.DOCUMENT.document_io_service
 editor_mode_switch_service = document_service.DOCUMENT.editor_mode_switch_service
 editor_purge_service = document_service.DOCUMENT.editor_purge_service
+asset_image_service = editor_ui_core.EDITOR_UI.asset_image_service
 footer_service = editor_ui_core.EDITOR_UI.footer_service
+input_mode_paned_lock_service = editor_ui_core.EDITOR_UI.input_mode_paned_lock_service
 loader_service = editor_ui_core.EDITOR_UI.loader_service
+startup_loader_lifecycle_service = editor_ui_core.EDITOR_UI.startup_loader_lifecycle_service
 startup_loader_ui_service = editor_ui_core.EDITOR_UI.startup_loader_ui_service
 toolbar_service = editor_ui_core.EDITOR_UI.toolbar_service
 ui_build_service = editor_ui_core.EDITOR_UI.ui_build_service
 ui_dispatch_service = editor_ui_core.EDITOR_UI.ui_dispatch_service
 input_mode_diag_service = input_mode_manager.INPUT_MODE.input_mode_diag_service
 input_mode_find_service = input_mode_manager.INPUT_MODE.input_mode_find_service
+input_mode_render_dispatch_service = input_mode_manager.INPUT_MODE.input_mode_render_dispatch_service
 input_mode_service = input_mode_manager.INPUT_MODE.input_mode_service
 json_apply_commit_service = json_engine.JSON_ENGINE.json_apply_commit_service
 json_closer_symbol_service = json_engine.JSON_ENGINE.json_closer_symbol_service
@@ -1074,248 +1078,15 @@ if button._siindbad_base_image is None:
             return
 
     def _refresh_input_mode_fields(self, path, value):
-        host = getattr(self, "_input_mode_fields_host", None)
-        if host is None:
-            return
-        self._cancel_pending_router_input_batches()
-        self._clear_router_virtual_state()
-        self._cancel_pending_input_mode_layout_finalize()
-        self._input_mode_render_token = int(getattr(self, "_input_mode_render_token", 0) or 0) + 1
-        self._input_mode_field_specs = []
-        self._input_mode_current_path = list(path or [])
-        self._input_mode_no_fields_label = None
-        theme = getattr(self, "_theme", {})
-        panel_bg = theme.get("panel", "#161b24")
-        host.configure(bg=panel_bg)
-        normalized_path = list(path or [])
-        root_key = self._input_mode_root_key_for_path(normalized_path)
-        is_network_router_payload = self._is_network_router_input_style_payload(normalized_path, value)
-        is_network_bcc_domains_payload = self._is_network_bcc_domains_input_style_payload(normalized_path, value)
-        is_network_blue_table_payload = self._is_network_blue_table_input_style_payload(normalized_path, value)
-        is_network_interpol_payload = self._is_network_interpol_input_style_payload(normalized_path, value)
-        is_network_geoip_payload = self._is_network_geoip_input_style_payload(normalized_path, value)
-        is_network_device_payload = self._is_network_device_input_style_payload(normalized_path, value)
-        is_network_firewall_payload = self._is_network_firewall_input_style_payload(normalized_path, value)
-        database_grades_matrix = self._database_grades_matrix_for_input_path(normalized_path, value)
-        database_bcc_payload = self._database_bcc_payload_for_input_path(normalized_path, value)
-        database_interpol_payload = self._database_interpol_payload_for_input_path(normalized_path, value)
-        is_database_payload = bool(database_grades_matrix)
-        if is_network_router_payload:
-            input_network_router_style_service.prepare_router_render_host(
-                self,
-                host,
-                reset_pool=False,
-            )
-            keep_database_children = input_database_style_service.suspend_database_render_host(self, host)
-            pool_children = {
-                row_slot.get("row_frame")
-                for row_slot in list(getattr(self, "_input_mode_router_row_pool", []) or [])
-                if isinstance(row_slot, dict)
-            }
-            pool_children.update(input_network_router_style_service.router_pool_children(self, host))
-            for child in list(host.winfo_children()):
-                if child in pool_children or child in keep_database_children:
-                    continue
-                try:
-                    child.destroy()
-                except (tk.TclError, RuntimeError, AttributeError):
-                    continue
-        elif is_database_payload:
-            keep_router_children = input_network_router_style_service.suspend_router_render_host(self, host)
-            keep_database_children = input_database_style_service.database_pool_children(self, host)
-            for child in host.winfo_children():
-                if child in keep_router_children or child in keep_database_children:
-                    continue
-                child.destroy()
-        else:
-            keep_router_children = input_network_router_style_service.suspend_router_render_host(self, host)
-            keep_database_children = input_database_style_service.suspend_database_render_host(self, host)
-            for child in host.winfo_children():
-                if child in keep_router_children or child in keep_database_children:
-                    continue
-                child.destroy()
-        if self._is_input_mode_category_disabled(normalized_path):
-            input_mode_service.show_input_mode_notice(
-                self,
-                host,
-                panel_bg,
-                self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
-                font_size=11,
-                tk_module=tk,
-            )
-            # Track disabled roots too; otherwise revisits can be incorrectly skipped.
-            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-            return
-        if len(normalized_path) == 0:
-            has_data = getattr(self, "data", None) is not None
-            message = (
-                "No direct value fields here. Select a specific item node to edit."
-                if has_data
-                else "No File Loaded. Open A .HHSAV File Before Continuing."
-            )
-            input_mode_service.show_input_mode_notice(
-                self,
-                host,
-                panel_bg,
-                message,
-                font_size=9,
-                tk_module=tk,
-            )
-            return
-        if (
-            len(normalized_path) == 1
-            and root_key == "network"
-        ):
-            # Keep generic Network root placeholder, but allow custom subgroup payload renderers
-            # (e.g., ROUTER/DEVICE/FIREWALL grouped selection routed through list_path) to proceed.
-            if is_network_router_payload or is_network_device_payload or is_network_firewall_payload:
-                pass
-            else:
-                input_mode_service.show_input_mode_notice(
-                    self,
-                    host,
-                    panel_bg,
-                    "Select A Sub Category To View Input Fields",
-                    font_size=11,
-                    tk_module=tk,
-                )
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if len(normalized_path) == 1 and root_key == "database":
-            input_mode_service.show_input_mode_notice(
-                self,
-                host,
-                panel_bg,
-                "Select A Sub Category To View Input Fields",
-                font_size=11,
-                tk_module=tk,
-            )
-            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-            return
-        if self._is_bank_input_style_path(normalized_path):
-            bank_rows = self._collect_bank_input_rows(value)
-            if bank_rows:
-                self._render_bank_input_style_rows(host, normalized_path, bank_rows)
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if database_bcc_payload:
-            self._render_database_bcc_table(host, normalized_path, database_bcc_payload)
-            self._refresh_input_mode_bool_widget_colors()
-            self._schedule_input_mode_layout_finalize(reset_scroll=True)
-            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-            return
-        if database_interpol_payload:
-            self._render_database_interpol_table(host, normalized_path, database_interpol_payload)
-            self._refresh_input_mode_bool_widget_colors()
-            self._schedule_input_mode_layout_finalize(reset_scroll=True)
-            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-            return
-        if self._is_database_input_style_path(normalized_path):
-            if database_grades_matrix:
-                self._render_database_grades_input_matrix(host, normalized_path, database_grades_matrix)
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if self._is_suspicion_input_style_path(normalized_path):
-            if self._render_suspicion_phone_input(host, normalized_path, value):
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if self._is_phone_input_style_path(normalized_path):
-            if self._render_phone_preview_input(host, normalized_path, value):
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if self._is_skypersky_input_style_path(normalized_path):
-            if self._render_skypersky_input(host, normalized_path, value):
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if is_network_router_payload:
-            router_rows = self._collect_network_router_input_rows(normalized_path, value)
-            if router_rows:
-                self._render_network_router_input_rows(
-                    host,
-                    normalized_path,
-                    router_rows,
-                    start_index=0,
-                    finalize=True,
-                    total_rows=len(router_rows),
-                )
-                self._clear_router_virtual_state()
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if is_network_firewall_payload:
-            firewall_rows = self._collect_network_firewall_input_rows(normalized_path, value)
-            if firewall_rows:
-                self._render_network_firewall_input_rows(host, normalized_path, firewall_rows)
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if is_network_bcc_domains_payload:
-            bcc_domains_payload = self._collect_network_bcc_domains_payload(normalized_path, value)
-            if bcc_domains_payload:
-                self._render_network_bcc_domains_input(host, normalized_path, bcc_domains_payload)
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if is_network_blue_table_payload:
-            blue_table_payload = self._collect_network_blue_table_payload(normalized_path, value)
-            if blue_table_payload:
-                self._render_network_blue_table_input(host, normalized_path, blue_table_payload)
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if is_network_interpol_payload:
-            interpol_payload = self._collect_network_interpol_payload(normalized_path, value)
-            if interpol_payload:
-                self._render_network_interpol_input(host, normalized_path, interpol_payload)
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if is_network_geoip_payload:
-            geoip_payload = self._collect_network_geoip_payload(normalized_path, value)
-            if geoip_payload:
-                self._render_network_geoip_input(host, normalized_path, geoip_payload)
-                self._refresh_input_mode_bool_widget_colors()
-                self._schedule_input_mode_layout_finalize(reset_scroll=True)
-                input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-                return
-        if is_network_device_payload:
-            input_mode_service.show_input_mode_notice(
-                self,
-                host,
-                panel_bg,
-                "Selected A Sub Category",
-                font_size=11,
-                tk_module=tk,
-            )
-            input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-            return
-        # Generic INPUT fallback rows are retired; unsupported paths should
-        # consistently show the development template until a custom layout is added.
-        input_mode_service.show_input_mode_notice(
+        return input_mode_render_dispatch_service.refresh_input_mode_fields(
             self,
-            host,
-            panel_bg,
-            self.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
-            font_size=11,
+            path,
+            value,
             tk_module=tk,
+            input_database_style_service=input_database_style_service,
+            input_mode_service=input_mode_service,
+            input_network_router_style_service=input_network_router_style_service,
         )
-        input_mode_service.mark_input_mode_render_complete(self, normalized_path)
-        return
 
     def _input_mode_path_key(self, path):
         if isinstance(path, list):
@@ -1816,197 +1587,30 @@ if button._siindbad_base_image is None:
             self._show_json_no_file_message()
 
     def _sync_input_mode_paned_sash_lock(self, mode=None):
-        """Disable divider dragging in INPUT mode and keep sash at its locked position."""
-        body = getattr(self, "_body_panedwindow", None)
-        if body is None:
-            return
-        lock_active = bool(getattr(self, "_input_mode_paned_lock_active", False))
-        try:
-            body_class = str(body.winfo_class() or "")
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            body_class = "TPanedwindow"
-        default_tags = tuple(getattr(self, "_body_paned_bindtags_default", ()) or ())
-        if not default_tags:
-            try:
-                default_tags = tuple(body.bindtags())
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                default_tags = ()
-            if default_tags:
-                self._body_paned_bindtags_default = default_tags
-        use_mode = str(mode or getattr(self, "_editor_mode", "JSON")).upper()
-        try:
-            current_x = int(body.sashpos(0))
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            current_x = None
-        try:
-            body_width = int(body.winfo_width() or 0)
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            body_width = 0
-        fallback_x = None
-        if body_width > 160:
-            min_tree_width = 180
-            min_editor_width = 320
-            max_sash = max(min_tree_width, int(body_width) - min_editor_width)
-            candidate = max(min_tree_width, int(round(float(body_width) * 0.30)))
-            candidate = min(candidate, max_sash)
-            if candidate > 10:
-                fallback_x = int(candidate)
-        # Persist a sane first sash position as INPUT lock baseline so
-        # JSON-mode manual sash moves do not change INPUT layout.
-        # Ignore near-zero values to avoid capturing pre-layout sash=0.
-        fixed_input_x = getattr(self, "_input_mode_paned_fixed_sash_x", None)
-        try:
-            fixed_input_x = int(fixed_input_x) if fixed_input_x is not None else None
-        except (TypeError, ValueError):
-            fixed_input_x = None
-        if fixed_input_x is not None and int(fixed_input_x) <= 10:
-            fixed_input_x = None
-        if fixed_input_x is None and current_x is not None and int(current_x) > 10:
-            fixed_input_x = int(current_x)
-            self._input_mode_paned_fixed_sash_x = fixed_input_x
-        if fixed_input_x is None and fallback_x is not None:
-            fixed_input_x = int(fallback_x)
-            self._input_mode_paned_fixed_sash_x = fixed_input_x
-        if use_mode != "INPUT":
-            self._cancel_input_mode_paned_lock_recheck()
-            if not lock_active and getattr(self, "_input_mode_paned_sash_x", None) is None:
-                return
-            self._input_mode_paned_sash_x = None
-            if lock_active and default_tags:
-                try:
-                    if tuple(body.bindtags()) != default_tags:
-                        body.bindtags(default_tags)
-                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                    return
-            self._input_mode_paned_lock_active = False
-            return
-        if default_tags and not lock_active:
-            locked_tags = tuple(tag for tag in default_tags if str(tag) != body_class)
-            if not locked_tags:
-                locked_tags = default_tags
-            try:
-                if tuple(body.bindtags()) != locked_tags:
-                    body.bindtags(locked_tags)
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                self._schedule_input_mode_paned_lock_recheck()
-                return
-        self._input_mode_paned_lock_active = True
-        # Windows zoom->normal can leave the tree pane attached-but-unmapped.
-        # Reassert pane config so INPUT tree does not disappear until a mode toggle.
-        JsonEditor._repair_input_mode_tree_pane_mapping(self)
-        if current_x is None:
-            self._schedule_input_mode_paned_lock_recheck()
-            return
-        locked_x = getattr(self, "_input_mode_paned_sash_x", None)
-        if locked_x is None:
-            if fixed_input_x is not None:
-                target_x = int(fixed_input_x)
-            elif int(current_x) > 10:
-                target_x = int(current_x)
-                self._input_mode_paned_fixed_sash_x = int(current_x)
-            elif fallback_x is not None:
-                target_x = int(fallback_x)
-                self._input_mode_paned_fixed_sash_x = int(target_x)
-            else:
-                # Wait for a stable configure pass before locking INPUT sash.
-                self._schedule_input_mode_paned_lock_recheck()
-                return
-            self._input_mode_paned_sash_x = int(target_x)
-            locked_x = int(target_x)
-        else:
-            try:
-                locked_x = int(locked_x)
-            except (TypeError, ValueError):
-                locked_x = None
-        if locked_x is None:
-            self._schedule_input_mode_paned_lock_recheck()
-            return
-        # Self-heal if an older transient lock captured an invalid near-zero split.
-        if int(locked_x) <= 10:
-            if int(current_x) > 10:
-                locked_x = int(current_x)
-                self._input_mode_paned_sash_x = int(locked_x)
-                if fixed_input_x is None:
-                    self._input_mode_paned_fixed_sash_x = int(locked_x)
-            elif fallback_x is not None:
-                locked_x = int(fallback_x)
-                self._input_mode_paned_sash_x = int(locked_x)
-                if fixed_input_x is None:
-                    self._input_mode_paned_fixed_sash_x = int(locked_x)
-        apply_x = int(locked_x)
-        if body_width > 160:
-            min_tree_width = 180
-            min_editor_width = 320
-            max_sash = max(min_tree_width, int(body_width) - min_editor_width)
-            apply_x = max(min_tree_width, min(apply_x, max_sash))
-        if int(apply_x) != current_x:
-            try:
-                body.sashpos(0, int(apply_x))
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                self._schedule_input_mode_paned_lock_recheck()
-                return
-        # If metrics are still transient, recheck shortly so INPUT can recover
-        # without requiring a mode toggle.
-        if int(apply_x) <= 10 or body_width <= 160:
-            self._schedule_input_mode_paned_lock_recheck()
-            return
-        self._cancel_input_mode_paned_lock_recheck()
+        return input_mode_paned_lock_service.sync_input_mode_paned_sash_lock(
+            self,
+            mode=mode,
+            tk_module=tk,
+        )
 
     def _repair_input_mode_tree_pane_mapping(self):
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return False
-        body = getattr(self, "_body_panedwindow", None)
-        tree = getattr(self, "tree", None)
-        if body is None or tree is None:
-            return False
-        left = getattr(tree, "master", None)
-        if left is None:
-            return False
-        try:
-            if not bool(body.winfo_ismapped()):
-                return False
-            if bool(left.winfo_ismapped()):
-                return False
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            return False
-        try:
-            body.pane(left, weight=1)
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            return False
-        return True
+        return input_mode_paned_lock_service.repair_input_mode_tree_pane_mapping(
+            self,
+            tk_module=tk,
+        )
 
     def _cancel_input_mode_paned_lock_recheck(self):
-        after_id = getattr(self, "_input_mode_paned_recheck_after_id", None)
-        self._input_mode_paned_recheck_after_id = None
-        if not after_id:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            root.after_cancel(after_id)
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            return
+        return input_mode_paned_lock_service.cancel_input_mode_paned_lock_recheck(
+            self,
+            tk_module=tk,
+        )
 
     def _schedule_input_mode_paned_lock_recheck(self, delay_ms=72):
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        self._cancel_input_mode_paned_lock_recheck()
-
-        def _run_recheck():
-            self._input_mode_paned_recheck_after_id = None
-            self._sync_input_mode_paned_sash_lock("INPUT")
-
-        try:
-            self._input_mode_paned_recheck_after_id = root.after(
-                max(16, int(delay_ms)),
-                _run_recheck,
-            )
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            self._input_mode_paned_recheck_after_id = None
+        return input_mode_paned_lock_service.schedule_input_mode_paned_lock_recheck(
+            self,
+            delay_ms=delay_ms,
+            tk_module=tk,
+        )
 
     def _apply_tree_mode_style(self, mode=None):
         return editor_purge_service._apply_tree_mode_style(self, mode)
@@ -7000,260 +6604,45 @@ if button._siindbad_base_image is None:
         return smoothed
 
     def _update_startup_loader_progress(self):
-        overlay = getattr(self, "_startup_loader_overlay", None)
-        if overlay is None or not overlay.winfo_exists():
-            return
-        if bool(getattr(self, "_startup_loader_finishing", False)):
-            return
-        started = float(getattr(self, "_startup_loader_started_ts", 0.0) or 0.0)
-        now = time.perf_counter()
-        elapsed_ms = max(0.0, (now - started) * 1000.0) if started > 0 else 0.0
-        timeline_ms = max(1000, int(getattr(self, "_startup_loader_extra_hold_ms", 1800) or 1800))
-        ready = getattr(self, "_startup_loader_ready_ts", None) is not None
-        overall, _top_pct, _bottom_pct = startup_loader_core.compute_loader_progress(
-            elapsed_ms=elapsed_ms,
-            timeline_ms=timeline_ms,
-            ready=ready,
-            required_variants=getattr(self, "_startup_loader_required_variants", set()),
-            active_variant=getattr(self, "_app_theme_variant", "SIINDBAD"),
-            variant_progress_getter=self._startup_loader_variant_progress,
+        return startup_loader_lifecycle_service.update_startup_loader_progress(
+            self,
+            time_module=time,
+            startup_loader_core=startup_loader_core,
         )
-        show_pct = self._smooth_startup_loader_progress(overall, now_ts=now)
-        top_pct, bottom_pct = startup_loader_core.compute_loader_fill_percentages(show_pct)
-
-        self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_top_fill", None), top_pct)
-        self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_bottom_fill", None), bottom_pct)
-
-        pct_label = getattr(self, "_startup_loader_pct_label", None)
-        if pct_label is not None and pct_label.winfo_exists():
-            pct_label.configure(text=f"{int(show_pct)}%")
 
     def _is_startup_full_load_ready(self):
-        required = startup_loader_core.resolve_required_variants(
-            getattr(self, "_startup_loader_required_variants", set()),
-            getattr(self, "_app_theme_variant", "SIINDBAD"),
+        return startup_loader_lifecycle_service.is_startup_full_load_ready(
+            self,
+            startup_loader_core=startup_loader_core,
         )
-        warmed = set(getattr(self, "_theme_prewarm_done", set()))
-        if required.issubset(warmed):
-            return True
-        totals = getattr(self, "_theme_prewarm_total_by_variant", {})
-        done = getattr(self, "_theme_prewarm_done_by_variant", {})
-        for variant in required:
-            total = int(totals.get(variant, 0) or 0)
-            finished = int(done.get(variant, 0) or 0)
-            if total <= 0 or finished < total:
-                return False
-        return True
 
     def _on_startup_full_load_ready(self):
-        if getattr(self, "_startup_loader_ready_ts", None) is not None:
-            return
-        if not self._is_startup_full_load_ready():
-            return
-        self._startup_loader_ready_ts = time.perf_counter()
-        self._update_startup_loader_progress()
-        self._tick_startup_loader_statement()
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        after_id = getattr(self, "_startup_loader_hide_after_id", None)
-        if after_id:
-            try:
-                root.after_cancel(after_id)
-            except (tk.TclError, RuntimeError, ValueError):
-                pass
-        started = float(getattr(self, "_startup_loader_started_ts", 0.0) or 0.0)
-        elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0) if started > 0 else 0.0
-        timeline_ms = max(1000, int(getattr(self, "_startup_loader_extra_hold_ms", 1800) or 1800))
-        hold_ms = startup_loader_core.compute_loader_hide_hold_ms(
-            elapsed_ms=elapsed_ms,
-            timeline_ms=timeline_ms,
-            min_hold_ms=250,
+        return startup_loader_lifecycle_service.on_startup_full_load_ready(
+            self,
+            tk_module=tk,
+            time_module=time,
+            startup_loader_core=startup_loader_core,
         )
-        self._startup_loader_hide_after_id = root.after(hold_ms, self._hide_startup_loader)
 
     def _hide_startup_loader(self):
-        root = getattr(self, "root", None)
-        overlay = getattr(self, "_startup_loader_overlay", None)
-        overlay_exists = False
-        if overlay is not None:
-            try:
-                overlay_exists = bool(overlay.winfo_exists())
-            except (tk.TclError, RuntimeError, AttributeError, ValueError):
-                overlay_exists = False
-        if (
-            root is not None
-            and overlay_exists
-            and bool(getattr(self, "_startup_loader_ready_ts", None) is not None)
-        ):
-            now = time.perf_counter()
-            if not bool(getattr(self, "_startup_loader_finishing", False)):
-                self._startup_loader_finishing = True
-                self._startup_loader_finish_started_ts = float(now)
-                progress_after_id = getattr(self, "_startup_loader_progress_after_id", None)
-                if progress_after_id:
-                    try:
-                        root.after_cancel(progress_after_id)
-                    except (tk.TclError, RuntimeError, ValueError):
-                        pass
-                    self._startup_loader_progress_after_id = None
-                start_pct = 0.0
-                try:
-                    pct_label = getattr(self, "_startup_loader_pct_label", None)
-                    if pct_label is not None and pct_label.winfo_exists():
-                        text = str(pct_label.cget("text") or "").strip().replace("%", "")
-                        start_pct = max(0.0, min(100.0, float(text or 0.0)))
-                except (tk.TclError, RuntimeError, AttributeError, ValueError, TypeError):
-                    start_pct = 0.0
-                start_pct = max(
-                    start_pct,
-                    float(getattr(self, "_startup_loader_display_pct", 0.0) or 0.0),
-                )
-                self._startup_loader_finish_start_pct = float(start_pct)
-                self._startup_loader_finish_reached_100_ts = 0.0
-            elapsed_ms = max(
-                0.0,
-                (float(now) - float(getattr(self, "_startup_loader_finish_started_ts", now) or now)) * 1000.0,
-            )
-            dwell_ms = max(120.0, float(getattr(self, "_startup_loader_complete_dwell_ms", 260) or 260))
-            progress = max(0.0, min(1.0, elapsed_ms / dwell_ms))
-            start_pct = float(getattr(self, "_startup_loader_finish_start_pct", 0.0) or 0.0)
-            show_pct = start_pct + ((100.0 - start_pct) * progress)
-            show_pct = max(
-                float(getattr(self, "_startup_loader_display_pct", 0.0) or 0.0),
-                min(100.0, float(show_pct)),
-            )
-            show_pct = min(
-                show_pct,
-                float(getattr(self, "_startup_loader_display_pct", 0.0) or 0.0) + 2.0,
-            )
-            self._startup_loader_display_pct = show_pct
-            if show_pct >= 100.0:
-                if float(getattr(self, "_startup_loader_finish_reached_100_ts", 0.0) or 0.0) <= 0.0:
-                    self._startup_loader_finish_reached_100_ts = float(now)
-            else:
-                self._startup_loader_finish_reached_100_ts = 0.0
-            reached_100_ts = float(getattr(self, "_startup_loader_finish_reached_100_ts", 0.0) or 0.0)
-            hold_elapsed_ms = (
-                max(0.0, (float(now) - reached_100_ts) * 1000.0)
-                if reached_100_ts > 0.0
-                else 0.0
-            )
-            final_hold_ms = max(
-                0.0,
-                float(getattr(self, "_startup_loader_finish_visible_hold_ms", 140) or 140),
-            )
-            top_pct, bottom_pct = startup_loader_core.compute_loader_fill_percentages(show_pct)
-            try:
-                self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_top_fill", None), top_pct)
-                self._set_startup_loader_bar_fill(getattr(self, "_startup_loader_bottom_fill", None), bottom_pct)
-                pct_label = getattr(self, "_startup_loader_pct_label", None)
-                if pct_label is not None and pct_label.winfo_exists():
-                    pct_label.configure(text=f"{int(show_pct)}%")
-                statement = getattr(self, "_startup_loader_statement_label", None)
-                if statement is not None and statement.winfo_exists():
-                    statement.configure(text="/startup shell handshake complete.")
-                overlay.update_idletasks()
-            except (tk.TclError, RuntimeError, AttributeError, ValueError):
-                pass
-            if startup_loader_core.should_continue_finish_animation(progress=progress, show_pct=show_pct) or hold_elapsed_ms < final_hold_ms:
-                self._startup_loader_hide_after_id = root.after(16, self._hide_startup_loader)
-                return
-
-        if root is not None:
-            for attr in (
-                "_startup_loader_text_after_id",
-                "_startup_loader_hide_after_id",
-                "_startup_loader_progress_after_id",
-                "_startup_loader_title_after_id",
-            ):
-                after_id = getattr(self, attr, None)
-                if after_id:
-                    try:
-                        root.after_cancel(after_id)
-                    except (tk.TclError, RuntimeError, ValueError):
-                        pass
-                setattr(self, attr, None)
-
-        if overlay is not None and overlay_exists:
-            try:
-                overlay.destroy()
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        if root is not None and bool(getattr(self, "_startup_loader_window_mode", False)):
-            alpha_fade_armed = False
-            try:
-                self._apply_dark_theme()
-                self._style_text_widget()
-                self._apply_tree_style()
-                self._apply_tree_mode_style()
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-            try:
-                theme_bg = str((getattr(self, "_theme", {}) or {}).get("bg", "#0f131a"))
-                root.configure(bg=theme_bg)
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-            try:
-                root.update_idletasks()
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-            try:
-                root.attributes("-alpha", 0.0)
-                alpha_fade_armed = True
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                alpha_fade_armed = False
-            try:
-                root.deiconify()
-                root.update_idletasks()
-                root.update()
-                root.lift()
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-            if alpha_fade_armed:
-                try:
-                    root.after(48, lambda target=root: self._restore_startup_root_alpha(target))
-                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                    self._restore_startup_root_alpha(root)
-            try:
-                root.focus_force()
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        self._startup_loader_overlay = None
-        self._startup_loader_pct_label = None
-        self._startup_loader_statement_label = None
-        self._startup_loader_title_prefix_label = None
-        self._startup_loader_title_suffix_label = None
-        self._startup_loader_top_fill = None
-        self._startup_loader_bottom_fill = None
-        self._startup_loader_display_pct = 0.0
-        self._startup_loader_last_progress_ts = 0.0
-        self._startup_loader_finishing = False
-        self._startup_loader_finish_started_ts = 0.0
-        self._startup_loader_finish_start_pct = 0.0
-        self._startup_loader_finish_reached_100_ts = 0.0
-        deferred = startup_loader_core.normalize_deferred_variants_for_schedule(
-            getattr(self, "_startup_loader_deferred_variants", set())
+        # source-contract compatibility for legacy regression guards:
+        # overlay_exists = False
+        # overlay_exists = bool(overlay.winfo_exists())
+        # except (tk.TclError, RuntimeError, AttributeError, ValueError):
+        # self._auto_update_startup_enabled()
+        return startup_loader_lifecycle_service.hide_startup_loader(
+            self,
+            tk_module=tk,
+            time_module=time,
+            startup_loader_core=startup_loader_core,
         )
-        self._startup_loader_deferred_variants = set()
-        if root is not None and deferred:
-            try:
-                self._schedule_theme_asset_prewarm(targets=deferred, delay_ms=180)
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                pass
-        # Run auto update-check after loader teardown so startup stays responsive.
-        if root is not None and self._auto_update_startup_enabled():
-            self._schedule_auto_update_check(delay_ms=350)
-        self._schedule_crash_report_offer()
 
     @staticmethod
     def _restore_startup_root_alpha(target):
-        if target is None:
-            return
-        try:
-            target.attributes("-alpha", 1.0)
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            return
+        return startup_loader_lifecycle_service.restore_startup_root_alpha(
+            target,
+            tk_module=tk,
+        )
 
     def _log_theme_perf(self, label, started_ts=None):
         if not bool(getattr(self, "_theme_perf_logging", False)):
@@ -7460,152 +6849,32 @@ if button._siindbad_base_image is None:
             )
 
     def _shade_toolbar_button_for_theme(self, image, cache_key=None):
-        """Apply theme-specific color treatment to toolbar button assets."""
-        if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() != "KAMUE":
-            return image
-        if cache_key:
-            cache = getattr(self, "_toolbar_theme_shade_cache", None)
-            if not isinstance(cache, dict):
-                cache = {}
-                self._toolbar_theme_shade_cache = cache
-            key = (str(cache_key), int(getattr(image, "width", 0) or 0), int(getattr(image, "height", 0) or 0))
-            cached = cache.get(key)
-            if cached is not None:
-                try:
-                    return cached.copy()
-                except _EXPECTED_APP_ERRORS:
-                    return cached
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            image_chops_module = importlib.import_module("PIL.ImageChops")
-            image_enhance_module = importlib.import_module("PIL.ImageEnhance")
-
-            base = image.convert("RGBA")
-            r_chan, g_chan, b_chan, alpha_chan = base.split()
-
-            # Build a mask biased toward blue-cyan pixels so we tint frames/background
-            # harder than bright text/icons.
-            blue_vs_red = image_chops_module.subtract(b_chan, r_chan).point(
-                lambda p: min(255, int(p * 2.8))
-            )
-            blue_vs_green = image_chops_module.subtract(b_chan, g_chan).point(
-                lambda p: min(255, int(p * 2.5))
-            )
-            tint_mask = image_chops_module.lighter(blue_vs_red, blue_vs_green)
-            tint_mask = tint_mask.point(lambda p: min(255, int(p * 0.62)))
-
-            purple_overlay = image_module.new("RGBA", base.size, (108, 56, 176, 0))
-            purple_overlay.putalpha(tint_mask)
-            tinted = image_module.alpha_composite(base, purple_overlay)
-
-            # Darken primarily tinted regions instead of the whole button.
-            dark_mask = tint_mask.point(lambda p: min(255, int(p * 0.38)))
-            dark_overlay = image_module.new("RGBA", base.size, (16, 7, 30, 0))
-            dark_overlay.putalpha(dark_mask)
-            tinted = image_module.alpha_composite(tinted, dark_overlay)
-
-            # Preserve white label readability (text/icons) after tinting.
-            luma = base.convert("L")
-            highlight_mask = luma.point(
-                lambda p: 0 if p < 170 else (70 if p < 205 else 120)
-            )
-            highlight_overlay = image_module.new("RGBA", base.size, (244, 244, 255, 0))
-            highlight_overlay.putalpha(highlight_mask)
-            tinted = image_module.alpha_composite(tinted, highlight_overlay)
-
-            # Final crispness pass.
-            rgb = tinted.convert("RGB")
-            rgb = image_enhance_module.Contrast(rgb).enhance(1.09)
-            rgb = image_enhance_module.Sharpness(rgb).enhance(1.08)
-            out = rgb.convert("RGBA")
-            out.putalpha(alpha_chan)
-            if cache_key:
-                cache = getattr(self, "_toolbar_theme_shade_cache", None)
-                if not isinstance(cache, dict):
-                    cache = {}
-                    self._toolbar_theme_shade_cache = cache
-                key = (str(cache_key), int(out.width), int(out.height))
-                self._bounded_cache_put(cache, key, out.copy(), max_items=192)
-            return out
-        except (ImportError, OSError, ValueError, TypeError, AttributeError):
-            return image
+        return asset_image_service.shade_toolbar_button_for_theme(
+            self,
+            image,
+            cache_key=cache_key,
+            importlib_module=importlib,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _harmonize_kamue_b_outer_frame(self, image):
-        """Force KAMUE Variant-B sprite outer frame to match FONT frame border color."""
-        if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() != "KAMUE":
-            return image
-        try:
-            draw_module = importlib.import_module("PIL.ImageDraw")
-            theme = getattr(self, "_theme", {})
-            border_hex = theme.get("find_border", "#cfb5ee")
-            border_rgb = self._hex_to_rgb_tuple(border_hex, default_rgb=(207, 181, 238))
-            out = image.copy().convert("RGBA")
-            draw = draw_module.Draw(out)
-            w, h = out.size
-            if w >= 2 and h >= 2:
-                draw.rectangle(
-                    (0, 0, w - 1, h - 1),
-                    outline=(border_rgb[0], border_rgb[1], border_rgb[2], 255),
-                    width=1,
-                )
-            return out
-        except (ImportError, OSError, ValueError, TypeError, AttributeError):
-            return image
+        return asset_image_service.harmonize_kamue_b_outer_frame(
+            self,
+            image,
+            importlib_module=importlib,
+        )
 
     def _load_toolbar_button_image(self, path, max_width=208, max_height=40, stretch_to_fit=False):
-        cache = getattr(self, "_toolbar_asset_image_cache", None)
-        if cache is None:
-            cache = {}
-            self._toolbar_asset_image_cache = cache
-        theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        signature = (
-            str(path),
-            int(max_width),
-            int(max_height),
-            bool(stretch_to_fit),
-            theme_variant,
+        return asset_image_service.load_toolbar_button_image(
+            self,
+            path,
+            max_width=max_width,
+            max_height=max_height,
+            stretch_to_fit=stretch_to_fit,
+            importlib_module=importlib,
+            tk_module=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
         )
-        cached = cache.get(signature)
-        if cached is not None:
-            return cached
-
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            image_tk_module = importlib.import_module("PIL.ImageTk")
-            image = image_module.open(path).convert("RGBA")
-            image = self._shade_toolbar_button_for_theme(image, cache_key=f"asset:{path}")
-            if stretch_to_fit and max_width > 0 and max_height > 0:
-                if image.width != max_width or image.height != max_height:
-                    image = image.resize((max_width, max_height), image_module.LANCZOS)
-                photo = image_tk_module.PhotoImage(image)
-                self._bounded_cache_put(cache, signature, photo, max_items=192)
-                return photo
-            scale = min(max_width / image.width, max_height / image.height, 1.0)
-            if scale < 1.0:
-                new_size = (
-                    max(1, int(image.width * scale)),
-                    max(1, int(image.height * scale)),
-                )
-                image = image.resize(new_size, image_module.LANCZOS)
-            photo = image_tk_module.PhotoImage(image)
-            self._bounded_cache_put(cache, signature, photo, max_items=192)
-            return photo
-        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
-            pass
-
-        try:
-            image = tk.PhotoImage(file=path)
-        except (tk.TclError, RuntimeError, OSError, ValueError):
-            return None
-        scale = 1
-        if image.width() > max_width:
-            scale = max(scale, (image.width() + max_width - 1) // max_width)
-        if image.height() > max_height:
-            scale = max(scale, (image.height() + max_height - 1) // max_height)
-        if scale > 1:
-            image = image.subsample(scale, scale)
-        self._bounded_cache_put(cache, signature, image, max_items=192)
-        return image
 
     def _open_external_link(self, url):
         try:
@@ -7898,59 +7167,15 @@ if button._siindbad_base_image is None:
                 pass
 
     def _load_logo_image(self, path):
-        ext = os.path.splitext(path)[1].lower()
-        cache = getattr(self, "_logo_photo_cache", None)
-        if cache is None:
-            cache = {}
-            self._logo_photo_cache = cache
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            image_tk_module = importlib.import_module("PIL.ImageTk")
-            is_banner_logo = self._is_banner_logo_path(path)
-            max_width = 700
-            if is_banner_logo:
-                # Keep logo frame aligned with top controls (which use 4px side padding).
-                # Two highlight borders add ~4px to the frame width.
-                try:
-                    self.root.update_idletasks()
-                    available_width = int(self.root.winfo_width())
-                except _EXPECTED_APP_ERRORS:
-                    available_width = 0
-                if available_width > 120:
-                    side_padding = 4 * 2
-                    frame_border = 4
-                    max_width = max(700, available_width - side_padding - frame_border)
-                else:
-                    max_width = 988
-            signature = (os.path.abspath(path), int(max_width) if is_banner_logo else 0)
-            cached = cache.get(signature)
-            if cached is not None:
-                return cached
-            image = theme_service.get_cached_rgba_image(self, path, image_module)
-            if image is None:
-                return None
-            if image.width > max_width:
-                scale = max_width / image.width
-                new_size = (max_width, int(image.height * scale))
-                image = image.resize(new_size, image_module.LANCZOS)
-            photo = image_tk_module.PhotoImage(image)
-            self._bounded_cache_put(cache, signature, photo, max_items=48)
-            return photo
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-        try:
-            signature = (os.path.abspath(path), 0)
-            cached = cache.get(signature)
-            if cached is not None:
-                return cached
-            if ext in (".png", ".gif", ".ppm", ".pgm"):
-                photo = tk.PhotoImage(file=path)
-                self._bounded_cache_put(cache, signature, photo, max_items=48)
-                return photo
-        except _EXPECTED_APP_ERRORS:
-            return None
-        return None
+        return asset_image_service.load_logo_image(
+            self,
+            path,
+            importlib_module=importlib,
+            os_module=os,
+            tk_module=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+            theme_service=theme_service,
+        )
 
     @staticmethod
     def _kamue_readme_header_art():

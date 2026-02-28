@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-28 (added load-session aware prewarm deferral and document-load apply split for safer async open orchestration while keeping loader stability guardrails).
+Last sync: 2026-02-28 (extracted startup loader lifecycle, INPUT render dispatch, pane-lock state machine, and asset image/cache helpers into dedicated domain services).
 
 | Module | Purpose |
 | --- | --- |

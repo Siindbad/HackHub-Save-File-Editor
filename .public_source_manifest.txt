@@ -515,6 +515,7 @@ source/core/domain_impl/__init__.py
 source/core/domain_impl/infra/__init__.py
 source/core/domain_impl/infra/input_mode_diag_service.py
 source/core/domain_impl/infra/input_mode_find_service.py
+source/core/domain_impl/infra/input_mode_render_dispatch_service.py
 source/core/domain_impl/infra/input_mode_service.py
 source/core/domain_impl/infra/runtime_log_service.py
 source/core/domain_impl/infra/runtime_paths_service.py
@@ -589,9 +590,12 @@ source/core/domain_impl/support/input_suspicion_phone_style_service.py
 source/core/domain_impl/support/label_format_service.py
 source/core/domain_impl/support/version_format_service.py
 source/core/domain_impl/ui/__init__.py
+source/core/domain_impl/ui/asset_image_service.py
 source/core/domain_impl/ui/footer_service.py
+source/core/domain_impl/ui/input_mode_paned_lock_service.py
 source/core/domain_impl/ui/loader_service.py
 source/core/domain_impl/ui/readme_ui_service.py
+source/core/domain_impl/ui/startup_loader_lifecycle_service.py
 source/core/domain_impl/ui/startup_loader_ui_service.py
 source/core/domain_impl/ui/text_context_action_service.py
 source/core/domain_impl/ui/text_context_menu_service.py

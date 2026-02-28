@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-02-27 (theme manager orchestration updates aligned with startup full-prewarm loader flow).
+Last sync: 2026-02-28 (editor UI/input manager wiring expanded to route loader/pane-lock/asset/render dispatch orchestration through dedicated core services).
 
 | Module | Purpose |
 | --- | --- |
