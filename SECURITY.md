@@ -1,7 +1,7 @@
-﻿# Verification Report
+# Verification Report
 
 Generated from `dist/security-report.txt`.
-Release version: **v1.3.8**
+Release version: **v1.3.9**
 
 ## Security Gate Status
 
@@ -21,9 +21,6 @@ Release version: **v1.3.8**
 ## VirusTotal Report
 
 - VirusTotal permalink:
-  [![Click Here For VirusTotal Results](https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=flat-square)](https://www.virustotal.com/gui/file/1943ba687e09902b821447f0423cc3505f3a55034af2289fdf047121a259ec20/detection)
+  [![Click Here For VirusTotal Results](https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=flat-square)](https://www.virustotal.com/gui/file/4a1b52831eb171ecaccde87e0d03bf48103ecc3e6ffc81adca69ecf817858bcb/detection)
+
 See GitHub Releases for the matching release artifacts.
-
-
-
-
