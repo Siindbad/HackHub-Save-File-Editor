@@ -531,7 +531,6 @@ source/core/domain_impl/support/__init__.py
 source/core/domain_impl/support/bug_report_api_service.py
 source/core/domain_impl/support/clipboard_service.py
 source/core/domain_impl/support/diag_log_housekeeping_service.py
-source/core/domain_impl/support/edit_guard_service.py
 source/core/domain_impl/support/editor_mode_switch_service.py
 source/core/domain_impl/support/editor_purge_service.py
 source/core/domain_impl/support/error_hook_service.py
@@ -582,7 +581,6 @@ source/core/json_error_diagnostics_core.py
 source/core/json_error_highlight_core.py
 source/core/layout_topbar.py
 source/core/startup_loader.py
-source/core/update_service.py
 source/installer/sins_editor_installer.iss
 source/requirements-build.txt
 source/services/README.md

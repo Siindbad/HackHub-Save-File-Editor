@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-28 (domain-master consolidation is active across `core/domain_impl`: update infra is centralized in `update_engine_core`, telemetry support is centralized in `telemetry_core`, and JSON behavior is consolidated into master pillar modules with architecture guardrails enforced).
+Last sync: 2026-02-28 (post-consolidation cleanup removed legacy compatibility shims and package alias wiring; update/telemetry/JSON domains now route directly through master modules).
 
 | Module | Purpose |
 | --- | --- |
@@ -13,4 +13,3 @@ Last sync: 2026-02-28 (domain-master consolidation is active across `core/domain
 | `json_error_highlight_core.py` | Provides JSON highlight decision flow while delegating UI render/log callbacks to services. |
 | `layout_topbar.py` | Contains topbar spacing, compaction, and centering calculation helpers. |
 | `startup_loader.py` | Implements startup loader progress, timing, and prewarm policy math. |
-| `update_service.py` | Compatibility re-export for updater retry/backoff/error/download helpers owned by `core/domain_impl/infra/update_engine_core.py`. |
