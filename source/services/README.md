@@ -5,10 +5,10 @@ Last sync: 2026-02-28 (domain-master consolidation is active: update flow routes
 | Module | Purpose |
 | --- | --- |
 | `bug_report_manager.py` | Bug-report trigger-flow, payload/cooldown orchestration, crash-report, diagnostics-log domain, and bug-report token-env resolution for screenshot upload. |
-| `document_service.py` | Document load/save/export, editor mode-switch, and async document-load apply/worker orchestration domain. |
+| `document_service.py` | Document load/save/export, editor mode-switch, async document-load apply/worker orchestration domain, and explicit `save(path, data)` JSON writer wrapper. |
 | `editor_ui_core.py` | Core UI assembly domain for loader, toolbar, footer, startup loader UI, README popup rendering, and dispatch helpers. |
 | `input_mode_manager.py` | INPUT mode rendering/find/diagnostics/value-mapping orchestration domain. |
-| `json_engine.py` | JSON diagnostics, repair, path, apply/feedback, syntax-rule orchestration, and repair-dispatch binding domain. |
+| `json_engine.py` | JSON diagnostics, repair, path, apply/feedback, syntax-rule orchestration, repair-dispatch binding domain, and `JSON_ENGINE.load(path)` IO wrapper. |
 | `json_view_manager.py` | JSON view/render/find-navigation/text-find/find-orchestration domain. |
 | `runtime_service.py` | Runtime paths/logs, token/env resolution, and OS/runtime helper orchestration domain. |
 | `text_context_manager.py` | Text-context popup state/pointer/action/widget/menu-style orchestration domain. |

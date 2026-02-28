@@ -1,5 +1,7 @@
 """JSON diagnostics and repair domain module."""
 
+from typing import Any
+
 from core.domain_impl.json import json_io_core as json_apply_commit_service
 from core.domain_impl.json import json_diagnostics_core as json_closer_symbol_service
 from core.domain_impl.json import json_diagnostics_core as json_colon_comma_service
@@ -39,6 +41,11 @@ class JsonEngine:
     json_top_level_close_service = json_top_level_close_service
     json_validation_feedback_service = json_validation_feedback_service
     repair_dispatch = json_repair_dispatch_service
+
+    @staticmethod
+    def load(path: Any) -> Any:
+        """Load a JSON/.hhsav document through the JSON IO core pillar."""
+        return json_apply_commit_service.load_document(path)
 
 
 JSON_ENGINE = JsonEngine()

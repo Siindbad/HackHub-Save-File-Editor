@@ -65,6 +65,13 @@ def apply_async_loaded_document(
     editor_purge_service.apply_loaded_document(owner, path, payload)
 
 
+def save(path: str, data: Any) -> None:
+    """Save document data as pretty JSON text using JSON IO core formatting."""
+    payload = str(document_io_service.build_pretty_json_payload(data))
+    with open(str(path), "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(payload)
+
+
 class DocumentService:
     document_io_service = document_io_service
     editor_mode_switch_service = editor_mode_switch_service
@@ -72,6 +79,7 @@ class DocumentService:
     initialize_async_load_result = staticmethod(initialize_async_load_result)
     build_async_document_load_worker = staticmethod(build_async_document_load_worker)
     apply_async_loaded_document = staticmethod(apply_async_loaded_document)
+    save = staticmethod(save)
 
 
 DOCUMENT = DocumentService()
