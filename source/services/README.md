@@ -4,7 +4,7 @@ Last sync: 2026-02-28 (domain-master consolidation is active: update flow routes
 
 | Module | Purpose |
 | --- | --- |
-| `bug_report_manager.py` | Bug-report trigger-flow, payload/cooldown orchestration, crash-report, and diagnostics-log domain. |
+| `bug_report_manager.py` | Bug-report trigger-flow, payload/cooldown orchestration, crash-report, diagnostics-log domain, and bug-report token-env resolution for screenshot upload. |
 | `document_service.py` | Document load/save/export, editor mode-switch, and async document-load apply/worker orchestration domain. |
 | `editor_ui_core.py` | Core UI assembly domain for loader, toolbar, footer, startup loader UI, README popup rendering, and dispatch helpers. |
 | `input_mode_manager.py` | INPUT mode rendering/find/diagnostics/value-mapping orchestration domain. |

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.domain_impl.infra import token_env_service
 from core.domain_impl.support import bug_report_api_service
 from core.domain_impl.support import telemetry_core as bug_report_browser_service
 from core.domain_impl.support import telemetry_core as bug_report_context_service
@@ -162,8 +163,7 @@ def open_bug_report_in_browser(
 
 def has_bug_report_token(owner: Any, *, os_module: Any) -> bool:
     """Return whether bug-report API token is available in the environment."""
-    token_env_name = str(getattr(owner, "GITHUB_TOKEN_ENV", "GITHUB_TOKEN") or "").strip()
-    return bool(str(os_module.getenv(token_env_name, "") or "").strip())
+    return bool(token_env_service.has_bug_report_token(owner))
 
 
 def submit_cooldown_remaining(owner: Any, *, now_monotonic: float | None = None, time_module: Any) -> int:
@@ -191,7 +191,7 @@ def upload_bug_screenshot(owner: Any, source_path: str, *, summary: str) -> dict
     return bug_report_submission_service.upload_bug_screenshot(
         source_path=source_path,
         summary=summary,
-        token_env_name=str(getattr(owner, "GITHUB_TOKEN_ENV", "GITHUB_TOKEN")),
+        token_env_name=str(token_env_service.bug_report_token_env_name(owner)),
         owner=str(getattr(owner, "BUG_REPORT_GITHUB_OWNER", "")),
         repo=str(getattr(owner, "BUG_REPORT_GITHUB_REPO", "")),
         branch=str(getattr(owner, "BUG_REPORT_UPLOAD_BRANCH", "main")),
