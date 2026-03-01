@@ -6,6 +6,26 @@ import textwrap
 from typing import Any
 
 
+def glitch_readme_header_art() -> str:
+    """Return GLITCH README ASCII art header."""
+    lines = [
+        " .d8888b.  888      8888888 88888888888 .d8888b.  888    888",
+        "d88P  Y88b 888        888       888    d88P  Y88b 888    888",
+        "888    888 888        888       888    888    888 888    888",
+        "888        888        888       888    888        8888888888",
+        "888  88888 888        888       888    888        888    888",
+        "888    888 888        888       888    888    888 888    888",
+        "Y88b  d88P 888        888       888    Y88b  d88P 888    888",
+        ' "Y8888P88 88888888 8888888     888     "Y8888P"  888    888',
+    ]
+    return "\n".join(lines)
+
+
+def apply_glitch_readme_header(owner: Any, content: Any, center_width: Any = None) -> str:
+    """Apply the GLITCH ASCII header with the shared README centering behavior."""
+    return owner._apply_readme_header(content, glitch_readme_header_art(), center_width=center_width)
+
+
 def format_readme_content(content: Any, wrap_width: Any) -> str:
     """Wrap readable prose while preserving section/divider formatting."""
     width = max(56, int(wrap_width or 0))
@@ -40,7 +60,9 @@ def format_readme_content(content: Any, wrap_width: Any) -> str:
         num_match = re.match(r"^(\s*\d+\.\s+)(.+)$", line)
         bullet_match = re.match(r"^(\s*-\s+)(.+)$", line)
         if num_match or bullet_match:
-            match = num_match or bullet_match
+            match = num_match if num_match is not None else bullet_match
+            if match is None:
+                continue
             prefix = match.group(1)
             body = match.group(2).strip()
             if in_change_logs and bullet_match:
@@ -157,6 +179,9 @@ def show_readme(
     target_chars = max(78, min(118, target_chars + 8))
     if variant == "KAMUE":
         content = owner._apply_kamue_readme_header(content, center_width=target_chars)
+        lines = content.splitlines() or [""]
+    elif variant == "GLITCH":
+        content = apply_glitch_readme_header(owner, content, center_width=target_chars)
         lines = content.splitlines() or [""]
     elif variant == "SIINDBAD":
         content = owner._apply_siindbad_readme_header(content, center_width=target_chars)

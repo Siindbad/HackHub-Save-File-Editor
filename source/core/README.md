@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-02-28 (post-consolidation cleanup removed legacy compatibility shims and package alias wiring; update/telemetry/JSON domains now route directly through master modules; constants include v1.3.9 release version update).
+Last sync: 2026-03-01 (startup loader/theme prewarm contract now covers SIINDBAD, KAMUE, and GLITCH variants with instant-switch readiness).
 
 | Module | Purpose |
 | --- | --- |

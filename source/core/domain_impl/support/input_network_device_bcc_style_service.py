@@ -512,6 +512,132 @@ def _readonly_line(parent: Any, label: str, value: Any, *, key_fg: str, value_fg
     ).pack(side="left", padx=(6, 0), fill="x", expand=True)
 
 
+def _network_asset_filename_for_variant(variant: Any, asset: str) -> str:
+    use_variant = str(variant).upper()
+    use_asset = str(asset).strip().lower()
+    if use_variant == "KAMUE":
+        match use_asset:
+            case "router":
+                return "router_kam.png"
+            case "device":
+                return "device_kam.png"
+            case "server":
+                return "server_kam.png"
+            case "splitter":
+                return "splitter_kam.png"
+            case "firewall":
+                return "firewall_kam.png"
+            case _:
+                return ""
+    if use_variant == "GLITCH":
+        match use_asset:
+            case "router":
+                return "router_glitch.png"
+            case "device":
+                return "device_glitch.png"
+            case "server":
+                return "server_glitch.png"
+            case "splitter":
+                return "splitter_glitch.png"
+            case "firewall":
+                return "firewall_glitch.png"
+            case _:
+                return ""
+    match use_asset:
+        case "router":
+            return "router1.png"
+        case "device":
+            return "device_sin.png"
+        case "server":
+            return "server_sin.png"
+        case "splitter":
+            return "splitter_sin.png"
+        case "firewall":
+            return "firewall_sin.png"
+        case _:
+            return ""
+
+
+def _bcc_domains_style_for_variant(variant: Any) -> dict[str, str]:
+    use_variant = str(variant).upper()
+    if use_variant == "KAMUE":
+        return {
+            "panel_bg": "#0d0816",
+            "frame_edge": "#55357f",
+            "card_edge": "#664392",
+            "card_bg": "#150e24",
+            "key_fg": "#af97d2",
+            "value_fg": "#d8c7ee",
+            "label_fg": "#d39b55",
+            "header_bg": "#201134",
+            "body_bg": "#160d25",
+            "domains_table_value_fg": "#A6BDD2",
+        }
+    if use_variant == "GLITCH":
+        return {
+            "panel_bg": "#000000",
+            "frame_edge": "#3c9454",
+            "card_edge": "#2f7a45",
+            "card_bg": "#050705",
+            "key_fg": "#9fd7b0",
+            "value_fg": "#d8f7e2",
+            "label_fg": "#f2ad5e",
+            "header_bg": "#0b100d",
+            "body_bg": "#050705",
+            "domains_table_value_fg": "#b6ebc4",
+        }
+    return {
+        "panel_bg": "#050b12",
+        "frame_edge": "#1c3d5d",
+        "card_edge": "#255073",
+        "card_bg": "#07121e",
+        "key_fg": "#89b1d3",
+        "value_fg": "#cfe5ff",
+        "label_fg": "#d39b55",
+        "header_bg": "#0b1f30",
+        "body_bg": "#081522",
+        "domains_table_value_fg": "#A6BDD2",
+    }
+
+
+def _interpol_style_for_variant(variant: Any) -> dict[str, str]:
+    use_variant = str(variant).upper()
+    if use_variant == "KAMUE":
+        return {
+            "panel_bg": "#110a1d",
+            "frame_edge": "#55357f",
+            "card_edge": "#664392",
+            "card_bg": "#1a112b",
+            "image_card_bg": "#0d0817",
+            "key_fg": "#af97d2",
+            "value_fg": "#d8c7ee",
+            "label_fg": "#d39b55",
+        }
+    if use_variant == "GLITCH":
+        return {
+            "panel_bg": "#000000",
+            "frame_edge": "#3c9454",
+            "card_edge": "#2f7a45",
+            "card_bg": "#050705",
+            # Keep image tiles slightly darker than info cards for icon readability.
+            "image_card_bg": "#000000",
+            "key_fg": "#9fd7b0",
+            "value_fg": "#d8f7e2",
+            "label_fg": "#f2ad5e",
+        }
+    return {
+        "panel_bg": "#070f18",
+        "frame_edge": "#1c3d5d",
+        "card_edge": "#255073",
+        "card_bg": "#0a1826",
+        # Keep INTERPOL image tiles darker than info cards for clearer icon contrast.
+        "image_card_bg": "#040a12",
+        "key_fg": "#89b1d3",
+        "value_fg": "#cfe5ff",
+        "label_fg": "#d39b55",
+    }
+
+
 def _render_identity_row(
     owner: Any,
     shell: Any,
@@ -607,7 +733,7 @@ def _render_interpol_device_identity_row(
     title_size: int,
     row_size: int,
     device: dict[str, Any],
-    is_kamue: bool,
+    variant: str,
 ) -> None:
     online_fg = "#70e58a"
     offline_fg = "#ff7b8f"
@@ -627,7 +753,7 @@ def _render_interpol_device_identity_row(
         fill_hex=image_card_bg,
     )
     device_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-    device_photo = _asset_photo(owner, "device_kam.png" if is_kamue else "device_sin.png", 138, 112)
+    device_photo = _asset_photo(owner, _network_asset_filename_for_variant(variant, "device"), 138, 112)
     device_img = tk.Label(device_card_content, bg=device_card_content.cget("bg"), bd=0, highlightthickness=0)
     device_img.pack(fill="both", expand=True, pady=(0, 4))
     if device_photo is not None:
@@ -788,7 +914,7 @@ def _render_interpol_server_identity_row(
     title_size: int,
     row_size: int,
     server: dict[str, Any],
-    is_kamue: bool,
+    variant: str,
 ) -> None:
     image_col_w = 146
 
@@ -806,7 +932,7 @@ def _render_interpol_server_identity_row(
         fill_hex=image_card_bg,
     )
     device_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-    device_photo = _asset_photo(owner, "server_kam.png" if is_kamue else "server_sin.png", 138, 112)
+    device_photo = _asset_photo(owner, _network_asset_filename_for_variant(variant, "server"), 138, 112)
     device_img = tk.Label(device_card_content, bg=device_card_content.cget("bg"), bd=0, highlightthickness=0)
     device_img.pack(fill="both", expand=True)
     if device_photo is not None:
@@ -896,15 +1022,14 @@ def _render_interpol_server_identity_row(
 def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payload: dict[str, Any]) -> None:
     """Render BCC DOMAINS block layout in INPUT mode."""
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
-    is_kamue = variant == "KAMUE"
-
-    panel_bg = "#0d0816" if is_kamue else "#050b12"
-    frame_edge = "#55357f" if is_kamue else "#1c3d5d"
-    card_edge = "#664392" if is_kamue else "#255073"
-    card_bg = "#150e24" if is_kamue else "#07121e"
-    key_fg = "#af97d2" if is_kamue else "#89b1d3"
-    value_fg = "#d8c7ee" if is_kamue else "#cfe5ff"
-    label_fg = "#d39b55"
+    style = _bcc_domains_style_for_variant(variant)
+    panel_bg = style["panel_bg"]
+    frame_edge = style["frame_edge"]
+    card_edge = style["card_edge"]
+    card_bg = style["card_bg"]
+    key_fg = style["key_fg"]
+    value_fg = style["value_fg"]
+    label_fg = style["label_fg"]
 
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
@@ -935,7 +1060,7 @@ def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payloa
         fill_hex=card_bg,
     )
     router_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-    router_photo = _asset_photo(owner, "router_kam.png" if is_kamue else "router1.png", 134, 94)
+    router_photo = _asset_photo(owner, _network_asset_filename_for_variant(variant, "router"), 134, 94)
     router_img = tk.Label(router_card_content, bg=router_card_content.cget("bg"), bd=0, highlightthickness=0)
     router_img.pack(fill="both", expand=True)
     if router_photo is not None:
@@ -979,7 +1104,7 @@ def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payloa
     )
 
     # Primary domain identity remains card-based.
-    device_photo = _asset_photo(owner, "device_kam.png" if is_kamue else "device_sin.png", 138, 112)
+    device_photo = _asset_photo(owner, _network_asset_filename_for_variant(variant, "device"), 138, 112)
     primary_identity = payload.get("primary_identity")
     primary = primary_identity if isinstance(primary_identity, dict) else {"ip": "", "domain": ""}
 
@@ -1073,9 +1198,9 @@ def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payloa
     table.grid_columnconfigure(0, minsize=180, weight=1)
     table.grid_columnconfigure(1, minsize=260, weight=2)
 
-    header_bg = "#201134" if is_kamue else "#0b1f30"
-    body_bg = "#160d25" if is_kamue else "#081522"
-    domains_table_value_fg = "#A6BDD2"
+    header_bg = style["header_bg"]
+    body_bg = style["body_bg"]
+    domains_table_value_fg = style["domains_table_value_fg"]
 
     for col, title in enumerate(("IP", "DOMAINS")):
         cell = tk.Frame(table, bg=header_bg, bd=0, highlightthickness=1, highlightbackground=card_edge)
@@ -1113,17 +1238,15 @@ def render_blue_table_input(owner: Any, host: Any, normalized_path: Any, payload
 def render_interpol_input(owner: Any, host: Any, normalized_path: Any, payload: dict[str, Any]) -> None:
     """Render INTERPOL identity blocks in INPUT mode."""
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
-    is_kamue = variant == "KAMUE"
-
-    panel_bg = "#110a1d" if is_kamue else "#070f18"
-    frame_edge = "#55357f" if is_kamue else "#1c3d5d"
-    card_edge = "#664392" if is_kamue else "#255073"
-    card_bg = "#1a112b" if is_kamue else "#0a1826"
-    # Keep INTERPOL image tiles darker than info cards for clearer icon contrast.
-    image_card_bg = "#0d0817" if is_kamue else "#040a12"
-    key_fg = "#af97d2" if is_kamue else "#89b1d3"
-    value_fg = "#d8c7ee" if is_kamue else "#cfe5ff"
-    label_fg = "#d39b55"
+    style = _interpol_style_for_variant(variant)
+    panel_bg = style["panel_bg"]
+    frame_edge = style["frame_edge"]
+    card_edge = style["card_edge"]
+    card_bg = style["card_bg"]
+    image_card_bg = style["image_card_bg"]
+    key_fg = style["key_fg"]
+    value_fg = style["value_fg"]
+    label_fg = style["label_fg"]
 
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
@@ -1161,7 +1284,7 @@ def render_interpol_input(owner: Any, host: Any, normalized_path: Any, payload: 
         value_family=value_family,
         title_size=title_size,
         row_size=row_size,
-        image_filename="router_kam.png" if is_kamue else "router1.png",
+        image_filename=_network_asset_filename_for_variant(variant, "router"),
         title="ROUTER IDENTITY",
         ip_label="ROUTER IP :",
         identity=router_identity,
@@ -1180,7 +1303,7 @@ def render_interpol_input(owner: Any, host: Any, normalized_path: Any, payload: 
         value_family=value_family,
         title_size=title_size,
         row_size=row_size,
-        image_filename="splitter_kam.png" if is_kamue else "splitter_sin.png",
+        image_filename=_network_asset_filename_for_variant(variant, "splitter"),
         title="SPLITTER IDENTITY",
         ip_label="SPLITTER IP :",
         identity=splitter_identity,
@@ -1199,7 +1322,7 @@ def render_interpol_input(owner: Any, host: Any, normalized_path: Any, payload: 
         value_family=value_family,
         title_size=title_size,
         row_size=row_size,
-        image_filename="firewall_kam.png" if is_kamue else "firewall_sin.png",
+        image_filename=_network_asset_filename_for_variant(variant, "firewall"),
         title="FIREWALL IDENTITY",
         ip_label="FIREWALL IP :",
         identity=firewall_identity,
@@ -1221,7 +1344,7 @@ def render_interpol_input(owner: Any, host: Any, normalized_path: Any, payload: 
             title_size=title_size,
             row_size=row_size,
             device=device,
-            is_kamue=is_kamue,
+            variant=variant,
         )
 
     for server in server_rows:
@@ -1240,5 +1363,5 @@ def render_interpol_input(owner: Any, host: Any, normalized_path: Any, payload: 
             title_size=title_size,
             row_size=row_size,
             server=server,
-            is_kamue=is_kamue,
+            variant=variant,
         )

@@ -163,21 +163,59 @@ def reset_router_row_pool(owner: Any) -> None:
 def _router_style(owner: Any) -> dict[str, Any]:
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     # Use explicit router panel fills per theme to prevent cross-theme bleed.
-    panel_bg = "#130a1f" if variant == "KAMUE" else "#08111d"
+    if variant == "KAMUE":
+        panel_bg = "#130a1f"
+        frame_edge = "#5f3d86"
+        left_bg = "#140c22"
+        right_bg = "#120a1f"
+        cell_bg = "#160f27"
+        name_fg = "#C8A8FF"
+        meta_fg = "#bbaed0"
+        label_fg = "#d8c0f3"
+        input_edge = "#8a5bc4"
+        input_bg = "#1b1230"
+        input_fg = "#70e58a"
+        bool_false_fg = "#f3a1ad"
+    elif variant == "GLITCH":
+        panel_bg = "#000000"
+        frame_edge = "#3c9454"
+        left_bg = "#000000"
+        right_bg = "#000000"
+        cell_bg = "#050705"
+        name_fg = "#f2ad5e"
+        meta_fg = "#9fd7b0"
+        label_fg = "#c6f6d3"
+        input_edge = "#3c9454"
+        input_bg = "#050705"
+        input_fg = "#79e89a"
+        bool_false_fg = "#ff9ea1"
+    else:
+        panel_bg = "#08111d"
+        frame_edge = "#295478"
+        left_bg = "#0b1523"
+        right_bg = "#091521"
+        cell_bg = "#091521"
+        name_fg = "#f2ad5e"
+        meta_fg = "#9ab0c2"
+        label_fg = "#b7d5ef"
+        input_edge = "#2e8fd4"
+        input_bg = "#071322"
+        input_fg = "#62d67a"
+        bool_false_fg = "#ff9ea1"
     return {
         "panel_bg": panel_bg,
-        "frame_edge": "#5f3d86" if variant == "KAMUE" else "#295478",
-        "left_bg": "#140c22" if variant == "KAMUE" else "#0b1523",
-        "right_bg": "#120a1f" if variant == "KAMUE" else "#091521",
-        "cell_bg": "#160f27" if variant == "KAMUE" else "#091521",
-        "name_fg": "#C8A8FF" if variant == "KAMUE" else "#f2ad5e",
-        "meta_fg": "#bbaed0" if variant == "KAMUE" else "#9ab0c2",
-        "label_fg": "#d8c0f3" if variant == "KAMUE" else "#b7d5ef",
+        "frame_edge": frame_edge,
+        "left_bg": left_bg,
+        "right_bg": right_bg,
+        "cell_bg": cell_bg,
+        "name_fg": name_fg,
+        "meta_fg": meta_fg,
+        "label_fg": label_fg,
         "na_fg": "#d08c8c",
-        "input_edge": "#8a5bc4" if variant == "KAMUE" else "#2e8fd4",
-        "input_bg": "#1b1230" if variant == "KAMUE" else "#071322",
-        "input_fg": "#70e58a" if variant == "KAMUE" else "#62d67a",
-        "bool_false_fg": "#f3a1ad" if variant == "KAMUE" else "#ff9ea1",
+        "input_edge": input_edge,
+        "input_bg": input_bg,
+        "input_fg": input_fg,
+        "bool_false_fg": bool_false_fg,
         "label_family": owner._resolve_font_family(
             ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
             owner._credit_name_font()[0],
@@ -285,6 +323,15 @@ def _set_widget_text(widget: Any, value: str) -> None:
 
 def _router_asset_path(owner: Any, filename: str) -> str:
     return os.path.join(owner._resource_base_dir(), "assets", "network", str(filename))
+
+
+def _router_variant_image_filename(owner: Any) -> str:
+    variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    if variant == "KAMUE":
+        return "router_kam.png"
+    if variant == "GLITCH":
+        return "router_glitch.png"
+    return "router1.png"
 
 
 def _load_router_art_photo(
@@ -681,7 +728,7 @@ def _build_row_field_specs(
     show_router_art = not has_detail_under_lan
     router_photo = _load_router_art_photo(
         owner,
-        _router_asset_path(owner, "router1.png"),
+        _router_asset_path(owner, _router_variant_image_filename(owner)),
         max_width=190,
         max_height=84,
     )
@@ -830,7 +877,7 @@ def render_router_input_rows(
 def prewarm_router_assets(owner: Any) -> None:
     _load_router_art_photo(
         owner,
-        _router_asset_path(owner, "router1.png"),
+        _router_asset_path(owner, _router_variant_image_filename(owner)),
         max_width=190,
         max_height=84,
     )

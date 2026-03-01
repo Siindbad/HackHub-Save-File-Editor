@@ -5,7 +5,7 @@ so layout iterations do not bloat the main editor module.
 """
 
 import tkinter as tk
-from typing import Any
+from typing import Any, Literal
 
 
 def _matrix_shape_key(matrix_payload: Any) -> tuple[Any, ...]:
@@ -49,6 +49,9 @@ def suspend_database_render_host(owner: Any, host: Any) -> set[Any]:
     if pool.get("host") is not host:
         return set()
     table = pool.get("table_frame")
+    if table is None:
+        owner._input_mode_database_pool = None
+        return set()
     if not _is_live_widget(table):
         owner._input_mode_database_pool = None
         return set()
@@ -174,32 +177,61 @@ def _looks_like_grades_rows(rows):
     return isinstance(student_cell, dict) and "value" in student_cell
 
 
+def _database_grades_style_for_variant(variant: Any, panel_bg: str) -> dict[str, str]:
+    use_variant = str(variant).upper()
+    if use_variant == "KAMUE":
+        return {
+            "panel_bg": panel_bg,
+            "table_edge": "#6a4697",
+            "tab_edge": "#8f6ad1",
+            "header_fg": "#e2cbff",
+            "student_fg": "#e2cbff",
+            "value_fg": "#70e58a",
+            "plain_fg": "#d6c8e8",
+            "input_bg": "#1b1230",
+            "input_edge": "#8a5bc4",
+        }
+    if use_variant == "GLITCH":
+        # GLITCH keeps black table fill while shifting frame/header/name accents to green.
+        return {
+            "panel_bg": panel_bg,
+            "table_edge": "#3c9454",
+            "tab_edge": "#4eb96c",
+            "header_fg": "#c6f6d3",
+            "student_fg": "#b6ebc4",
+            # Preserve numeric readability/colors used by existing Grades table.
+            "value_fg": "#62d67a",
+            "plain_fg": "#b7c2ce",
+            "input_bg": "#050705",
+            "input_edge": "#3c9454",
+        }
+    return {
+        "panel_bg": panel_bg,
+        "table_edge": "#2f5f85",
+        "tab_edge": "#33cfff",
+        "header_fg": "#a8c9e6",
+        "student_fg": "#9fd1ff",
+        "value_fg": "#62d67a",
+        "plain_fg": "#b7c2ce",
+        "input_bg": "#071322",
+        "input_edge": "#2e8fd4",
+    }
+
+
 def render_database_grades_matrix(owner: Any, host: Any, normalized_path: Any, matrix_payload: Any) -> Any:
     # Render Concept-1 style matrix: only editable=true cells get input boxes.
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     panel_bg = theme.get("panel", "#161b24")
-    if variant == "KAMUE":
-        # KAMUE matching palette for Database INPUT matrix while preserving SIINDBAD layout behavior.
-        table_edge = "#6a4697"
-        tab_edge = "#8f6ad1"
-        header_fg = "#e2cbff"
-        # Keep Grades student-name tone aligned with BCC Name value color.
-        student_fg = "#e2cbff"
-        value_fg = "#70e58a"
-        plain_fg = "#d6c8e8"
-        input_bg = "#1b1230"
-        input_edge = "#8a5bc4"
-    else:
-        table_edge = "#2f5f85"
-        tab_edge = "#33cfff"
-        header_fg = "#a8c9e6"
-        # Keep Grades student-name tone aligned with BCC Name value color.
-        student_fg = "#9fd1ff"
-        value_fg = "#62d67a"
-        plain_fg = "#b7c2ce"
-        input_bg = "#071322"
-        input_edge = "#2e8fd4"
+    style = _database_grades_style_for_variant(variant, panel_bg)
+    table_edge = style["table_edge"]
+    tab_edge = style["tab_edge"]
+    header_fg = style["header_fg"]
+    student_fg = style["student_fg"]
+    value_fg = style["value_fg"]
+    plain_fg = style["plain_fg"]
+    input_bg = style["input_bg"]
+    input_edge = style["input_edge"]
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
         owner._credit_name_font()[0],
@@ -267,6 +299,8 @@ def render_database_grades_matrix(owner: Any, host: Any, normalized_path: Any, m
             value_size,
         )
         owner._input_mode_database_pool = pool
+    if not isinstance(pool, dict):
+        return
 
     table_frame = pool.get("table_frame")
     if table_frame is not None:
@@ -338,7 +372,15 @@ def _build_database_matrix_pool(
     for col_idx in range(1, len(subjects) + 1):
         table_frame.grid_columnconfigure(col_idx, minsize=64, weight=1)
 
-    def _header_tab(parent, text, col, anchor="center", justify="center", sticky="ew", padx=(1, 1)):
+    def _header_tab(
+        parent: Any,
+        text: Any,
+        col: Any,
+        anchor: Literal["nw", "n", "ne", "w", "center", "e", "sw", "s", "se"] = "center",
+        justify: Literal["left", "center", "right"] = "center",
+        sticky: str = "ew",
+        padx: tuple[int, int] = (1, 1),
+    ) -> tuple[Any, Any]:
         tab = tk.Frame(
             parent,
             bg=panel_bg,

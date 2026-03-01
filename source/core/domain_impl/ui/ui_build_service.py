@@ -54,7 +54,12 @@ def build_theme_selector(owner: Any, parent: Any, tk: Any) -> Any:
     label.pack(side="left", padx=(0, 6))
 
     owner._app_theme_labels = {}
-    for idx, variant in enumerate(("SIINDBAD", "KAMUE")):
+    chip_specs = (
+        ("SIINDBAD", "SIINDBAD"),
+        ("KAMUE", "KAMUE"),
+        ("GLITCH", "GLITCH"),
+    )
+    for idx, (variant, target_variant) in enumerate(chip_specs):
         colors = owner._theme_chip_palette(variant)
         chip = tk.Label(
             parent,
@@ -72,7 +77,7 @@ def build_theme_selector(owner: Any, parent: Any, tk: Any) -> Any:
         )
         chip.bind(
             "<Button-1>",
-            lambda _event, target=variant: owner._set_app_theme_variant(target),
+            lambda _event, target=target_variant: owner._set_app_theme_variant(target),
         )
         chip.pack(side="left", padx=(0 if idx == 0 else spec["theme_chip_gap"], 0))
         owner._app_theme_labels[variant] = chip
@@ -420,7 +425,7 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
 
     credit_label = tk.Label(
         credit_content,
-        text="DESIGNED BY :",
+        text="MADE BY :",
         bg=credit_bar_bg,
         fg=credit_label_fg,
         font=(owner._preferred_mono_family(), 9, "bold"),
@@ -525,18 +530,28 @@ def build_ui(owner: Any, tk: Any, ttk: Any) -> Any:
     owner.root.bind("<Control-equal>", lambda e: owner.increase_font_size())  # Ctrl+= on some keyboards
     owner.root.bind("<Control-minus>", lambda e: owner.decrease_font_size())
 
+    all_variants = ("SIINDBAD", "KAMUE", "GLITCH")
     active_variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
-    other_variant = "KAMUE" if active_variant == "SIINDBAD" else "SIINDBAD"
+    if active_variant not in all_variants:
+        active_variant = "SIINDBAD"
+    deferred_variants = tuple(variant for variant in all_variants if variant != active_variant)
     if bool(getattr(owner, "_startup_loader_enabled", False)):
         # Full-app prewarm runs under loader so first visible interaction and
         # first theme switch are both hot.
-        owner._schedule_theme_asset_prewarm(targets=(active_variant, other_variant), delay_ms=1)
+        owner._schedule_theme_asset_prewarm(
+            targets=(active_variant, *deferred_variants),
+            delay_ms=1,
+        )
         owner._startup_loader_deferred_variants = set()
         owner._show_startup_loader()
     else:
         # Delay startup prewarm of active theme slightly so first hover/click feels instant.
         owner._schedule_theme_asset_prewarm(targets=(active_variant,), delay_ms=420)
         owner._startup_loader_deferred_variants = set()
-        owner._schedule_theme_asset_prewarm(targets=(other_variant,), delay_ms=650)
+        for idx, variant in enumerate(deferred_variants):
+            owner._schedule_theme_asset_prewarm(
+                targets=(variant,),
+                delay_ms=(650 + (idx * 180)),
+            )
         if owner._auto_update_startup_enabled():
             owner._schedule_auto_update_check(delay_ms=500)

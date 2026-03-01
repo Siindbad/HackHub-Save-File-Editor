@@ -223,37 +223,102 @@ def render_bank_input_style_rows(owner: Any, host: Any, normalized_path: Any, ro
     return
 
 
+def _bank_palette_for_variant(variant: Any) -> dict[str, Any]:
+    use_variant = str(variant).upper()
+    if use_variant == "KAMUE":
+        return {
+            "panel_edge": "#553a7f",
+            "panel_bg": "#140f22",
+            "identity_edge": "#63438f",
+            "identity_bg": "#1a1430",
+            "divider": "#7a58b6",
+            "text_fg": "#d8c7f3",
+            "desc_fg": "#b8a7d8",
+            "iban_fg": "#c5b2e6",
+            "amount_pos": "#70e58a",
+            "amount_neg": "#ff7b8f",
+            "label_fg": "#f2ad5e",
+            "value_fg": "#99c9f7",
+            "input_edge": "#8a5bc4",
+            "input_bg": "#1b1230",
+            "input_fg": "#70e58a",
+            "header_col_bgs": ("#1e152d", "#1e152d", "#1e152d", "#1e152d"),
+            "row_col_even": ("#1a1630", "#18142b", "#151125", "#130f20"),
+            "row_col_odd": ("#161229", "#140f24", "#110d1f", "#0f0b1a"),
+            "row_alt_1": "#15182d",
+            "row_alt_2": "#111626",
+        }
+    if use_variant == "GLITCH":
+        # GLITCH BANK uses black-first cells with subtle dark-gray striping and green framing.
+        return {
+            "panel_edge": "#3c9454",
+            "panel_bg": "#000000",
+            "identity_edge": "#2f7a45",
+            "identity_bg": "#060806",
+            "divider": "#2a6a3d",
+            "text_fg": "#d8f7e2",
+            "desc_fg": "#a9b8ae",
+            "iban_fg": "#b7d7c3",
+            "amount_pos": "#79e89a",
+            "amount_neg": "#ff8d97",
+            "label_fg": "#f2ad5e",
+            "value_fg": "#e9fff0",
+            "input_edge": "#3c9454",
+            "input_bg": "#050705",
+            "input_fg": "#79e89a",
+            "header_col_bgs": ("#0d100e", "#0d100e", "#0d100e", "#0d100e"),
+            "row_col_even": ("#070907", "#070907", "#060806", "#060806"),
+            "row_col_odd": ("#101310", "#101310", "#0f120f", "#0f120f"),
+            "row_alt_1": "#070907",
+            "row_alt_2": "#101310",
+        }
+    return {
+        "panel_edge": "#2b4f71",
+        "panel_bg": "#0b1523",
+        "identity_edge": "#35526c",
+        "identity_bg": "#0c1420",
+        "divider": "#3a6a91",
+        "text_fg": "#c8e2fb",
+        "desc_fg": "#a7c3df",
+        "iban_fg": "#9fc0df",
+        "amount_pos": "#70e58a",
+        "amount_neg": "#ff7b8f",
+        "label_fg": "#f2ad5e",
+        "value_fg": "#99c9f7",
+        "input_edge": "#2e83c1",
+        "input_bg": "#081626",
+        "input_fg": "#70e58a",
+        "header_col_bgs": ("#0e1622", "#0e1622", "#0e1622", "#0e1622"),
+        "row_col_even": ("#0d1b2c", "#0c1928", "#0b1624", "#09121e"),
+        "row_col_odd": ("#0b1828", "#0a1523", "#09131f", "#08111b"),
+        "row_alt_1": "#0e1926",
+        "row_alt_2": "#0a1420",
+    }
+
+
 def _render_my_account_mirror(owner: Any, host: Any, normalized_path: Any, payload: dict[str, Any]) -> None:
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
-    is_kamue = variant == "KAMUE"
-    panel_edge = "#553a7f" if is_kamue else "#2b4f71"
-    panel_bg = "#140f22" if is_kamue else "#0b1523"
-    identity_edge = "#63438f" if is_kamue else "#35526c"
-    identity_bg = "#1a1430" if is_kamue else "#0c1420"
-    header_bg = "#2a1f44" if is_kamue else "#11263a"
-    divider = "#7a58b6" if is_kamue else "#3a6a91"
-    text_fg = "#d8c7f3" if is_kamue else "#c8e2fb"
-    desc_fg = "#b8a7d8" if is_kamue else "#a7c3df"
-    iban_fg = "#c5b2e6" if is_kamue else "#9fc0df"
-    amount_pos = "#70e58a"
-    amount_neg = "#ff7b8f"
-    label_fg = "#f2ad5e"
-    value_fg = "#99c9f7"
-    input_edge = "#8a5bc4" if is_kamue else "#2e83c1"
-    input_bg = "#1b1230" if is_kamue else "#081626"
-    input_fg = amount_pos
-    row_alt_1 = "#15182d" if is_kamue else "#0e1926"
-    row_alt_2 = "#111626" if is_kamue else "#0a1420"
-    if is_kamue:
-        # Keep KAMUE header cells uniform with the Amount block tone.
-        header_col_bgs = ("#1e152d", "#1e152d", "#1e152d", "#1e152d")
-        row_col_even = ("#1a1630", "#18142b", "#151125", "#130f20")
-        row_col_odd = ("#161229", "#140f24", "#110d1f", "#0f0b1a")
-    else:
-        # Keep header row near identity card tone with a slight lift for readability.
-        header_col_bgs = ("#0e1622", "#0e1622", "#0e1622", "#0e1622")
-        row_col_even = ("#0d1b2c", "#0c1928", "#0b1624", "#09121e")
-        row_col_odd = ("#0b1828", "#0a1523", "#09131f", "#08111b")
+    palette = _bank_palette_for_variant(variant)
+    panel_edge = str(palette["panel_edge"])
+    panel_bg = str(palette["panel_bg"])
+    identity_edge = str(palette["identity_edge"])
+    identity_bg = str(palette["identity_bg"])
+    divider = str(palette["divider"])
+    text_fg = str(palette["text_fg"])
+    desc_fg = str(palette["desc_fg"])
+    iban_fg = str(palette["iban_fg"])
+    amount_pos = str(palette["amount_pos"])
+    amount_neg = str(palette["amount_neg"])
+    label_fg = str(palette["label_fg"])
+    value_fg = str(palette["value_fg"])
+    input_edge = str(palette["input_edge"])
+    input_bg = str(palette["input_bg"])
+    input_fg = str(palette["input_fg"])
+    row_alt_1 = str(palette["row_alt_1"])
+    row_alt_2 = str(palette["row_alt_2"])
+    header_col_bgs = tuple(palette["header_col_bgs"])
+    row_col_even = tuple(palette["row_col_even"])
+    row_col_odd = tuple(palette["row_col_odd"])
 
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],

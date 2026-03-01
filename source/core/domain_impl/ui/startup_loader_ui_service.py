@@ -16,7 +16,7 @@ def show_startup_loader(owner: Any, tk: Any, time: Any, startup_loader_core: Any
         getattr(owner, "_app_theme_variant", "SIINDBAD"),
         getattr(owner, "_startup_loader_deferred_variants", set()),
     )
-    # Loader readiness is tied to full-app prewarm so both variants are hot
+    # Loader readiness is tied to full-app prewarm so all variants are hot
     # before reveal and first theme switch remains instant.
     owner._startup_loader_required_variants = required_variants
     owner._startup_loader_deferred_variants = deferred_variants

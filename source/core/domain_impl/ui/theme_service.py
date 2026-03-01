@@ -117,6 +117,28 @@ def _is_document_load_active_or_cooling(owner: Any) -> bool:
 def theme_palette_for_variant(variant: Any) -> Any:
     use_variant = str(variant).upper()
     match use_variant:
+        case "GLITCH":
+            return {
+                "bg": "#000000",
+                "fg": "#d8f7e2",
+                "tree_fg": "#c6f6d3",
+                "tree_selected_fg": "#ffffff",
+                "panel": "#000000",
+                "accent": "#0f1d17",
+                "button_active": "#173126",
+                "button_pressed": "#0a140f",
+                "select_bg": "#124a2f",
+                "select_fg": "#e9fff0",
+                "title_bar_bg": "#000000",
+                "title_bar_fg": "#d9ffe7",
+                "title_bar_border": "#3c9454",
+                "credit_bg": "#050b08",
+                "credit_border": "#2b6d3f",
+                "credit_label_fg": "#9fdeb2",
+                "find_border": "#3c9454",
+                "logo_border_outer": "#3c9454",
+                "logo_border_inner": "#79e89a",
+            }
         case "KAMUE":
             return {
                 "bg": "#06040d",
@@ -166,6 +188,8 @@ def theme_palette_for_variant(variant: Any) -> Any:
 def theme_chip_palette(variant: Any) -> Any:
     use_variant = str(variant).upper()
     match use_variant:
+        case "GLITCH":
+            return {"bg": "#000000", "fg": "#c6f6d3", "border": "#3c9454"}
         case "KAMUE":
             return {"bg": "#2a1450", "fg": "#e7dcff", "border": "#6b37b6"}
         case _:
@@ -185,10 +209,14 @@ def bug_chip_palette(variant: Any, footer_style_variant: Any="B") -> Any:
     use_variant = str(variant).upper()
     use_footer = str(footer_style_variant).upper()
     match (use_footer, use_variant):
+        case ("B", "GLITCH"):
+            return {"bg": "#000000", "fg": "#d8f7e2", "border": "#3c9454", "active_bg": "#000000"}
         case ("B", "KAMUE"):
             return {"bg": "#2a1450", "fg": "#f0e7ff", "border": "#6b37b6", "active_bg": "#2a1450"}
         case ("B", _):
             return {"bg": "#132230", "fg": "#e6f6ff", "border": "#4e6e86", "active_bg": "#132230"}
+        case (_, "GLITCH"):
+            return {"bg": "#08120e", "fg": "#d8f7e2", "border": "#3c9454", "active_bg": "#173126"}
         case (_, "KAMUE"):
             return {"bg": "#23103c", "fg": "#f0e6ff", "border": "#6b37b6", "active_bg": "#4a2781"}
         case _:
@@ -199,10 +227,14 @@ def footer_badge_palette(variant: Any, footer_style_variant: Any="B") -> Any:
     use_variant = str(variant).upper()
     use_footer = str(footer_style_variant).upper()
     match (use_footer, use_variant):
+        case ("B", "GLITCH"):
+            return {"bg": "#000000", "fg": "#b6ebc4", "border": "#3c9454"}
         case ("B", "KAMUE"):
             return {"bg": "#2a1450", "fg": "#d8ccec", "border": "#6b37b6"}
         case ("B", _):
             return {"bg": "#132230", "fg": "#c2d4e2", "border": "#4e6e86"}
+        case (_, "GLITCH"):
+            return {"bg": "#08120e", "fg": "#b6ebc4", "border": "#3c9454"}
         case (_, "KAMUE"):
             return {"bg": "#2a1450", "fg": "#d8ccec", "border": "#6b37b6"}
         case _:
@@ -211,6 +243,13 @@ def footer_badge_palette(variant: Any, footer_style_variant: Any="B") -> Any:
 
 def tree_marker_palette(theme_variant: Any) -> Any:
     match str(theme_variant).upper():
+        case "GLITCH":
+            return {
+                "main_fill": "#4eb96c",
+                "main_edge": "#9ef5b7",
+                "sub_edge": "#72d392",
+                "sub_fill": "#57b876",
+            }
         case "KAMUE":
             return {
                 "main_fill": "#b57bff",
@@ -657,10 +696,120 @@ def _refresh_runtime_theme_widgets(owner: Any):
         owner._refresh_active_error_theme()
 
 
+def build_theme_prewarm_tasks(owner: Any, variant: Any) -> list[dict[str, str]]:
+        variant_name = str(variant).upper()
+        if variant_name not in ("SIINDBAD", "KAMUE", "GLITCH"):
+            return []
+        style_map = getattr(owner, "_toolbar_style_variant_by_theme", None)
+        if not isinstance(style_map, dict):
+            style_map = {"SIINDBAD": "B", "KAMUE": "B", "GLITCH": "B"}
+            owner._toolbar_style_variant_by_theme = style_map
+        if str(style_map.get(variant_name, "B")).upper() != "B":
+            return []
+
+        labels = {
+            "open": "Open",
+            "apply": "Apply Edit",
+            "export": "Export .hhsav",
+            "find": "Find Next",
+            "update": "Update",
+            "readme": "ReadMe",
+        }
+        tasks: list[dict[str, str]] = []
+        for key, text in labels.items():
+            tasks.append({"variant": variant_name, "kind": "button", "key": key, "text": text})
+        tasks.append({"variant": variant_name, "kind": "search"})
+        tasks.append({"variant": variant_name, "kind": "font"})
+        tasks.append({"variant": variant_name, "kind": "logo"})
+        tasks.append({"variant": variant_name, "kind": "badges"})
+        # Prewarm marker integrity/icons so first tree expansion is stable and hitch-free.
+        tasks.append({"variant": variant_name, "kind": "tree_integrity"})
+        tasks.append({"variant": variant_name, "kind": "tree_markers"})
+        return tasks
+
+
+def finish_theme_prewarm_variant(owner: Any, variant: Any) -> None:
+        variant_name = str(variant).upper()
+        warmed = set(getattr(owner, "_theme_prewarm_done", set()))
+        if variant_name in warmed:
+            return
+        warmed.add(variant_name)
+        owner._theme_prewarm_done = warmed
+        totals = dict(getattr(owner, "_theme_prewarm_total_by_variant", {}))
+        done_counts = dict(getattr(owner, "_theme_prewarm_done_by_variant", {}))
+        total = int(totals.get(variant_name, 0) or 0)
+        if total <= 0:
+            total = 1
+            totals[variant_name] = total
+        done_counts[variant_name] = total
+        owner._theme_prewarm_total_by_variant = totals
+        owner._theme_prewarm_done_by_variant = done_counts
+        owner._log_theme_perf(f"prewarm {variant_name} completed")
+        current = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+        if current == variant_name and getattr(owner, "_toolbar_buttons", {}):
+            owner._schedule_toolbar_refresh_after(delay_ms=1)
+        owner._update_startup_loader_progress()
+        owner._on_startup_full_load_ready()
+
+
+def schedule_theme_asset_prewarm(owner: Any, targets: Any=None, delay_ms: int=120) -> None:
+        root = getattr(owner, "root", None)
+        if root is None:
+            return
+        if targets is None:
+            targets = ("SIINDBAD", "KAMUE", "GLITCH")
+        pending = list(getattr(owner, "_theme_prewarm_queue", []))
+        raw_tasks = getattr(owner, "_theme_prewarm_tasks", None)
+        if isinstance(raw_tasks, deque):
+            tasks = raw_tasks
+        elif raw_tasks:
+            tasks = deque(raw_tasks)
+        else:
+            tasks = deque()
+        warmed = set(getattr(owner, "_theme_prewarm_done", set()))
+        totals = dict(getattr(owner, "_theme_prewarm_total_by_variant", {}))
+        done_counts = dict(getattr(owner, "_theme_prewarm_done_by_variant", {}))
+        for variant in targets:
+            variant_name = str(variant).upper()
+            if variant_name not in ("SIINDBAD", "KAMUE", "GLITCH"):
+                continue
+            if variant_name in warmed or variant_name in pending:
+                continue
+            variant_tasks = owner._build_theme_prewarm_tasks(variant_name)
+            if not variant_tasks:
+                totals[variant_name] = 1
+                done_counts[variant_name] = 1
+                owner._theme_prewarm_total_by_variant = totals
+                owner._theme_prewarm_done_by_variant = done_counts
+                owner._finish_theme_prewarm_variant(variant_name)
+                continue
+            pending.append(variant_name)
+            if int(totals.get(variant_name, 0) or 0) <= 0:
+                totals[variant_name] = len(variant_tasks)
+                done_counts[variant_name] = 0
+            owner._log_theme_perf(f"queue prewarm {variant_name}")
+            tasks.extend(variant_tasks)
+        owner._theme_prewarm_total_by_variant = totals
+        owner._theme_prewarm_done_by_variant = done_counts
+        owner._theme_prewarm_queue = pending
+        owner._theme_prewarm_tasks = tasks
+        owner._update_startup_loader_progress()
+        if not tasks:
+            owner._on_startup_full_load_ready()
+            return
+        after_id = getattr(owner, "_theme_prewarm_after_id", None)
+        if after_id:
+            try:
+                root.after_cancel(after_id)
+            except (tk.TclError, RuntimeError, ValueError):
+                pass
+        owner._theme_prewarm_after_id = root.after(max(1, int(delay_ms)), owner._run_theme_asset_prewarm)
+
+
 def _execute_theme_prewarm_task(owner: Any, task):
         variant = str(task.get("variant", "")).upper()
         kind = str(task.get("kind", "")).lower()
-        if variant not in ("SIINDBAD", "KAMUE"):
+        if variant not in ("SIINDBAD", "KAMUE", "GLITCH"):
             return
 
         original_variant = getattr(owner, "_app_theme_variant", "SIINDBAD")
@@ -821,7 +970,7 @@ def _run_phase1_ui_prewarm(owner: Any) -> None:
         if bool(getattr(owner, "_theme_phase1_ui_prewarm_done", False)):
             return
         active_variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
-        if active_variant not in ("SIINDBAD", "KAMUE"):
+        if active_variant not in ("SIINDBAD", "KAMUE", "GLITCH"):
             active_variant = "SIINDBAD"
         # Keep this one-time warmup scoped to first-use UI interactions.
         for kind in ("font_metrics", "context_menu", "find_index"):
@@ -976,7 +1125,7 @@ def _run_theme_asset_prewarm(owner: Any):
         while tasks and time.perf_counter() < deadline and processed < max_tasks_this_tick:
             task = tasks.popleft()
             variant = str(task.get("variant", "")).upper()
-            if variant not in ("SIINDBAD", "KAMUE"):
+            if variant not in ("SIINDBAD", "KAMUE", "GLITCH"):
                 continue
             processed += 1
             owner._theme_prewarm_active_variant = variant

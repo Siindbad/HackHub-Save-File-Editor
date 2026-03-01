@@ -12,14 +12,20 @@ def shade_toolbar_button_for_theme(
     expected_errors: Any,
 ) -> Any:
     """Apply theme-specific color treatment to toolbar button assets."""
-    if str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper() != "KAMUE":
+    variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    if variant not in ("KAMUE", "GLITCH"):
         return image
     if cache_key:
         cache = getattr(owner, "_toolbar_theme_shade_cache", None)
         if not isinstance(cache, dict):
             cache = {}
             owner._toolbar_theme_shade_cache = cache
-        key = (str(cache_key), int(getattr(image, "width", 0) or 0), int(getattr(image, "height", 0) or 0))
+        key = (
+            str(cache_key),
+            variant,
+            int(getattr(image, "width", 0) or 0),
+            int(getattr(image, "height", 0) or 0),
+        )
         cached = cache.get(key)
         if cached is not None:
             try:
@@ -45,15 +51,42 @@ def shade_toolbar_button_for_theme(
         tint_mask = image_chops_module.lighter(blue_vs_red, blue_vs_green)
         tint_mask = tint_mask.point(lambda p: min(255, int(p * 0.62)))
 
-        purple_overlay = image_module.new("RGBA", base.size, (108, 56, 176, 0))
-        purple_overlay.putalpha(tint_mask)
-        tinted = image_module.alpha_composite(base, purple_overlay)
+        if variant == "KAMUE":
+            tint_overlay = image_module.new("RGBA", base.size, (108, 56, 176, 0))
+            tint_overlay.putalpha(tint_mask)
+            tinted = image_module.alpha_composite(base, tint_overlay)
 
-        # Darken primarily tinted regions instead of the whole button.
-        dark_mask = tint_mask.point(lambda p: min(255, int(p * 0.38)))
-        dark_overlay = image_module.new("RGBA", base.size, (16, 7, 30, 0))
-        dark_overlay.putalpha(dark_mask)
-        tinted = image_module.alpha_composite(tinted, dark_overlay)
+            # Darken primarily tinted regions instead of the whole button.
+            dark_mask = tint_mask.point(lambda p: min(255, int(p * 0.38)))
+            dark_overlay = image_module.new("RGBA", base.size, (16, 7, 30, 0))
+            dark_overlay.putalpha(dark_mask)
+            tinted = image_module.alpha_composite(tinted, dark_overlay)
+        else:
+            # GLITCH target: black button interior with green frame accents.
+            tinted = base.copy()
+            luma = base.convert("L")
+            dark_mask = tint_mask.point(lambda p: min(255, int(p * 0.88)))
+            dark_overlay = image_module.new("RGBA", base.size, (0, 0, 0, 0))
+            dark_overlay.putalpha(dark_mask)
+            tinted = image_module.alpha_composite(tinted, dark_overlay)
+
+            # Extra interior clamp for darker slots while avoiding bright icon/text areas.
+            interior_luma = luma.point(lambda p: 255 if p < 130 else 0)
+            interior_mask = image_chops_module.multiply(tint_mask, interior_luma).point(
+                lambda p: min(255, int(p * 0.72))
+            )
+            interior_overlay = image_module.new("RGBA", base.size, (0, 0, 0, 0))
+            interior_overlay.putalpha(interior_mask)
+            tinted = image_module.alpha_composite(tinted, interior_overlay)
+
+            # Keep green primarily on brighter structural edges.
+            edge_luma = luma.point(lambda p: 0 if p < 86 else (170 if p < 145 else 255))
+            edge_mask = image_chops_module.multiply(tint_mask, edge_luma).point(
+                lambda p: min(255, int(p * 0.70))
+            )
+            edge_overlay = image_module.new("RGBA", base.size, (74, 196, 114, 0))
+            edge_overlay.putalpha(edge_mask)
+            tinted = image_module.alpha_composite(tinted, edge_overlay)
 
         # Preserve white label readability (text/icons) after tinting.
         luma = base.convert("L")
@@ -66,8 +99,13 @@ def shade_toolbar_button_for_theme(
 
         # Final crispness pass.
         rgb = tinted.convert("RGB")
-        rgb = image_enhance_module.Contrast(rgb).enhance(1.09)
-        rgb = image_enhance_module.Sharpness(rgb).enhance(1.08)
+        if variant == "GLITCH":
+            rgb = image_enhance_module.Contrast(rgb).enhance(1.12)
+            rgb = image_enhance_module.Brightness(rgb).enhance(0.82)
+            rgb = image_enhance_module.Sharpness(rgb).enhance(1.04)
+        else:
+            rgb = image_enhance_module.Contrast(rgb).enhance(1.09)
+            rgb = image_enhance_module.Sharpness(rgb).enhance(1.08)
         out = rgb.convert("RGBA")
         out.putalpha(alpha_chan)
         if cache_key:
@@ -75,7 +113,7 @@ def shade_toolbar_button_for_theme(
             if not isinstance(cache, dict):
                 cache = {}
                 owner._toolbar_theme_shade_cache = cache
-            key = (str(cache_key), int(out.width), int(out.height))
+            key = (str(cache_key), variant, int(out.width), int(out.height))
             owner._bounded_cache_put(cache, key, out.copy(), max_items=192)
         return out
     except (ImportError, OSError, ValueError, TypeError, AttributeError):
@@ -84,13 +122,18 @@ def shade_toolbar_button_for_theme(
 
 def harmonize_kamue_b_outer_frame(owner: Any, image: Any, *, importlib_module: Any) -> Any:
     """Force KAMUE Variant-B sprite outer frame to match FONT frame border color."""
-    if str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper() != "KAMUE":
+    variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    if variant not in ("KAMUE", "GLITCH"):
         return image
     try:
         draw_module = importlib_module.import_module("PIL.ImageDraw")
         theme = getattr(owner, "_theme", {})
-        border_hex = theme.get("find_border", "#cfb5ee")
-        border_rgb = owner._hex_to_rgb_tuple(border_hex, default_rgb=(207, 181, 238))
+        if variant == "GLITCH":
+            border_hex = theme.get("find_border", theme.get("logo_border_outer", "#3c9454"))
+            border_rgb = owner._hex_to_rgb_tuple(border_hex, default_rgb=(60, 148, 84))
+        else:
+            border_hex = theme.get("find_border", "#cfb5ee")
+            border_rgb = owner._hex_to_rgb_tuple(border_hex, default_rgb=(207, 181, 238))
         out = image.copy().convert("RGBA")
         draw = draw_module.Draw(out)
         w, h = out.size

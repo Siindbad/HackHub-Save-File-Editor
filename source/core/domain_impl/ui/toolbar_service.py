@@ -20,7 +20,7 @@ def resolve_siindbad_effective_style(
     if not bool(show_toolbar_variant_controls):
         return "B"
     theme_variant = str(app_theme_variant or "SIINDBAD").upper()
-    use_map = style_map if isinstance(style_map, dict) else {"SIINDBAD": "B", "KAMUE": "B"}
+    use_map = style_map if isinstance(style_map, dict) else {"SIINDBAD": "B", "KAMUE": "B", "GLITCH": "B"}
     variant = str(use_map.get(theme_variant, "B")).upper()
     if variant not in ("A", "B"):
         variant = "B"
@@ -589,7 +589,8 @@ def _siindbad_b_sprite_bundle(owner: Any, key, width, height, render_mode="full"
             base_image = image_module.open(base_path).convert("RGBA")
         except EXPECTED_ERRORS:
             return None
-        if str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
+        active_variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+        if active_variant in ("KAMUE", "GLITCH"):
             try:
                 base_image = owner._shade_toolbar_button_for_theme(
                     base_image,
@@ -620,7 +621,7 @@ def _siindbad_b_sprite_bundle(owner: Any, key, width, height, render_mode="full"
                 continue
             try:
                 hover_image = image_module.open(hover_path).convert("RGBA")
-                if str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
+                if active_variant in ("KAMUE", "GLITCH"):
                     try:
                         hover_image = owner._shade_toolbar_button_for_theme(
                             hover_image,
@@ -1008,14 +1009,15 @@ def _apply_siindbad_toolbar_button_style(owner: Any, button, key, text):
             )
             if not isinstance(bundle, dict):
                 bundle = {}
-            button._siindbad_base_image = bundle.get("base")
-            button._siindbad_hover_frames = bundle.get("hover_frames", [])
+            setattr(button, "_siindbad_base_image", bundle.get("base"))
+            setattr(button, "_siindbad_hover_frames", bundle.get("hover_frames", []))
             base_interval = int(bundle.get("frame_interval_ms", 40) or 40)
-            button._siindbad_scan_interval_ms = max(20, min(100, base_interval))
+            setattr(button, "_siindbad_scan_interval_ms", max(20, min(100, base_interval)))
             owner._stop_siindbad_b_button_scan(button)
             try:
                 if isinstance(button, tk.Label):
-                    if button._siindbad_base_image is None:
+                    base_image = getattr(button, "_siindbad_base_image", None)
+                    if base_image is None:
                         button.configure(
                             text=display_text,
                             image="",
@@ -1035,7 +1037,7 @@ def _apply_siindbad_toolbar_button_style(owner: Any, button, key, text):
                     else:
                         button.configure(
                             text="",
-                            image=button._siindbad_base_image,
+                            image=base_image,
                             compound="none",
                             font=owner._toolbar_button_font(),
                             relief="flat",
@@ -1218,7 +1220,7 @@ def _make_toolbar_button(owner: Any, parent, text, command, image_key=None):
         owner._toolbar_button_text[key] = text
         variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
         style = owner._siindbad_effective_style()
-        if variant == "SIINDBAD" or (variant == "KAMUE" and style == "B"):
+        if variant in ("SIINDBAD", "GLITCH") or (variant == "KAMUE" and style == "B"):
             if style == "A":
                 palette = owner._siindbad_toolbar_style_palette()
                 frame = tk.Frame(
@@ -1232,7 +1234,7 @@ def _make_toolbar_button(owner: Any, parent, text, command, image_key=None):
                 )
                 button = tk.Button(frame, command=command)
                 button.pack(fill="both", expand=True)
-                button._siindbad_frame_host = frame
+                setattr(button, "_siindbad_frame_host", frame)
             elif style == "B":
                 palette = owner._siindbad_toolbar_style_palette()
                 frame_width = owner._siindbad_toolbar_frame_width(style, key, text)
@@ -1259,12 +1261,12 @@ def _make_toolbar_button(owner: Any, parent, text, command, image_key=None):
                     cursor="hand2",
                 )
                 button.pack(fill="both", expand=True, padx=0, pady=0)
-                button._siindbad_frame_host = frame
-                button._siindbad_scan_running = False
-                button._siindbad_scan_after_id = None
-                button._siindbad_hover_leave_after_id = None
-                button._siindbad_scan_start_ts = None
-                button._siindbad_hover_require_reenter = False
+                setattr(button, "_siindbad_frame_host", frame)
+                setattr(button, "_siindbad_scan_running", False)
+                setattr(button, "_siindbad_scan_after_id", None)
+                setattr(button, "_siindbad_hover_leave_after_id", None)
+                setattr(button, "_siindbad_scan_start_ts", None)
+                setattr(button, "_siindbad_hover_require_reenter", False)
                 hover_targets = (frame, button)
                 for target in hover_targets:
                     target.bind(

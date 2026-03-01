@@ -93,22 +93,68 @@ def collect_firewall_input_rows(owner: Any, normalized_path: Any, firewalls: Any
     return rows
 
 
+def _firewall_style_for_variant(variant: Any, panel_bg_default: str) -> dict[str, str]:
+    use_variant = str(variant).upper()
+    if use_variant == "KAMUE":
+        return {
+            "panel_bg": "#130a1f",
+            "frame_edge": "#5f3d86",
+            "left_bg": "#140c22",
+            "right_bg": "#120a1f",
+            "name_fg": "#C8A8FF",
+            "meta_fg": "#bbaed0",
+            "label_fg": "#d8c0f3",
+            "input_edge": "#8a5bc4",
+            "input_bg": "#1b1230",
+            "input_fg": "#70e58a",
+            "bool_false_fg": "#f3a1ad",
+        }
+    if use_variant == "GLITCH":
+        return {
+            "panel_bg": "#000000",
+            "frame_edge": "#3c9454",
+            "left_bg": "#000000",
+            "right_bg": "#000000",
+            "name_fg": "#f2ad5e",
+            "meta_fg": "#9fd7b0",
+            "label_fg": "#c6f6d3",
+            "input_edge": "#3c9454",
+            "input_bg": "#050705",
+            "input_fg": "#79e89a",
+            "bool_false_fg": "#ff9ea1",
+        }
+    return {
+        "panel_bg": panel_bg_default,
+        "frame_edge": "#295478",
+        "left_bg": "#0b1523",
+        "right_bg": "#091521",
+        "name_fg": "#f2ad5e",
+        "meta_fg": "#9ab0c2",
+        "label_fg": "#b7d5ef",
+        "input_edge": "#2e8fd4",
+        "input_bg": "#071322",
+        "input_fg": "#62d67a",
+        "bool_false_fg": "#ff9ea1",
+    }
+
+
 def render_firewall_input_rows(owner: Any, host: Any, normalized_path: Any, row_defs: Any) -> Any:
     # Keep FIREWALL visuals aligned with ROUTER Concept-2 palette and framing.
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
-    panel_bg = theme.get("panel", "#161b24")
-    frame_edge = "#5f3d86" if variant == "KAMUE" else "#295478"
-    left_bg = "#140c22" if variant == "KAMUE" else "#0b1523"
-    right_bg = "#120a1f" if variant == "KAMUE" else "#091521"
-    name_fg = "#C8A8FF" if variant == "KAMUE" else "#f2ad5e"
-    meta_fg = "#bbaed0" if variant == "KAMUE" else "#9ab0c2"
-    label_fg = "#d8c0f3" if variant == "KAMUE" else "#b7d5ef"
+    style = _firewall_style_for_variant(variant, theme.get("panel", "#161b24"))
+    panel_bg = style["panel_bg"]
+    frame_edge = style["frame_edge"]
+    left_bg = style["left_bg"]
+    right_bg = style["right_bg"]
+    name_fg = style["name_fg"]
+    meta_fg = style["meta_fg"]
+    label_fg = style["label_fg"]
+    input_edge = style["input_edge"]
+    input_bg = style["input_bg"]
+    input_fg = style["input_fg"]
+    bool_false_fg = style["bool_false_fg"]
     na_fg = "#d08c8c"
-    input_edge = "#8a5bc4" if variant == "KAMUE" else "#2e8fd4"
-    input_bg = "#1b1230" if variant == "KAMUE" else "#071322"
-    input_fg = "#70e58a" if variant == "KAMUE" else "#62d67a"
-    bool_false_fg = "#f3a1ad" if variant == "KAMUE" else "#ff9ea1"
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
         owner._credit_name_font()[0],

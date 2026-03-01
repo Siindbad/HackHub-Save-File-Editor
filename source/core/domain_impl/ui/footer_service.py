@@ -73,7 +73,7 @@ def _apply_footer_layout_variant(owner: Any):
             except EXPECTED_ERRORS:
                 pass
             try:
-                left_slot.grid_configure(column=0, columnspan=3, sticky="ew", padx=(6, 6), pady=(1, 1))
+                left_slot.grid_configure(column=0, columnspan=3, sticky="ew", padx=(4, 6), pady=(1, 1))
                 bar.grid_columnconfigure(0, weight=1)
                 bar.grid_columnconfigure(1, weight=0)
                 bar.grid_columnconfigure(2, weight=0)

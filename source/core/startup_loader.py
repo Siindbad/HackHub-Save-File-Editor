@@ -1,7 +1,7 @@
 from typing import Any, Callable, Set, Tuple
 
 
-VALID_THEME_VARIANTS = ("SIINDBAD", "KAMUE")
+VALID_THEME_VARIANTS = ("SIINDBAD", "KAMUE", "GLITCH")
 
 
 def normalize_theme_variant(value: Any, default: Any="SIINDBAD") -> str:
@@ -31,8 +31,8 @@ def prepare_loader_variants(active_variant: Any, deferred_variants: Any) -> Any:
         if str(name).upper() in VALID_THEME_VARIANTS
     }
     deferred.discard(active)
-    # Startup loader prewarms both theme variants before reveal so first
-    # post-open theme switch stays hot and visually instant.
+    # Startup loader prewarms all supported theme variants before reveal so
+    # first post-open theme switch stays hot and visually instant.
     required = {active, *deferred}
     return active, required, set()
 
@@ -122,7 +122,7 @@ def prewarm_tick_policy(
 ) -> Any:
     if loader_visible:
         # Loader-visible mode should aggressively prewarm so reveal happens only
-        # after both variants are truly hot, but keep task bursts bounded so
+        # after all variants are truly hot, but keep task bursts bounded so
         # progress animation stays visually smooth.
         budget_ms = max(12, int(loader_budget_ms or 0))
         max_tasks_this_tick = 4

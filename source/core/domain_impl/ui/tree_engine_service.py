@@ -234,15 +234,23 @@ def _is_input_network_device_item_hidden(
     if str(group or "").strip().upper() != "DEVICE":
         return False
     anchors = anchor_positions if isinstance(anchor_positions, dict) else {}
-    is_primary_geoip = int(pos) == int(anchors.get("geo_ip", 0))
+    geo_anchor = anchors.get("geo_ip")
+    bcc_anchor = anchors.get("bcc_domains")
+    blue_anchor = anchors.get("blue_table")
+    interpol_anchor = anchors.get("interpol")
+    is_primary_geoip = _anchor_matches(pos, geo_anchor)
     is_bcc_domains = (
-        int(pos) == int(anchors.get("bcc_domains"))
-        if anchors.get("bcc_domains") is not None
+        _anchor_matches(pos, bcc_anchor)
+        if isinstance(bcc_anchor, int)
         else _is_input_network_bcc_domains_item(owner, group, item)
     )
-    is_blue_table = int(pos) == int(anchors.get("blue_table")) if anchors.get("blue_table") is not None else False
-    is_interpol = int(pos) == int(anchors.get("interpol")) if anchors.get("interpol") is not None else False
+    is_blue_table = _anchor_matches(pos, blue_anchor)
+    is_interpol = _anchor_matches(pos, interpol_anchor)
     return not (is_primary_geoip or is_bcc_domains or is_blue_table or is_interpol)
+
+
+def _anchor_matches(pos: int, anchor: int | None) -> bool:
+    return isinstance(anchor, int) and int(pos) == int(anchor)
 
 
 def load_tree_marker_icon(
@@ -283,6 +291,7 @@ def load_tree_marker_icon(
             if os.path.isfile(icon_path):
                 with image_module.open(icon_path) as icon_file:
                     icon = icon_file.convert("RGBA")
+                icon = _tint_tree_marker_for_variant(owner, icon, variant, palette)
                 if str(kind) == "main":
                     icon = owner._nudge_marker_image_y(icon, delta_y=-1)
                 else:
@@ -298,6 +307,7 @@ def load_tree_marker_icon(
             if os.path.isfile(icon_path):
                 with image_module.open(icon_path) as icon_file:
                     icon = icon_file.convert("RGBA")
+                icon = _tint_tree_marker_for_variant(owner, icon, variant, palette)
                 if style_variant == "B":
                     icon = owner._nudge_marker_image_y(icon, delta_y=-1)
                 photo = owner._pil_to_photo(icon)
@@ -322,6 +332,35 @@ def load_tree_marker_icon(
     except expected_errors:
         owner._bounded_cache_put(cache, key, None, max_items=64)
         return None
+
+
+def _tint_tree_marker_for_variant(owner: Any, image: Any, variant: Any, palette: Any) -> Any:
+    """Tint tree marker sprite assets for variants that do not ship dedicated icon sets."""
+    if str(variant).upper() != "GLITCH" or image is None:
+        return image
+    try:
+        image_ops_module = importlib.import_module("PIL.ImageOps")
+        src = image.convert("RGBA")
+        alpha = src.split()[3]
+        gray = src.convert("L")
+
+        edge_hex = str((palette or {}).get("main_edge", "#9ef5b7"))
+        fill_hex = str((palette or {}).get("main_fill", "#4eb96c"))
+        edge_rgb = owner._hex_to_rgb_tuple(edge_hex, default_rgb=(158, 245, 183))
+        fill_rgb = owner._hex_to_rgb_tuple(fill_hex, default_rgb=(78, 185, 108))
+        dark_rgb = (
+            max(0, int(fill_rgb[0] * 0.58)),
+            max(0, int(fill_rgb[1] * 0.58)),
+            max(0, int(fill_rgb[2] * 0.58)),
+        )
+
+        colored = image_ops_module.colorize(gray, black=dark_rgb, white=edge_rgb)
+        out = colored.convert("RGBA")
+        out.putalpha(alpha)
+        return out
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        return image
 
 
 def populate_children(owner: Any, item_id: Any) -> Any:
@@ -422,21 +461,21 @@ def populate_children(owner: Any, item_id: Any) -> Any:
                 ):
                     continue
                 label = ""
-                is_input_device_primary = is_input_device_group and (
-                    device_anchor_positions.get("geo_ip") is not None
-                    and int(pos) == int(device_anchor_positions.get("geo_ip"))
+                is_input_device_primary = is_input_device_group and _anchor_matches(
+                    pos,
+                    device_anchor_positions.get("geo_ip"),
                 )
-                is_input_device_bcc_domains = is_input_device_group and (
-                    device_anchor_positions.get("bcc_domains") is not None
-                    and int(pos) == int(device_anchor_positions.get("bcc_domains"))
+                is_input_device_bcc_domains = is_input_device_group and _anchor_matches(
+                    pos,
+                    device_anchor_positions.get("bcc_domains"),
                 )
-                is_input_device_blue_table = is_input_device_group and (
-                    device_anchor_positions.get("blue_table") is not None
-                    and int(pos) == int(device_anchor_positions.get("blue_table"))
+                is_input_device_blue_table = is_input_device_group and _anchor_matches(
+                    pos,
+                    device_anchor_positions.get("blue_table"),
                 )
-                is_input_device_interpol = is_input_device_group and (
-                    device_anchor_positions.get("interpol") is not None
-                    and int(pos) == int(device_anchor_positions.get("interpol"))
+                is_input_device_interpol = is_input_device_group and _anchor_matches(
+                    pos,
+                    device_anchor_positions.get("interpol"),
                 )
                 if is_input_device_primary:
                     label = "GEO IP"

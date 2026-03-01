@@ -229,18 +229,68 @@ def _readonly_line(parent: Any, label: str, value: Any, *, key_fg: str, value_fg
     ).pack(side="left", padx=(6, 0), fill="x", expand=True)
 
 
+def _geoip_style_for_variant(variant: Any) -> dict[str, str]:
+    use_variant = str(variant).upper()
+    if use_variant == "KAMUE":
+        return {
+            "panel_bg": "#0d0816",
+            "frame_edge": "#55357f",
+            "card_edge": "#664392",
+            "card_bg": "#150e24",
+            "key_fg": "#af97d2",
+            "value_fg": "#d8c7ee",
+            "label_fg": "#d39b55",
+        }
+    if use_variant == "GLITCH":
+        return {
+            "panel_bg": "#000000",
+            "frame_edge": "#3c9454",
+            "card_edge": "#2f7a45",
+            "card_bg": "#050705",
+            "key_fg": "#9fd7b0",
+            "value_fg": "#d8f7e2",
+            "label_fg": "#f2ad5e",
+        }
+    return {
+        "panel_bg": "#050b12",
+        "frame_edge": "#1c3d5d",
+        "card_edge": "#255073",
+        "card_bg": "#07121e",
+        "key_fg": "#89b1d3",
+        "value_fg": "#cfe5ff",
+        "label_fg": "#d39b55",
+    }
+
+
+def _geoip_image_filename(variant: Any, asset: str) -> str:
+    use_variant = str(variant).upper()
+    use_asset = str(asset).strip().lower()
+    if use_asset == "router":
+        if use_variant == "KAMUE":
+            return "router_kam.png"
+        if use_variant == "GLITCH":
+            return "router_glitch.png"
+        return "router1.png"
+    if use_asset == "device":
+        if use_variant == "KAMUE":
+            return "device_kam.png"
+        if use_variant == "GLITCH":
+            return "device_glitch.png"
+        return "device_sin.png"
+    return ""
+
+
 def render_geoip_input(owner: Any, host: Any, normalized_path: Any, payload: dict[str, Any]) -> None:
     """Render Concept-1 GEO IP block layout in INPUT mode."""
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
-    is_kamue = variant == "KAMUE"
-
-    panel_bg = "#0d0816" if is_kamue else "#050b12"
-    frame_edge = "#55357f" if is_kamue else "#1c3d5d"
-    card_edge = "#664392" if is_kamue else "#255073"
-    card_bg = "#150e24" if is_kamue else "#07121e"
-    key_fg = "#af97d2" if is_kamue else "#89b1d3"
-    value_fg = "#d8c7ee" if is_kamue else "#cfe5ff"
-    label_fg = "#d39b55"
+    style = _geoip_style_for_variant(variant)
+    panel_bg = style["panel_bg"]
+    frame_edge = style["frame_edge"]
+    card_edge = style["card_edge"]
+    card_bg = style["card_bg"]
+    key_fg = style["key_fg"]
+    value_fg = style["value_fg"]
+    label_fg = style["label_fg"]
     online_fg = "#70e58a"
     offline_fg = "#ff7b8f"
 
@@ -277,7 +327,7 @@ def render_geoip_input(owner: Any, host: Any, normalized_path: Any, payload: dic
         fill_hex=card_bg,
     )
     router_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-    router_photo = _asset_photo(owner, "router_kam.png" if is_kamue else "router1.png", 134, 94)
+    router_photo = _asset_photo(owner, _geoip_image_filename(variant, "router"), 134, 94)
     router_img = tk.Label(router_card_content, bg=router_card_content.cget("bg"), bd=0, highlightthickness=0)
     router_img.pack(fill="both", expand=True)
     if router_photo is not None:
@@ -319,7 +369,7 @@ def render_geoip_input(owner: Any, host: Any, normalized_path: Any, payload: dic
         fill_hex=card_bg,
     )
     device_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-    device_photo = _asset_photo(owner, "device_kam.png" if is_kamue else "device_sin.png", 138, 112)
+    device_photo = _asset_photo(owner, _geoip_image_filename(variant, "device"), 138, 112)
     device_img = tk.Label(device_card_content, bg=device_card_content.cget("bg"), bd=0, highlightthickness=0)
     device_img.pack(fill="both", expand=True, pady=(0, 4))
     if device_photo is not None:

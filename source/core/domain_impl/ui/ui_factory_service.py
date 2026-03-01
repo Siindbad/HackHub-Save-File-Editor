@@ -191,6 +191,11 @@ def build_font_control(
             )
         owner._make_font_stepper(parent).pack(side="left")
         return
+    if variant == "GLITCH":
+        # GLITCH must always render a deterministic native stepper so startup
+        # and theme-switch flows keep black fill + green frame styling.
+        owner._make_siindbad_font_stepper(parent).pack(side="left")
+        return
     if variant == "SIINDBAD":
         owner._make_siindbad_font_stepper(parent).pack(side="left")
         return

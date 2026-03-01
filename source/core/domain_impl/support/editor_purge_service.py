@@ -15,10 +15,8 @@ from core.exceptions import EXPECTED_ERRORS
 from core.domain_impl.json import json_io_core as document_io_service
 from core.domain_impl.json import json_io_core as json_apply_commit_service
 from core.domain_impl.json import json_io_core as json_path_service
-from core.domain_impl.json import json_diagnostics_core as json_parse_feedback_service
 from core.domain_impl.json import json_diagnostics_core as json_quoted_item_tail_service
 from core.domain_impl.json import json_diagnostics_core as json_scalar_tail_service
-from core.domain_impl.json import json_diagnostics_core as json_validation_feedback_service
 from core.domain_impl.json import json_view_core as json_view_service
 from core.domain_impl.json import json_diagnostics_core as json_diagnostics_service
 from core.domain_impl.ui import footer_service
@@ -38,7 +36,6 @@ from core.domain_impl.infra import input_mode_service
 from core.domain_impl.support import telemetry_core as crash_offer_service
 from core.domain_impl.support import telemetry_core as bug_report_cooldown_service
 from core.domain_impl.support import error_hook_service
-from core.domain_impl.support import error_overlay_service
 from core.domain_impl.support import error_service
 from core.domain_impl.support import highlight_label_service
 from core.domain_impl.json import json_io_core as validation_service
@@ -719,14 +716,20 @@ def _apply_input_edit(owner: Any):
 def apply_edit(owner: Any):
         action = "auto_apply" if owner._auto_apply_in_progress else "apply_edit"
         owner._begin_diag_action(action)
+        status_setter = getattr(owner, "set_status", None)
+
+        def _set_status(message: str) -> None:
+            if callable(status_setter):
+                status_setter(str(message or ""))
+
         item_id = owner.tree.focus()
         if not item_id:
-            messagebox.showwarning("No selection", "Select a node in the tree.")
+            _set_status("Select a node in the tree.")
             return
         path = owner.item_to_path.get(item_id, [])
         mode = str(getattr(owner, "_editor_mode", "JSON")).upper()
         if isinstance(path, tuple) and path[0] == "__group__" and mode != "INPUT":
-            messagebox.showwarning("Not editable", "Select a specific item to edit.")
+            _set_status("Select a specific item to edit.")
             return
         if mode == "INPUT":
             owner._apply_input_edit()
@@ -735,38 +738,17 @@ def apply_edit(owner: Any):
         raw = owner.text.get("1.0", "end").strip()
         is_valid_input, input_reason = validation_service.validate_editor_text_payload(raw)
         if not is_valid_input:
-            owner._show_error_overlay("Invalid Entry", input_reason)
+            _set_status(str(input_reason or "Invalid editor input."))
             return
         try:
             new_value = json.loads(raw)
         except EXPECTED_ERRORS as exc:
-            json_parse_feedback_service.handle_apply_parse_error(owner, exc, list(path) if isinstance(path, tuple) else path)
+            _set_status(owner._format_json_error(exc))
             return
         owner._clear_json_error_highlight()
 
-        spacing_issue = owner._find_json_spacing_issue()
-        if json_validation_feedback_service.show_spacing_issue(owner, spacing_issue):
-            return
-
-        email_validation = owner._find_invalid_email_in_value(path, new_value)
-        if json_validation_feedback_service.show_email_issue(
-            owner,
-            email_validation,
-            log_issue=True,
-        ):
-            return
-
-        phone_issue = owner._find_phone_format_issue()
-        if json_validation_feedback_service.show_phone_issue(
-            owner,
-            phone_issue,
-            log_issue=True,
-        ):
-            return
-
         if not owner._is_json_edit_allowed(path, new_value, show_feedback=True, auto_restore=True):
             return
-        owner._destroy_error_overlay()
         owner._error_visual_mode = "guide"
         if not owner._is_edit_allowed(path, new_value):
             return
@@ -824,41 +806,8 @@ def _set_startup_loader_bar_fill(fill_widget, pct):
 
 
 def _show_live_error_feedback(owner: Any):
-        item_id = owner.tree.focus()
-        if not item_id:
-            return
-        path = owner.item_to_path.get(item_id, [])
-        if isinstance(path, tuple) and path and path[0] == "__group__":
-            return
-        raw = owner.text.get("1.0", "end").strip()
-        try:
-            new_value = json.loads(raw)
-        except EXPECTED_ERRORS as exc:
-            json_parse_feedback_service.handle_live_parse_error(owner, exc, list(path) if isinstance(path, tuple) else path)
-            return
-
-        spacing_issue = owner._find_json_spacing_issue()
-        if json_validation_feedback_service.show_spacing_issue(owner, spacing_issue):
-            return
-
-        email_validation = owner._find_invalid_email_in_value(path, new_value)
-        if json_validation_feedback_service.show_email_issue(
-            owner,
-            email_validation,
-            log_issue=False,
-        ):
-            return
-
-        phone_issue = owner._find_phone_format_issue()
-        if json_validation_feedback_service.show_phone_issue(
-            owner,
-            phone_issue,
-            log_issue=False,
-        ):
-            return
-
-        if not owner._is_json_edit_allowed(path, new_value, show_feedback=True):
-            return
+        # Freestyle JSON mode: disable live parse/validation overlays and popups.
+        return
 
 
 def export_hhsave(owner: Any):
@@ -1078,14 +1027,14 @@ def apply_loaded_document(owner: Any, path: Any, data: Any) -> Any:
             f"SIINDBAD's HackHub Editor - {os.path.basename(path)} - v{owner.APP_VERSION}"
         )
         owner._rebuild_tree()
-        # Post-open responsiveness: ensure both theme variants are warmed so
+        # Post-open responsiveness: ensure all theme variants are warmed so
         # switching themes immediately after file load does not cold-start.
         if getattr(owner, "_startup_loader_ready_ts", None) is not None:
             warmed = set(getattr(owner, "_theme_prewarm_done", set()))
             prewarm_variant = getattr(owner, "_prewarm_theme_variant_assets", None)
             finish_variant = getattr(owner, "_finish_theme_prewarm_variant", None)
             if callable(prewarm_variant):
-                for variant_name in ("SIINDBAD", "KAMUE"):
+                for variant_name in ("SIINDBAD", "KAMUE", "GLITCH"):
                     if variant_name in warmed:
                         continue
                     try:
@@ -1149,7 +1098,7 @@ def _current_overlay_suggestion(owner: Any):
 def _siindbad_effective_style(owner: Any):
         style_map = getattr(owner, "_toolbar_style_variant_by_theme", None)
         if not isinstance(style_map, dict):
-            style_map = {"SIINDBAD": "B", "KAMUE": "B"}
+            style_map = {"SIINDBAD": "B", "KAMUE": "B", "GLITCH": "B"}
             owner._toolbar_style_variant_by_theme = style_map
         return toolbar_service.resolve_siindbad_effective_style(
             style_focus=getattr(owner, "_siindbad_style_focus", ""),
@@ -1305,5 +1254,6 @@ def _set_value(owner: Any, path, new_value):
 
 
 def _show_error_overlay(owner: Any, title, message, actions=None):
-        owner._error_overlay_actions = tuple(actions or ()) or None
-        error_overlay_service.show_error_overlay(owner, title, message)
+        # Freestyle JSON mode: no guided error overlay UI.
+        _ = (title, message, actions)
+        owner._error_overlay_actions = None

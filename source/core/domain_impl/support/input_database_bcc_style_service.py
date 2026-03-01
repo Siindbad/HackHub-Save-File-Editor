@@ -347,37 +347,122 @@ def _render_selectable_card_entry(
     return canvas
 
 
+def _database_bcc_style_for_variant(variant: Any, panel_bg: str) -> dict[str, str]:
+    use_variant = str(variant).upper()
+    if use_variant == "KAMUE":
+        return {
+            "shell_edge": "#6a4697",
+            "shell_bg": "#1b1230",
+            "card_edge": "#8f6ad1",
+            "card_bg": "#1b1230",
+            "key_fg": "#c8a8ff",
+            "value_fg": "#e2cbff",
+            "header_fg": "#d9c2fb",
+            "row_edge": "#714aa1",
+            "row_bg": "#1b1230",
+            "id_fg": "#c7a9ee",
+            # Keep BCC email color aligned with INTERPOL neutral value tone.
+            "email_fg": "#b9aacd",
+        }
+    if use_variant == "GLITCH":
+        return {
+            "shell_edge": "#3c9454",
+            "shell_bg": panel_bg,
+            "card_edge": "#4eb96c",
+            "card_bg": panel_bg,
+            "key_fg": "#f2ad5e",
+            "value_fg": "#b6ebc4",
+            "header_fg": "#c6f6d3",
+            "row_edge": "#2f7a45",
+            "row_bg": panel_bg,
+            "id_fg": "#9fd7b0",
+            # Keep BCC email color aligned with INTERPOL neutral value tone.
+            "email_fg": "#93a0ad",
+        }
+    return {
+        "shell_edge": "#2f5f85",
+        "shell_bg": "#071322",
+        "card_edge": "#3b7daf",
+        "card_bg": "#071322",
+        "key_fg": "#f2ad5e",
+        "value_fg": "#9fd1ff",
+        "header_fg": "#a8c9e6",
+        "row_edge": "#3a78a8",
+        "row_bg": "#071322",
+        "id_fg": "#9cb7d4",
+        # Keep BCC email color aligned with INTERPOL neutral value tone.
+        "email_fg": "#93a0ad",
+    }
+
+
+def _database_interpol_style_for_variant(variant: Any, panel_bg: str) -> dict[str, str]:
+    use_variant = str(variant).upper()
+    if use_variant == "KAMUE":
+        return {
+            "shell_edge": "#6a4697",
+            "shell_bg": "#1b1230",
+            "card_edge": "#8f6ad1",
+            "card_bg": "#1b1230",
+            "key_fg": "#c8a8ff",
+            "value_fg": "#e2cbff",
+            "header_fg": "#d9c2fb",
+            "row_edge": "#714aa1",
+            "row_bg": "#1b1230",
+            "name_fg": "#d7c2ff",
+            # INTERPOL emails should match Position tone.
+            "email_fg": "#b9aacd",
+            "position_fg": "#b9aacd",
+        }
+    if use_variant == "GLITCH":
+        return {
+            "shell_edge": "#3c9454",
+            "shell_bg": panel_bg,
+            "card_edge": "#4eb96c",
+            "card_bg": panel_bg,
+            "key_fg": "#f2ad5e",
+            "value_fg": "#b6ebc4",
+            "header_fg": "#c6f6d3",
+            "row_edge": "#2f7a45",
+            "row_bg": panel_bg,
+            "name_fg": "#b6ebc4",
+            # INTERPOL emails should match Position tone.
+            "email_fg": "#93a0ad",
+            "position_fg": "#93a0ad",
+        }
+    return {
+        "shell_edge": "#2f5f85",
+        "shell_bg": "#071322",
+        "card_edge": "#3b7daf",
+        "card_bg": "#071322",
+        "key_fg": "#f2ad5e",
+        "value_fg": "#9fd1ff",
+        "header_fg": "#a8c9e6",
+        "row_edge": "#3a78a8",
+        "row_bg": "#071322",
+        "name_fg": "#c6dcf2",
+        # INTERPOL emails should match Position tone.
+        "email_fg": "#93a0ad",
+        "position_fg": "#93a0ad",
+    }
+
+
 def render_database_bcc_table(owner: Any, host: Any, normalized_path: Any, payload: Any) -> Any:
     _ = normalized_path
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     panel_bg = theme.get("panel", "#161b24")
-    if variant == "KAMUE":
-        shell_edge = "#6a4697"
-        shell_bg = "#1b1230"
-        card_edge = "#8f6ad1"
-        card_bg = "#1b1230"
-        key_fg = "#c8a8ff"
-        value_fg = "#e2cbff"
-        header_fg = "#d9c2fb"
-        row_edge = "#714aa1"
-        row_bg = "#1b1230"
-        id_fg = "#c7a9ee"
-        # Keep BCC email color aligned with INTERPOL neutral value tone.
-        email_fg = "#b9aacd"
-    else:
-        shell_edge = "#2f5f85"
-        shell_bg = "#071322"
-        card_edge = "#3b7daf"
-        card_bg = "#071322"
-        key_fg = "#f2ad5e"
-        value_fg = "#9fd1ff"
-        header_fg = "#a8c9e6"
-        row_edge = "#3a78a8"
-        row_bg = "#071322"
-        id_fg = "#9cb7d4"
-        # Keep BCC email color aligned with INTERPOL neutral value tone.
-        email_fg = "#93a0ad"
+    style = _database_bcc_style_for_variant(variant, panel_bg)
+    shell_edge = style["shell_edge"]
+    shell_bg = style["shell_bg"]
+    card_edge = style["card_edge"]
+    card_bg = style["card_bg"]
+    key_fg = style["key_fg"]
+    value_fg = style["value_fg"]
+    header_fg = style["header_fg"]
+    row_edge = style["row_edge"]
+    row_bg = style["row_bg"]
+    id_fg = style["id_fg"]
+    email_fg = style["email_fg"]
 
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],
@@ -671,34 +756,20 @@ def render_database_interpol_table(owner: Any, host: Any, normalized_path: Any, 
     theme = getattr(owner, "_theme", {})
     variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
     panel_bg = theme.get("panel", "#161b24")
-    if variant == "KAMUE":
-        shell_edge = "#6a4697"
-        shell_bg = "#1b1230"
-        card_edge = "#8f6ad1"
-        card_bg = "#1b1230"
-        key_fg = "#c8a8ff"
-        value_fg = "#e2cbff"
-        header_fg = "#d9c2fb"
-        row_edge = "#714aa1"
-        row_bg = "#1b1230"
-        name_fg = "#d7c2ff"
-        # INTERPOL emails should match Position tone.
-        email_fg = "#b9aacd"
-        position_fg = "#b9aacd"
-    else:
-        shell_edge = "#2f5f85"
-        shell_bg = "#071322"
-        card_edge = "#3b7daf"
-        card_bg = "#071322"
-        key_fg = "#f2ad5e"
-        value_fg = "#9fd1ff"
-        header_fg = "#a8c9e6"
-        row_edge = "#3a78a8"
-        row_bg = "#071322"
-        name_fg = "#c6dcf2"
-        # INTERPOL emails should match Position tone.
-        email_fg = "#93a0ad"
-        position_fg = "#93a0ad"
+    style = _database_interpol_style_for_variant(variant, panel_bg)
+    shell_edge = style["shell_edge"]
+    shell_bg = style["shell_bg"]
+    card_edge = style["card_edge"]
+    card_bg = style["card_bg"]
+    key_fg = style["key_fg"]
+    value_fg = style["value_fg"]
+    header_fg = style["header_fg"]
+    row_edge = style["row_edge"]
+    row_bg = style["row_bg"]
+    name_fg = style["name_fg"]
+    # INTERPOL emails should match Position tone.
+    email_fg = style["email_fg"]
+    position_fg = style["position_fg"]
 
     label_family = owner._resolve_font_family(
         ["Tektur SemiBold", "Tektur", "Segoe UI Semibold", "Segoe UI"],

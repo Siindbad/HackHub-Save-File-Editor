@@ -36,10 +36,13 @@ def build_bug_report_markdown(
     platform_module: Any,
 ) -> str:
     """Build markdown payload for bug report submissions."""
+    def _empty_diag_tail(_max_chars: int = 8000) -> str:
+        return ""
+
     return bug_report_context_service.build_bug_report_markdown(
         summary=summary,
         details=details,
-        include_diag=include_diag,
+        include_diag=False,
         discord_contact=discord_contact,
         crash_tail=crash_tail,
         screenshot_url=screenshot_url,
@@ -48,11 +51,11 @@ def build_bug_report_markdown(
         app_version=getattr(owner, "APP_VERSION", ""),
         theme_variant=str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper(),
         selected_path=owner._selected_tree_path_text(),
-        last_json_error=str(getattr(owner, "_last_json_error_msg", "") or ""),
-        last_highlight_note=str(getattr(owner, "_last_error_highlight_note", "") or ""),
+        last_json_error="",
+        last_highlight_note="",
         python_version=platform_module.python_version(),
         platform_text=platform_module.platform(),
-        read_diag_log_tail=owner._read_diag_log_tail,
+        read_diag_log_tail=_empty_diag_tail,
         bug_report_builder=bug_report_service.build_bug_report_markdown,
     )
 
@@ -237,13 +240,13 @@ def submit_bug_report_discord_forum(
         app_version=str(getattr(owner, "APP_VERSION", "") or ""),
         theme_variant=str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper(),
         selected_path=str(owner._selected_tree_path_text()),
-        last_json_error=str(getattr(owner, "_last_json_error_msg", "") or ""),
-        last_highlight_note=str(getattr(owner, "_last_error_highlight_note", "") or ""),
+        last_json_error="",
+        last_highlight_note="",
         now_text=time_module.strftime("%Y-%m-%d %H:%M:%S"),
         python_version=platform_module.python_version(),
         platform_text=platform_module.platform(),
-        include_diag=bool(include_diag),
-        diag_tail=str(diag_tail or ""),
+        include_diag=False,
+        diag_tail="",
         crash_tail=str(crash_tail or ""),
         discord_contact=str(discord_contact or ""),
         screenshot_url=screenshot_url,

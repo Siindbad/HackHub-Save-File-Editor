@@ -11,7 +11,11 @@ _LOG = logging.getLogger(__name__)
 def log_input_mode_edit_issue(owner: Any, path: Any, exc: Any) -> Any:
     """Capture invalid INPUT field/path writes for support triage."""
     try:
+        if not bool(getattr(owner, "DIAG_LOG_ENABLED", True)):
+            return
         log_path = owner._diag_log_path()
+        if not str(log_path or "").strip():
+            return
         owner._trim_text_file_for_append(log_path, owner.DIAG_LOG_MAX_BYTES, owner.DIAG_LOG_KEEP_BYTES)
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = (
@@ -32,7 +36,11 @@ def log_input_mode_edit_issue(owner: Any, path: Any, exc: Any) -> Any:
 def log_input_mode_apply_result(owner: Any, path: Any, changed: Any) -> Any:
     """Log whether INPUT apply actually changed the target value."""
     try:
+        if not bool(getattr(owner, "DIAG_LOG_ENABLED", True)):
+            return
         log_path = owner._diag_log_path()
+        if not str(log_path or "").strip():
+            return
         owner._trim_text_file_for_append(log_path, owner.DIAG_LOG_MAX_BYTES, owner.DIAG_LOG_KEEP_BYTES)
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = (
@@ -56,7 +64,11 @@ def log_input_mode_apply_trace(owner: Any, stage: Any, path: Any, specs_count: A
     if raw not in ("1", "true", "yes", "on"):
         return
     try:
+        if not bool(getattr(owner, "DIAG_LOG_ENABLED", True)):
+            return
         log_path = owner._diag_log_path()
+        if not str(log_path or "").strip():
+            return
         owner._trim_text_file_for_append(log_path, owner.DIAG_LOG_MAX_BYTES, owner.DIAG_LOG_KEEP_BYTES)
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         line_changed = ""

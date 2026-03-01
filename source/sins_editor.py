@@ -1621,6 +1621,9 @@ if button._siindbad_base_image is None:
             if theme_variant == "KAMUE":
                 fill = (47, 20, 94, 255) if active else (23, 11, 41, 255)
                 edge = (125, 75, 200, 255) if active else (81, 50, 138, 255)
+            elif theme_variant == "GLITCH":
+                fill = (7, 15, 11, 255) if active else (4, 9, 7, 255)
+                edge = (121, 232, 154, 255) if active else (60, 148, 84, 255)
             else:
                 fill = (27, 77, 115, 255) if active else (18, 36, 55, 255)
                 edge = (103, 180, 228, 255) if active else (53, 87, 119, 255)
@@ -1698,13 +1701,23 @@ if button._siindbad_base_image is None:
         except (tk.TclError, RuntimeError, AttributeError):
             pass
         active_mode = str(getattr(self, "_editor_mode", "JSON")).upper()
+        theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+        if theme_variant == "GLITCH":
+            active_fg = "#e6ffef"
+            inactive_fg = "#b6ebc4"
+        elif theme_variant == "KAMUE":
+            active_fg = "#ffffff"
+            inactive_fg = "#d8ccec"
+        else:
+            active_fg = "#ffffff"
+            inactive_fg = "#c2d4e2"
         for mode, label in self._editor_mode_labels.items():
             try:
                 if not label.winfo_exists():
                     continue
                 is_active = mode == active_mode
                 tab_photo = self._editor_mode_tab_photo(active=is_active)
-                fg = "#ffffff" if is_active else "#c2d4e2"
+                fg = active_fg if is_active else inactive_fg
                 label.configure(
                     image=tab_photo if tab_photo is not None else "",
                     fg=fg,
@@ -1723,7 +1736,12 @@ if button._siindbad_base_image is None:
         theme = getattr(self, "_theme", {}) or {}
         panel_bg = theme.get("panel", "#161b24")
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        notice_fg = "#cdb6f7" if variant == "KAMUE" else "#9dc2e2"
+        if variant == "KAMUE":
+            notice_fg = "#cdb6f7"
+        elif variant == "GLITCH":
+            notice_fg = "#b6ebc4"
+        else:
+            notice_fg = "#9dc2e2"
         container = getattr(self, "_input_mode_container", None)
         if container is not None:
             try:
@@ -2208,12 +2226,16 @@ if button._siindbad_base_image is None:
         return editor_purge_service._selected_tree_path_text(self)
 
     def _diag_log_path(self):
+        if not bool(getattr(self, "DIAG_LOG_ENABLED", True)):
+            return ""
         return diag_log_housekeeping_service.build_dated_diag_log_path(
             runtime_dir=self._runtime_data_dir(create=True),
             diag_log_filename=self.DIAG_LOG_FILENAME,
         )
 
     def _purge_diag_logs_for_new_session(self):
+        if not bool(getattr(self, "DIAG_LOG_ENABLED", True)):
+            return
         diag_log_housekeeping_service.purge_diag_logs_for_new_session(
             runtime_dir=self._runtime_data_dir(create=True),
             diag_log_filename=self.DIAG_LOG_FILENAME,
@@ -3853,7 +3875,7 @@ if button._siindbad_base_image is None:
                 if isinstance(fs, int) and 6 <= fs <= 32:
                     self._font_size = fs
                 theme_variant = str(data.get("app_theme", "")).upper()
-                if theme_variant in ("SIINDBAD", "KAMUE"):
+                if theme_variant in ("SIINDBAD", "KAMUE", "GLITCH"):
                     self._app_theme_variant = theme_variant
                 # Startup update-check preference accepts bool/int or 0/1-style text.
                 startup_pref = data.get("startup_update_check")
@@ -3991,7 +4013,7 @@ if button._siindbad_base_image is None:
         self._app_theme_labels = {}
         self._toolbar_style_variant = "B"
         # Toolbar variants are finalized: use Variant-B for both themes.
-        self._toolbar_style_variant_by_theme = {"SIINDBAD": "B", "KAMUE": "B"}
+        self._toolbar_style_variant_by_theme = {"SIINDBAD": "B", "KAMUE": "B", "GLITCH": "B"}
         # Dev toggle: set HACKHUB_ENABLE_TOOLBAR_VARIANTS=1 to show toolbar variant controls.
         self._show_toolbar_variant_controls = (
             str(os.environ.get("HACKHUB_ENABLE_TOOLBAR_VARIANTS", "0")).strip().lower()
@@ -4117,8 +4139,8 @@ if button._siindbad_base_image is None:
         self._theme_prewarm_loader_budget_ms = 6
         self._theme_prewarm_idle_tick_ms = 12
         self._theme_prewarm_loader_tick_ms = 16
-        self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
-        self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
+        self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0, "GLITCH": 0}
+        self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0, "GLITCH": 0}
         # Cache per-variant logo PhotoImage so theme switches avoid reload work.
         self._theme_logo_photo_by_variant = {}
         self._toolbar_refresh_after_id = None
@@ -4154,7 +4176,7 @@ if button._siindbad_base_image is None:
         self._startup_loader_statement_index = 0
         self._startup_loader_line_pool_loading = []
         self._startup_loader_line_pool_ready = []
-        self._startup_loader_required_variants = {"SIINDBAD", "KAMUE"}
+        self._startup_loader_required_variants = {"SIINDBAD", "KAMUE", "GLITCH"}
         self._startup_loader_deferred_variants = set()
         self._startup_loader_title_prefix_label = None
         self._startup_loader_title_suffix_label = None
@@ -4189,6 +4211,9 @@ if button._siindbad_base_image is None:
 
     def _init_editor_session_runtime_state(self):
         # Core editor/session diagnostics and interaction runtime state.
+        # Diagnostics file toggle:
+        # - False disables `sins_json_diagnostics` file writes/rotation.
+        self.DIAG_LOG_ENABLED = False
         self.network_types = ["ROUTER", "DEVICE", "FIREWALL", "SPLITTER"]
         self.network_types_set = set(self.network_types)
         self.find_matches = []
@@ -4335,6 +4360,18 @@ if button._siindbad_base_image is None:
                     "size_bg": "#24133f",
                     "inner_border": "#d2a4ff",
                 }
+            if theme_variant == "GLITCH":
+                return {
+                    "button_bg": "#060d0a",
+                    "button_fg": "#dff5ff",
+                    "button_active": "#11261c",
+                    "button_pressed": "#030806",
+                    "border": find_border,
+                    "border_active": find_border,
+                    "slot_bg": "#050b08",
+                    "size_bg": "#0a1611",
+                    "inner_border": "#79e89a",
+                }
             return {
                 "button_bg": "#0f2439",
                 "button_fg": "#dff5ff",
@@ -4345,6 +4382,18 @@ if button._siindbad_base_image is None:
                 "slot_bg": "#0b1a2a",
                 "size_bg": "#11283c",
                 "inner_border": "#72d7ff",
+            }
+        if theme_variant == "GLITCH":
+            return {
+                "button_bg": "#070f0b",
+                "button_fg": "#dff5ff",
+                "button_active": "#143022",
+                "button_pressed": "#040906",
+                "border": border_outer,
+                "border_active": border_inner,
+                "slot_bg": "#060d0a",
+                "size_bg": "#0c1813",
+                "inner_border": border_inner,
             }
         return {
             "button_bg": "#102236",
@@ -4646,13 +4695,17 @@ if button._siindbad_base_image is None:
         self._theme_prewarm_done = set()
         self._theme_prewarm_queue = []
         self._theme_prewarm_tasks = deque()
-        self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
-        self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0}
+        self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0, "GLITCH": 0}
+        self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0, "GLITCH": 0}
 
     def _siindbad_b_render_mode(self, override=None):
         if override in ("fast", "full"):
             return override
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+        if variant == "GLITCH":
+            # GLITCH uses full hover-frame rendering for smooth scan parity
+            # with warmed SIINDBAD/KAMUE/GLITCH Variant-B buttons.
+            return "full"
         warmed = set(getattr(self, "_theme_prewarm_done", set()))
         if variant in warmed:
             return "full"
@@ -4731,7 +4784,7 @@ if button._siindbad_base_image is None:
             image_module = importlib.import_module("PIL.Image")
             image_tk_module = importlib.import_module("PIL.ImageTk")
             image = image_module.open(base_path).convert("RGBA")
-            if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE":
+            if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() in ("KAMUE", "GLITCH"):
                 try:
                     image = self._shade_toolbar_button_for_theme(image, cache_key=f"search:{base_path}")
                     image = self._harmonize_kamue_b_outer_frame(image)
@@ -5296,7 +5349,7 @@ if button._siindbad_base_image is None:
         except _EXPECTED_APP_ERRORS:
             return
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "SIINDBAD" or (variant == "KAMUE" and self._siindbad_effective_style() == "B"):
+        if variant in ("SIINDBAD", "GLITCH") or (variant == "KAMUE" and self._siindbad_effective_style() == "B"):
             for key, button in self._toolbar_buttons.items():
                 if not button or not button.winfo_exists():
                     continue
@@ -5629,13 +5682,13 @@ if button._siindbad_base_image is None:
     def _set_app_theme_variant(self, variant, save=True):
         switch_started = time.perf_counter()
         variant = str(variant).upper()
-        if variant not in ("SIINDBAD", "KAMUE"):
+        if variant not in ("SIINDBAD", "KAMUE", "GLITCH"):
             return
         previous_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
         previous_style = self._siindbad_effective_style()
         style_map = getattr(self, "_toolbar_style_variant_by_theme", None)
         if not isinstance(style_map, dict):
-            style_map = {"SIINDBAD": "B", "KAMUE": "B"}
+            style_map = {"SIINDBAD": "B", "KAMUE": "B", "GLITCH": "B"}
             self._toolbar_style_variant_by_theme = style_map
         if variant not in style_map:
             style_map[variant] = "B"
@@ -5650,7 +5703,7 @@ if button._siindbad_base_image is None:
             toolbar_host is not None
             and toolbar_host.winfo_exists()
             and bool(getattr(self, "_toolbar_buttons", {}))
-            and previous_variant in ("SIINDBAD", "KAMUE")
+            and previous_variant in ("SIINDBAD", "KAMUE", "GLITCH")
         )
         if has_live_toolbar and previous_style == "B" and next_style == "B":
             self._render_font_control()
@@ -5658,11 +5711,15 @@ if button._siindbad_base_image is None:
         else:
             self._rebuild_toolbar(preserve_find_text=True)
         self._refresh_runtime_theme_widgets()
-        other_variant = "KAMUE" if variant == "SIINDBAD" else "SIINDBAD"
         warmed = set(getattr(self, "_theme_prewarm_done", set()))
         queued = set(str(item).upper() for item in list(getattr(self, "_theme_prewarm_queue", []) or []))
-        if other_variant not in warmed and other_variant not in queued:
-            self._schedule_theme_asset_prewarm(targets=(other_variant,), delay_ms=180)
+        missing_variants = tuple(
+            candidate
+            for candidate in ("SIINDBAD", "KAMUE", "GLITCH")
+            if candidate != variant and candidate not in warmed and candidate not in queued
+        )
+        if missing_variants:
+            self._schedule_theme_asset_prewarm(targets=missing_variants, delay_ms=180)
         if save:
             try:
                 self._save_user_settings()
@@ -5893,113 +5950,16 @@ if button._siindbad_base_image is None:
         _LOG.debug("theme_perf label=%s elapsed_ms=%.1f", label, elapsed)
 
     def _build_theme_prewarm_tasks(self, variant):
-        variant = str(variant).upper()
-        if variant not in ("SIINDBAD", "KAMUE"):
-            return []
-        style_map = getattr(self, "_toolbar_style_variant_by_theme", None)
-        if not isinstance(style_map, dict):
-            style_map = {"SIINDBAD": "B", "KAMUE": "B"}
-            self._toolbar_style_variant_by_theme = style_map
-        if str(style_map.get(variant, "B")).upper() != "B":
-            return []
-
-        labels = {
-            "open": "Open",
-            "apply": "Apply Edit",
-            "export": "Export .hhsav",
-            "find": "Find Next",
-            "update": "Update",
-            "readme": "ReadMe",
-        }
-        tasks = []
-        for key, text in labels.items():
-            tasks.append({"variant": variant, "kind": "button", "key": key, "text": text})
-        tasks.append({"variant": variant, "kind": "search"})
-        tasks.append({"variant": variant, "kind": "font"})
-        tasks.append({"variant": variant, "kind": "logo"})
-        tasks.append({"variant": variant, "kind": "badges"})
-        # Prewarm marker integrity/icons so first tree expansion is stable and hitch-free.
-        tasks.append({"variant": variant, "kind": "tree_integrity"})
-        tasks.append({"variant": variant, "kind": "tree_markers"})
-        return tasks
+        return theme_service.build_theme_prewarm_tasks(self, variant)
 
     def _execute_theme_prewarm_task(self, task):
         return theme_service._execute_theme_prewarm_task(self, task)
 
     def _finish_theme_prewarm_variant(self, variant):
-        warmed = set(getattr(self, "_theme_prewarm_done", set()))
-        if variant in warmed:
-            return
-        warmed.add(variant)
-        self._theme_prewarm_done = warmed
-        totals = dict(getattr(self, "_theme_prewarm_total_by_variant", {}))
-        done_counts = dict(getattr(self, "_theme_prewarm_done_by_variant", {}))
-        total = int(totals.get(variant, 0) or 0)
-        if total <= 0:
-            total = 1
-            totals[variant] = total
-        done_counts[variant] = total
-        self._theme_prewarm_total_by_variant = totals
-        self._theme_prewarm_done_by_variant = done_counts
-        self._log_theme_perf(f"prewarm {variant} completed")
-        current = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if current == variant and getattr(self, "_toolbar_buttons", {}):
-            self._schedule_toolbar_refresh_after(delay_ms=1)
-        self._update_startup_loader_progress()
-        self._on_startup_full_load_ready()
+        return theme_service.finish_theme_prewarm_variant(self, variant)
 
     def _schedule_theme_asset_prewarm(self, targets=None, delay_ms=120):
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        if targets is None:
-            targets = ("SIINDBAD", "KAMUE")
-        pending = list(getattr(self, "_theme_prewarm_queue", []))
-        raw_tasks = getattr(self, "_theme_prewarm_tasks", None)
-        if isinstance(raw_tasks, deque):
-            tasks = raw_tasks
-        elif raw_tasks:
-            tasks = deque(raw_tasks)
-        else:
-            tasks = deque()
-        warmed = set(getattr(self, "_theme_prewarm_done", set()))
-        totals = dict(getattr(self, "_theme_prewarm_total_by_variant", {}))
-        done_counts = dict(getattr(self, "_theme_prewarm_done_by_variant", {}))
-        for variant in targets:
-            name = str(variant).upper()
-            if name not in ("SIINDBAD", "KAMUE"):
-                continue
-            if name in warmed or name in pending:
-                continue
-            variant_tasks = self._build_theme_prewarm_tasks(name)
-            if not variant_tasks:
-                totals[name] = 1
-                done_counts[name] = 1
-                self._theme_prewarm_total_by_variant = totals
-                self._theme_prewarm_done_by_variant = done_counts
-                self._finish_theme_prewarm_variant(name)
-                continue
-            pending.append(name)
-            if int(totals.get(name, 0) or 0) <= 0:
-                totals[name] = len(variant_tasks)
-                done_counts[name] = 0
-            self._log_theme_perf(f"queue prewarm {name}")
-            tasks.extend(variant_tasks)
-        self._theme_prewarm_total_by_variant = totals
-        self._theme_prewarm_done_by_variant = done_counts
-        self._theme_prewarm_queue = pending
-        self._theme_prewarm_tasks = tasks
-        self._update_startup_loader_progress()
-        if not tasks:
-            self._on_startup_full_load_ready()
-            return
-        after_id = getattr(self, "_theme_prewarm_after_id", None)
-        if after_id:
-            try:
-                root.after_cancel(after_id)
-            except (tk.TclError, RuntimeError, ValueError):
-                pass
-        self._theme_prewarm_after_id = root.after(max(1, int(delay_ms)), self._run_theme_asset_prewarm)
+        return theme_service.schedule_theme_asset_prewarm(self, targets=targets, delay_ms=delay_ms)
 
     def _run_theme_asset_prewarm(self):
         return theme_service._run_theme_asset_prewarm(self)
@@ -6019,7 +5979,7 @@ if button._siindbad_base_image is None:
         if variant not in ("A", "B"):
             return
         current_theme = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if current_theme not in ("SIINDBAD", "KAMUE"):
+        if current_theme not in ("SIINDBAD", "KAMUE", "GLITCH"):
             self._update_toolbar_style_controls()
             return
         forced_focus = str(getattr(self, "_siindbad_style_focus", "")).upper()
@@ -6031,7 +5991,7 @@ if button._siindbad_base_image is None:
             return
         style_map = getattr(self, "_toolbar_style_variant_by_theme", None)
         if not isinstance(style_map, dict):
-            style_map = {"SIINDBAD": "B", "KAMUE": "B"}
+            style_map = {"SIINDBAD": "B", "KAMUE": "B", "GLITCH": "B"}
             self._toolbar_style_variant_by_theme = style_map
         style_map[current_theme] = variant
         if current_theme == "SIINDBAD":
@@ -6057,6 +6017,15 @@ if button._siindbad_base_image is None:
                 "active_bg": "#3f2368",
                 "active_fg": "#f0e7ff",
                 "active_border": "#b678ea",
+            }
+        elif active_theme == "GLITCH":
+            palette = {
+                "inactive_bg": "#060d0a",
+                "inactive_fg": "#9ecfae",
+                "inactive_border": "#3c9454",
+                "active_bg": "#11261c",
+                "active_fg": "#d8f7e2",
+                "active_border": "#79e89a",
             }
         else:
             palette = {
@@ -6210,7 +6179,7 @@ if button._siindbad_base_image is None:
     @staticmethod
     def _is_banner_logo_path(path):
         name = os.path.basename(str(path)).lower()
-        return name.startswith("logo2") or name.startswith("klogo")
+        return name.startswith("logo2") or name.startswith("klogo") or name.startswith("glitch")
 
     def _clear_logo_widget(self):
         if self.logo_frame and self.logo_frame.winfo_exists():
@@ -6299,7 +6268,14 @@ if button._siindbad_base_image is None:
     def _find_logo_path(self):
         base_dir = self._resource_base_dir()
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "KAMUE":
+        if variant == "GLITCH":
+            candidates = [
+                "assets/glitch.png",
+                "glitch.png",
+                "assets/logo2.png",
+                "logo2.png",
+            ]
+        elif variant == "KAMUE":
             candidates = [
                 "assets/klogo.fw.png",
                 "assets/klogo.png",
