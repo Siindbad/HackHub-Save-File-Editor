@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-03-01 (theme orchestration now aligns with three-variant prewarm flow and updated GLITCH runtime styling coverage).
+Last sync: 2026-03-01 (runtime and UI facades now include extracted settings/timer domains with expanded GLITCH smoke coverage).
 
 | Module | Purpose |
 | --- | --- |

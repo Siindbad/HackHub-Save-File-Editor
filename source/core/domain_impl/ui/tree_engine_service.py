@@ -1,5 +1,6 @@
 """Shared tree engine helpers used by JSON and INPUT modes."""
 
+import hashlib
 import importlib
 import os
 from core.domain_impl.ui import tree_policy_service
@@ -251,6 +252,129 @@ def _is_input_network_device_item_hidden(
 
 def _anchor_matches(pos: int, anchor: int | None) -> bool:
     return isinstance(anchor, int) and int(pos) == int(anchor)
+
+
+def sha256_file(path: Any) -> str:
+    """Return SHA-256 hex digest for a file path."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def check_tree_marker_integrity(
+    owner: Any,
+    *,
+    os_module: Any = os,
+    expected_errors: tuple[type[BaseException], ...] = EXPECTED_ERRORS,
+) -> bool:
+    """Validate expected tree marker assets and memoize integrity state."""
+    if owner._tree_marker_integrity_checked:
+        return bool(owner._tree_marker_integrity_ok)
+    owner._tree_marker_integrity_checked = True
+    owner._tree_marker_integrity_ok = True
+    try:
+        base_dir = os_module.path.join(owner._resource_base_dir(), "assets", "buttons")
+        for variant, filename in owner.TREE_MAIN_MARKER_FILES.items():
+            expected = owner.TREE_MAIN_MARKER_SHA256.get(variant)
+            marker_path = os_module.path.join(base_dir, filename)
+            if not os_module.path.isfile(marker_path):
+                owner._tree_marker_integrity_ok = False
+                continue
+            if expected:
+                actual = sha256_file(marker_path)
+                if str(actual).lower() != str(expected).lower():
+                    owner._tree_marker_integrity_ok = False
+        b2_dir = os_module.path.join(base_dir, "tree-b2")
+        for filename, expected in owner.TREE_B2_MARKER_SHA256.items():
+            marker_path = os_module.path.join(b2_dir, filename)
+            if not os_module.path.isfile(marker_path):
+                owner._tree_marker_integrity_ok = False
+                continue
+            actual = sha256_file(marker_path)
+            if str(actual).lower() != str(expected).lower():
+                owner._tree_marker_integrity_ok = False
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        owner._tree_marker_integrity_ok = False
+    if not owner._tree_marker_integrity_ok:
+        try:
+            if getattr(owner, "status", None) is not None:
+                owner.set_status("Warning: locked tree marker assets changed or missing.")
+        except expected_errors as exc:
+            _LOG.debug('expected_error', exc_info=exc)
+    return bool(owner._tree_marker_integrity_ok)
+
+
+def nudge_marker_image_y(image: Any, delta_y: Any = -1.0) -> Any:
+    """Shift marker pixels vertically while preserving image size."""
+    try:
+        dy = float(delta_y)
+    except (TypeError, ValueError):
+        dy = -1.0
+    if abs(dy) < 0.001 or image is None:
+        return image
+    try:
+        image_module = importlib.import_module("PIL.Image")
+        step = -1 if dy < 0 else 1
+        total = abs(dy)
+        whole = int(total)
+        frac = total - float(whole)
+        base = image_module.new("RGBA", image.size, (0, 0, 0, 0))
+        base.alpha_composite(image, (0, step * whole))
+        if frac <= 0.001:
+            return base
+        nxt = image_module.new("RGBA", image.size, (0, 0, 0, 0))
+        nxt.alpha_composite(image, (0, step * (whole + 1)))
+        return image_module.blend(base, nxt, max(0.0, min(1.0, frac)))
+    except (ImportError, OSError, ValueError, TypeError, AttributeError):
+        return image
+
+
+def load_input_bank_red_arrow_icon(
+    owner: Any,
+    *,
+    expandable: bool = False,
+    expanded: bool = False,
+    expected_errors: tuple[type[BaseException], ...] = EXPECTED_ERRORS,
+) -> Any:
+    """Build/load INPUT-only Bank red marker without touching JSON marker assets."""
+    variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    key = ("INPUT_BANK_ARROW", variant, bool(expandable), bool(expanded))
+    cache = getattr(owner, "_tree_marker_icon_cache", None)
+    if not isinstance(cache, dict):
+        cache = {}
+        owner._tree_marker_icon_cache = cache
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        image_module = importlib.import_module("PIL.Image")
+        draw_module = importlib.import_module("PIL.ImageDraw")
+        canvas = image_module.new("RGBA", (14, 14), (0, 0, 0, 0))
+        draw = draw_module.Draw(canvas)
+        edge = (255, 128, 128, 255)
+        fill = (208, 62, 62, 255)
+        if expandable:
+            points = [(3, 4), (11, 4), (7, 10)] if expanded else [(4, 3), (10, 7), (4, 11)]
+            draw.polygon(points, fill=fill, outline=edge)
+        else:
+            draw.ellipse((4, 4, 9, 9), fill=fill, outline=edge, width=1)
+        canvas = nudge_marker_image_y(canvas, delta_y=0.25)
+        try:
+            shifted = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
+            shifted.alpha_composite(canvas, (-1, 0))
+            canvas = shifted
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+        photo = owner._pil_to_photo(canvas)
+        owner._bounded_cache_put(cache, key, photo, max_items=128)
+        return photo
+    except expected_errors as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        owner._bounded_cache_put(cache, key, None, max_items=128)
+        return None
 
 
 def load_tree_marker_icon(

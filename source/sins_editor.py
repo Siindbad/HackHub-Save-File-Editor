@@ -39,6 +39,8 @@ from core import json_error_diagnostics_core
 from core import json_error_highlight_core
 from core import layout_topbar as layout_topbar_core
 from core import startup_loader as startup_loader_core
+from core.domain_impl.infra.editor_lifecycle_service import LIFECYCLE
+from core.domain_impl.ui.visual_asset_service import VISUALS
 
 # Domain compatibility aliases keep existing call sites stable while imports are consolidated.
 bug_report_api_service = bug_report_manager.BUG_REPORT.bug_report_api_service
@@ -68,6 +70,7 @@ toolbar_service = editor_ui_core.EDITOR_UI.toolbar_service
 ui_build_service = editor_ui_core.EDITOR_UI.ui_build_service
 ui_dispatch_service = editor_ui_core.EDITOR_UI.ui_dispatch_service
 ui_factory_service = editor_ui_core.EDITOR_UI.ui_factory_service
+ui_timer_service = editor_ui_core.EDITOR_UI.ui_timer_service
 UI_FACTORY = ui_factory_service
 input_mode_diag_service = input_mode_manager.INPUT_MODE.input_mode_diag_service
 input_mode_find_service = input_mode_manager.INPUT_MODE.input_mode_find_service
@@ -99,6 +102,7 @@ json_view_service = json_view_manager.JSON_VIEW.json_view_service
 runtime_log_service = runtime_service.RUNTIME.runtime_log_service
 runtime_paths_service = runtime_service.RUNTIME.runtime_paths_service
 token_env_service = runtime_service.RUNTIME.token_env_service
+user_settings_service = runtime_service.RUNTIME.user_settings_service
 windows_runtime_service = runtime_service.RUNTIME.windows_runtime_service
 text_context_action_service = text_context_manager.TEXT_CONTEXT.text_context_action_service
 text_context_pointer_service = text_context_manager.TEXT_CONTEXT.text_context_pointer_service
@@ -388,15 +392,7 @@ if button._siindbad_base_image is None:
 
     def _init_runtime_services(self):
         """Initialize grouped runtime state buckets through service-oriented clusters."""
-        self.TREE_NAV = tree_navigation_service.bind(
-            self,
-            expected_errors=_EXPECTED_APP_ERRORS,
-        )
-        self._init_chrome_runtime_state()
-        self._init_footer_bugreport_runtime_state()
-        self._init_text_context_runtime_state()
-        self._init_theme_update_runtime_state()
-        self._init_editor_session_runtime_state()
+        LIFECYCLE.bootstrap(self)
 
     @staticmethod
     def _is_windows_long_paths_enabled():
@@ -472,8 +468,7 @@ if button._siindbad_base_image is None:
         return display_profile_core.detect_display_scale_from_candidates(candidates)
 
     @staticmethod
-    def _auto_display_profile_for_screen(screen_width, screen_height, display_scale):
-        return display_profile_core.auto_display_profile_for_screen(
+    def _auto_display_profile_for_screen(screen_width, screen_height, display_scale): return display_profile_core.auto_display_profile_for_screen(
             screen_width,
             screen_height,
             display_scale,
@@ -587,8 +582,7 @@ if button._siindbad_base_image is None:
         except (tk.TclError, RuntimeError, TypeError, ValueError, AttributeError):
             pass
 
-    def _build_ui(self):
-        return ui_build_service.build_ui(self, tk=tk, ttk=ttk)
+    def _build_ui(self): return ui_build_service.build_ui(self, tk=tk, ttk=ttk)
 
     def _safe_edit_undo(self, event=None):
         try:
@@ -606,8 +600,7 @@ if button._siindbad_base_image is None:
             pass
         return "break"
 
-    def _build_editor_mode_toggle(self, parent):
-        return ui_build_service.build_editor_mode_toggle(self, parent, tk=tk)
+    def _build_editor_mode_toggle(self, parent): return ui_build_service.build_editor_mode_toggle(self, parent, tk=tk)
 
     def _build_input_mode_panel(self, parent, scroll_style):
         result = ui_build_service.build_input_mode_panel(self, parent, scroll_style, tk=tk, ttk=ttk)
@@ -715,42 +708,21 @@ if button._siindbad_base_image is None:
         self._schedule_router_settle_barrier(delay_ms=30)
 
     def _cancel_pending_input_mode_scroll_drag_clear(self):
-        after_id = getattr(self, "_input_mode_scroll_drag_after_id", None)
-        self._input_mode_scroll_drag_after_id = None
-        if not after_id:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            root.after_cancel(after_id)
-        except (tk.TclError, RuntimeError, ValueError):
-            return
+        return ui_timer_service._cancel_pending_input_mode_scroll_drag_clear(**locals())
 
     def _clear_input_mode_scroll_drag_active(self):
         self._cancel_pending_input_mode_scroll_drag_clear()
         self._input_mode_scroll_drag_active = False
 
     def _mark_input_mode_scroll_drag_active(self):
-        self._input_mode_scroll_drag_active = True
-        self._cancel_pending_input_mode_scroll_drag_clear()
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            self._input_mode_scroll_drag_after_id = root.after(120, self._clear_input_mode_scroll_drag_active)
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            self._input_mode_scroll_drag_after_id = None
+        return ui_timer_service._mark_input_mode_scroll_drag_active(**locals())
 
     @staticmethod
-    def _is_input_scalar(value):
-        return input_mode_service.is_input_scalar(value)
+    def _is_input_scalar(value): return input_mode_service.is_input_scalar(value)
 
-    def _format_input_path_label(self, rel_path):
-        return input_mode_service.format_input_path_label(rel_path)
+    def _format_input_path_label(self, rel_path): return input_mode_service.format_input_path_label(rel_path)
 
-    def _collect_input_field_specs(self, value, base_path, max_fields=24):
-        return input_mode_service.collect_input_field_specs(
+    def _collect_input_field_specs(self, value, base_path, max_fields=24): return input_mode_service.collect_input_field_specs(
             value,
             base_path,
             max_fields=max_fields,
@@ -768,146 +740,105 @@ if button._siindbad_base_image is None:
         return max(int(min_size), min(int(max_size), int(scaled)))
 
     def _is_bank_input_style_path(self, path):
-        normalized = list(path or [])
-        if len(normalized) != 1:
-            return False
-        return self._input_mode_root_key_for_path(normalized) == "bank"
+        return input_mode_service._is_bank_input_style_path(**locals())
 
-    def _collect_bank_input_rows(self, value, max_rows=40):
-        return input_bank_style_service.collect_bank_input_rows(value, max_rows=max_rows)
+    def _collect_bank_input_rows(self, value, max_rows=40): return input_bank_style_service.collect_bank_input_rows(value, max_rows=max_rows)
 
     def _render_bank_input_style_rows(self, host, normalized_path, row_defs):
-        input_bank_style_service.render_bank_input_style_rows(
-            self,
-            host,
-            normalized_path,
-            row_defs,
-        )
+        return input_mode_service._render_bank_input_style_rows(**locals())
 
     @staticmethod
-    def _is_database_input_style_path(path):
-        return input_mode_render_dispatch_service.is_database_input_style_path(path)
+    def _is_database_input_style_path(path): return input_mode_render_dispatch_service.is_database_input_style_path(path)
 
-    def _database_root_entry_label(self, idx, item):
-        return label_format_service.database_root_entry_label(
+    def _database_root_entry_label(self, idx, item): return label_format_service.database_root_entry_label(
             idx,
             item,
             tree_style_variant=getattr(self, "_tree_style_variant", "B"),
             editor_mode=getattr(self, "_editor_mode", "JSON"),
         )
 
-    def _collect_database_grades_matrix(self, value, max_rows=40):
-        return input_mode_service.collect_database_grades_matrix(
+    def _collect_database_grades_matrix(self, value, max_rows=40): return input_mode_service.collect_database_grades_matrix(
             value,
             max_rows=max_rows,
             input_database_style_service=input_database_style_service,
         )
 
     def _render_database_grades_input_matrix(self, host, normalized_path, matrix_payload):
-        input_database_style_service.render_database_grades_matrix(
-            self,
-            host,
-            normalized_path,
-            matrix_payload,
-        )
+        return input_mode_service._render_database_grades_input_matrix(**locals())
 
-    def _collect_database_bcc_payload(self, value, max_rows=200):
-        return input_mode_service.collect_database_bcc_payload(
+    def _collect_database_bcc_payload(self, value, max_rows=200): return input_mode_service.collect_database_bcc_payload(
             value,
             max_rows=max_rows,
             input_database_bcc_style_service=input_database_bcc_style_service,
         )
 
     def _render_database_bcc_table(self, host, normalized_path, payload):
-        input_database_bcc_style_service.render_database_bcc_table(
-            self,
-            host,
-            normalized_path,
-            payload,
-        )
+        return input_mode_service._render_database_bcc_table(**locals())
 
-    def _collect_database_interpol_payload(self, value, max_rows=200):
-        return input_mode_service.collect_database_interpol_payload(
+    def _collect_database_interpol_payload(self, value, max_rows=200): return input_mode_service.collect_database_interpol_payload(
             value,
             max_rows=max_rows,
             input_database_bcc_style_service=input_database_bcc_style_service,
         )
 
     def _render_database_interpol_table(self, host, normalized_path, payload):
-        input_database_bcc_style_service.render_database_interpol_table(
-            self,
-            host,
-            normalized_path,
-            payload,
-        )
+        return input_mode_service._render_database_interpol_table(**locals())
 
-    def _database_grades_matrix_for_input_path(self, path, value):
-        return input_mode_service.database_grades_matrix_for_input_path(
+    def _database_grades_matrix_for_input_path(self, path, value): return input_mode_service.database_grades_matrix_for_input_path(
             path,
             value,
             input_database_style_service=input_database_style_service,
         )
 
-    def _database_bcc_payload_for_input_path(self, path, value):
-        return input_mode_service.database_bcc_payload_for_input_path(
+    def _database_bcc_payload_for_input_path(self, path, value): return input_mode_service.database_bcc_payload_for_input_path(
             path,
             value,
             input_database_bcc_style_service=input_database_bcc_style_service,
         )
 
-    def _database_interpol_payload_for_input_path(self, path, value):
-        return input_mode_service.database_interpol_payload_for_input_path(
+    def _database_interpol_payload_for_input_path(self, path, value): return input_mode_service.database_interpol_payload_for_input_path(
             path,
             value,
             input_database_bcc_style_service=input_database_bcc_style_service,
         )
 
-    def _is_network_router_input_style_payload(self, path, value):
-        return input_mode_service.is_network_router_input_style_payload(
+    def _is_network_router_input_style_payload(self, path, value): return input_mode_service.is_network_router_input_style_payload(
             self,
             path,
             value,
             input_network_router_style_service=input_network_router_style_service,
         )
 
-    def _is_suspicion_input_style_path(self, path):
-        return input_suspicion_phone_style_service.is_suspicion_input_path(self, path)
+    def _is_suspicion_input_style_path(self, path): return input_suspicion_phone_style_service.is_suspicion_input_path(self, path)
 
-    def _is_phone_input_style_path(self, path):
-        return input_suspicion_phone_style_service.is_phone_input_path(self, path)
+    def _is_phone_input_style_path(self, path): return input_suspicion_phone_style_service.is_phone_input_path(self, path)
 
-    def _is_skypersky_input_style_path(self, path):
-        return input_suspicion_phone_style_service.is_skypersky_input_path(self, path)
+    def _is_skypersky_input_style_path(self, path): return input_suspicion_phone_style_service.is_skypersky_input_path(self, path)
 
-    def _render_suspicion_phone_input(self, host, normalized_path, value):
-        return input_suspicion_phone_style_service.render_suspicion_phone_input(
+    def _render_suspicion_phone_input(self, host, normalized_path, value): return input_suspicion_phone_style_service.render_suspicion_phone_input(
             self,
             host,
             normalized_path,
             value,
         )
 
-    def _render_phone_preview_input(self, host, normalized_path, value):
-        return input_suspicion_phone_style_service.render_phone_preview_input(
+    def _render_phone_preview_input(self, host, normalized_path, value): return input_suspicion_phone_style_service.render_phone_preview_input(
             self,
             host,
             normalized_path,
             value,
         )
 
-    def _render_skypersky_input(self, host, normalized_path, value):
-        return input_suspicion_phone_style_service.render_skypersky_input(
+    def _render_skypersky_input(self, host, normalized_path, value): return input_suspicion_phone_style_service.render_skypersky_input(
             self,
             host,
             normalized_path,
             value,
         )
 
-    def _is_network_device_input_style_payload(self, path, value):
-        return input_mode_service.is_network_device_input_style_payload(self, path, value)
+    def _is_network_device_input_style_payload(self, path, value): return input_mode_service.is_network_device_input_style_payload(self, path, value)
 
-    def _is_network_firewall_input_style_payload(self, path, value):
-        return input_mode_service.is_network_firewall_input_style_payload(
+    def _is_network_firewall_input_style_payload(self, path, value): return input_mode_service.is_network_firewall_input_style_payload(
             self,
             path,
             value,
@@ -932,11 +863,10 @@ if button._siindbad_base_image is None:
             input_network_device_bcc_style_service=input_network_device_bcc_style_service,
         )
 
-    def _collect_network_bcc_domains_payload(self, normalized_path, value):
-        return input_network_device_bcc_style_service.collect_bcc_domains_payload(self, normalized_path, value)
+    def _collect_network_bcc_domains_payload(self, normalized_path, value): return input_network_device_bcc_style_service.collect_bcc_domains_payload(self, normalized_path, value)
 
     def _render_network_bcc_domains_input(self, host, normalized_path, payload):
-        input_network_device_bcc_style_service.render_bcc_domains_input(self, host, normalized_path, payload)
+        return input_mode_service._render_network_bcc_domains_input(**locals())
 
     def _is_network_blue_table_input_style_payload(self, path, value):
         # BLUE TABLE concept applies to the locked thebluetable.com anchor row.
@@ -947,11 +877,10 @@ if button._siindbad_base_image is None:
             input_network_device_bcc_style_service=input_network_device_bcc_style_service,
         )
 
-    def _collect_network_blue_table_payload(self, normalized_path, value):
-        return input_network_device_bcc_style_service.collect_blue_table_payload(self, normalized_path, value)
+    def _collect_network_blue_table_payload(self, normalized_path, value): return input_network_device_bcc_style_service.collect_blue_table_payload(self, normalized_path, value)
 
     def _render_network_blue_table_input(self, host, normalized_path, payload):
-        input_network_device_bcc_style_service.render_blue_table_input(self, host, normalized_path, payload)
+        return input_mode_service._render_network_blue_table_input(**locals())
 
     def _is_network_interpol_input_style_payload(self, path, value):
         # INTERPOL concept applies to the locked row directly under BLUE TABLE.
@@ -962,20 +891,17 @@ if button._siindbad_base_image is None:
             input_network_device_bcc_style_service=input_network_device_bcc_style_service,
         )
 
-    def _collect_network_interpol_payload(self, normalized_path, value):
-        return input_network_device_bcc_style_service.collect_interpol_payload(self, normalized_path, value)
+    def _collect_network_interpol_payload(self, normalized_path, value): return input_network_device_bcc_style_service.collect_interpol_payload(self, normalized_path, value)
 
     def _render_network_interpol_input(self, host, normalized_path, payload):
-        input_network_device_bcc_style_service.render_interpol_input(self, host, normalized_path, payload)
+        return input_mode_service._render_network_interpol_input(**locals())
 
-    def _collect_network_geoip_payload(self, normalized_path, value):
-        return input_network_device_geoip_style_service.collect_geoip_payload(self, normalized_path, value)
+    def _collect_network_geoip_payload(self, normalized_path, value): return input_network_device_geoip_style_service.collect_geoip_payload(self, normalized_path, value)
 
     def _render_network_geoip_input(self, host, normalized_path, payload):
-        input_network_device_geoip_style_service.render_geoip_input(self, host, normalized_path, payload)
+        return input_mode_service._render_network_geoip_input(**locals())
 
-    def _collect_network_firewall_input_rows(self, normalized_path, firewalls, max_rows=40):
-        return input_network_firewall_style_service.collect_firewall_input_rows(
+    def _collect_network_firewall_input_rows(self, normalized_path, firewalls, max_rows=40): return input_network_firewall_style_service.collect_firewall_input_rows(
             self,
             normalized_path,
             firewalls,
@@ -983,15 +909,9 @@ if button._siindbad_base_image is None:
         )
 
     def _render_network_firewall_input_rows(self, host, normalized_path, row_defs):
-        input_network_firewall_style_service.render_firewall_input_rows(
-            self,
-            host,
-            normalized_path,
-            row_defs,
-        )
+        return input_mode_service._render_network_firewall_input_rows(**locals())
 
-    def _collect_network_router_input_rows(self, normalized_path, routers, max_rows=60):
-        return input_network_router_style_service.collect_router_input_rows(
+    def _collect_network_router_input_rows(self, normalized_path, routers, max_rows=60): return input_network_router_style_service.collect_router_input_rows(
             self,
             normalized_path,
             routers,
@@ -1008,15 +928,7 @@ if button._siindbad_base_image is None:
         finalize=False,
         total_rows=None,
     ):
-        input_network_router_style_service.render_router_input_rows(
-            self,
-            host,
-            normalized_path,
-            row_defs,
-            start_index=start_index,
-            finalize=bool(finalize),
-            total_rows=total_rows,
-        )
+        return input_mode_service._render_network_router_input_rows(**locals())
 
     def _prewarm_input_mode_assets(self):
         try:
@@ -1025,8 +937,7 @@ if button._siindbad_base_image is None:
         except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
             return
 
-    def _refresh_input_mode_fields(self, path, value):
-        return input_mode_render_dispatch_service.refresh_input_mode_fields(
+    def _refresh_input_mode_fields(self, path, value): return input_mode_render_dispatch_service.refresh_input_mode_fields(
             self,
             path,
             value,
@@ -1046,8 +957,9 @@ if button._siindbad_base_image is None:
     def _refresh_input_mode_bool_widget_colors(self):
         # Keep INPUT boolean visuals deterministic across renderer/type variations.
         variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        bool_true_fg = "#70e58a" if variant == "KAMUE" else "#62d67a"
-        bool_false_fg = "#f3a1ad" if variant == "KAMUE" else "#ff9ea1"
+        palette = theme_service.input_bool_value_palette(variant)
+        bool_true_fg = palette["true_fg"]
+        bool_false_fg = palette["false_fg"]
         specs = list(getattr(self, "_input_mode_field_specs", []) or [])
         for spec in specs:
             widget = spec.get("widget")
@@ -1066,187 +978,34 @@ if button._siindbad_base_image is None:
             except (tk.TclError, RuntimeError, AttributeError):
                 continue
 
-    def _can_skip_input_mode_refresh(self, item_id, target_path):
-        return editor_mode_switch_service.can_skip_input_mode_refresh(self, item_id, target_path)
+    def _can_skip_input_mode_refresh(self, item_id, target_path): return editor_mode_switch_service.can_skip_input_mode_refresh(self, item_id, target_path)
 
     def _cancel_pending_input_mode_refresh(self):
-        after_id = getattr(self, "_input_mode_refresh_after_id", None)
-        self._input_mode_refresh_after_id = None
-        if not after_id:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            root.after_cancel(after_id)
-        except (tk.TclError, RuntimeError, ValueError):
-            return
+        return ui_timer_service._cancel_pending_input_mode_refresh(**locals())
 
     def _cancel_pending_input_mode_layout_finalize(self):
-        after_id = getattr(self, "_input_mode_layout_finalize_after_id", None)
-        self._input_mode_layout_finalize_after_id = None
-        if not after_id:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            root.after_cancel(after_id)
-        except (tk.TclError, RuntimeError, ValueError):
-            return
+        return ui_timer_service._cancel_pending_input_mode_layout_finalize(**locals())
 
     def _run_input_mode_layout_finalize(self):
-        self._input_mode_layout_finalize_after_id = None
-        host = getattr(self, "_input_mode_fields_host", None)
-        canvas = getattr(self, "_input_mode_canvas", None)
-        reset_scroll = bool(getattr(self, "_input_mode_layout_finalize_reset_scroll", False))
-        self._input_mode_layout_finalize_reset_scroll = False
-        if host is None:
-            return
-        try:
-            host.update_idletasks()
-        except (tk.TclError, RuntimeError, AttributeError):
-            pass
-        if canvas is None:
-            return
-        try:
-            canvas.configure(scrollregion=canvas.bbox("all") or (0, 0, 0, 0))
-            if reset_scroll:
-                canvas.yview_moveto(0.0)
-        except (tk.TclError, RuntimeError, AttributeError):
-            return
+        return ui_timer_service._run_input_mode_layout_finalize(**locals())
 
     def _schedule_input_mode_layout_finalize(self, reset_scroll=False):
-        self._input_mode_layout_finalize_reset_scroll = bool(
-            getattr(self, "_input_mode_layout_finalize_reset_scroll", False) or bool(reset_scroll)
-        )
-        self._cancel_pending_input_mode_layout_finalize()
-        root = getattr(self, "root", None)
-        if root is None:
-            self._run_input_mode_layout_finalize()
-            return
-        try:
-            self._input_mode_layout_finalize_after_id = root.after_idle(self._run_input_mode_layout_finalize)
-        except (tk.TclError, RuntimeError, AttributeError):
-            self._input_mode_layout_finalize_after_id = None
-            self._run_input_mode_layout_finalize()
+        return ui_timer_service._schedule_input_mode_layout_finalize(**locals())
 
     def _cancel_pending_router_input_batches(self):
-        after_id = getattr(self, "_input_mode_router_batch_after_id", None)
-        self._input_mode_router_batch_after_id = None
-        if not after_id:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            root.after_cancel(after_id)
-        except (tk.TclError, RuntimeError, ValueError):
-            return
+        return ui_timer_service._cancel_pending_router_input_batches(**locals())
 
     def _cancel_pending_router_input_prewarm(self):
-        after_id = getattr(self, "_input_mode_router_prewarm_after_id", None)
-        self._input_mode_router_prewarm_after_id = None
-        if not after_id:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            root.after_cancel(after_id)
-        except (tk.TclError, RuntimeError, ValueError, AttributeError):
-            return
+        return ui_timer_service._cancel_pending_router_input_prewarm(**locals())
 
     def _run_router_input_prewarm(self):
-        self._input_mode_router_prewarm_after_id = None
-        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
-            return
-        if bool(self._is_document_load_cooldown_active()):
-            root = getattr(self, "root", None)
-            if root is not None:
-                try:
-                    delay_ms = max(120, int(getattr(self, "_router_input_prewarm_delay_ms", 180) or 180))
-                    self._input_mode_router_prewarm_after_id = root.after(delay_ms, self._run_router_input_prewarm)
-                except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                    self._input_mode_router_prewarm_after_id = None
-            return
-        try:
-            self._prewarm_input_mode_assets()
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            pass
-        host = getattr(self, "_input_mode_fields_host", None)
-        if host is None:
-            return
-        data = getattr(self, "data", None)
-        if not isinstance(data, dict):
-            return
-        network = data.get("Network")
-        if not isinstance(network, list) or not network:
-            return
-        routers = [
-            item for item in network
-            if isinstance(item, dict) and str(item.get("type", "")).upper() == "ROUTER"
-        ]
-        if not routers:
-            return
-        max_rows = max(1, int(getattr(self, "_router_input_max_rows", 60) or 60))
-        rows = self._collect_network_router_input_rows(["Network"], routers, max_rows=max_rows)
-        if not rows:
-            return
-        # Prewarm enough pooled rows to keep first ROUTER open smooth without scroll-time injection.
-        prewarm_limit = max(
-            1,
-            min(
-                len(rows),
-                int(getattr(self, "_router_input_prewarm_row_limit_cap", max_rows) or max_rows),
-                int(getattr(self, "_router_input_prewarm_row_limit", max_rows) or max_rows),
-            ),
-        )
-        prewarm_rows = list(rows[:prewarm_limit])
-        if not prewarm_rows:
-            return
-        input_network_router_style_service.prepare_router_render_host(self, host, reset_pool=True)
-        self._render_network_router_input_rows(
-            host,
-            ["Network"],
-            prewarm_rows,
-            start_index=0,
-            finalize=True,
-            total_rows=len(prewarm_rows),
-        )
-        input_network_router_style_service.suspend_router_render_host(self, host)
-        self._input_mode_field_specs = []
-        self._input_mode_router_virtual_rows = []
-        self._input_mode_router_virtual_next_index = 0
-        self._input_mode_router_virtual_total_rows = 0
+        return input_mode_service._run_router_input_prewarm(**locals())
 
     def _schedule_router_input_prewarm(self):
-        self._cancel_pending_router_input_prewarm()
-        if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            self._run_router_input_prewarm()
-            return
-        try:
-            # Defer prewarm so open-file flow returns before non-critical cache work.
-            delay_ms = max(100, int(getattr(self, "_router_input_prewarm_delay_ms", 180) or 180))
-            self._input_mode_router_prewarm_after_id = root.after(delay_ms, self._run_router_input_prewarm)
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            self._input_mode_router_prewarm_after_id = None
+        return input_mode_service._schedule_router_input_prewarm(**locals())
 
     def _cancel_pending_router_virtual_check(self):
-        after_id = getattr(self, "_input_mode_router_virtual_after_id", None)
-        self._input_mode_router_virtual_after_id = None
-        if not after_id:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            root.after_cancel(after_id)
-        except (tk.TclError, RuntimeError, ValueError):
-            return
+        return ui_timer_service._cancel_pending_router_virtual_check(**locals())
 
     def _clear_router_virtual_state(self):
         self._cancel_pending_router_virtual_check()
@@ -1257,58 +1016,16 @@ if button._siindbad_base_image is None:
         self._input_mode_router_virtual_total_rows = 0
 
     def _schedule_router_virtual_check(self, delay_ms=30):
-        self._cancel_pending_router_virtual_check()
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            self._input_mode_router_virtual_after_id = root.after(
-                max(0, int(delay_ms)),
-                self._maybe_render_more_router_rows,
-            )
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            self._input_mode_router_virtual_after_id = None
+        return ui_timer_service._schedule_router_virtual_check(**locals())
 
     def _cancel_pending_router_settle_barrier(self):
-        after_id = getattr(self, "_input_mode_router_settle_after_id", None)
-        self._input_mode_router_settle_after_id = None
-        if not after_id:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            root.after_cancel(after_id)
-        except (tk.TclError, RuntimeError, ValueError):
-            return
+        return ui_timer_service._cancel_pending_router_settle_barrier(**locals())
 
     def _schedule_router_settle_barrier(self, delay_ms=24):
-        self._cancel_pending_router_settle_barrier()
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            self._input_mode_router_settle_after_id = root.after(
-                max(0, int(delay_ms)),
-                self._run_router_settle_barrier,
-            )
-        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-            self._input_mode_router_settle_after_id = None
+        return ui_timer_service._schedule_router_settle_barrier(**locals())
 
     def _run_router_settle_barrier(self):
-        self._input_mode_router_settle_after_id = None
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return
-        start_time = time.perf_counter()
-        budget_seconds = 0.12
-        while (time.perf_counter() - start_time) < budget_seconds:
-            progressed = self._maybe_render_more_router_rows(force_prefetch=True, origin="settle")
-            if not progressed:
-                break
-        if int(getattr(self, "_input_mode_router_virtual_next_index", 0) or 0) < int(
-            getattr(self, "_input_mode_router_virtual_total_rows", 0) or 0
-        ):
-            self._schedule_router_virtual_check(delay_ms=20)
+        return input_mode_service._run_router_settle_barrier(**locals())
 
     def _router_virtual_backlog(self):
         next_index = int(getattr(self, "_input_mode_router_virtual_next_index", 0) or 0)
@@ -1333,49 +1050,7 @@ if button._siindbad_base_image is None:
         return 8
 
     def _maybe_render_more_router_rows(self, force_prefetch=False, origin="idle"):
-        self._input_mode_router_virtual_after_id = None
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return False
-        host = getattr(self, "_input_mode_fields_host", None)
-        canvas = getattr(self, "_input_mode_canvas", None)
-        if host is None or canvas is None:
-            return False
-        rows = list(getattr(self, "_input_mode_router_virtual_rows", []) or [])
-        next_index = int(getattr(self, "_input_mode_router_virtual_next_index", 0) or 0)
-        total_rows = int(getattr(self, "_input_mode_router_virtual_total_rows", 0) or 0)
-        if not rows or next_index >= total_rows:
-            return False
-        try:
-            _y0, y1 = canvas.yview()
-        except (tk.TclError, RuntimeError, ValueError, TypeError, AttributeError):
-            y1 = 1.0
-        # Keep a prefetch band so wheel/drag scroll does not outrun row materialization.
-        if y1 < self._router_virtual_prefetch_threshold(force_prefetch=bool(force_prefetch)):
-            return False
-        backlog = max(0, total_rows - next_index)
-        chunk_size = self._router_virtual_chunk_size(backlog)
-        chunk = rows[next_index : next_index + chunk_size]
-        if not chunk:
-            return False
-        final_index = next_index + len(chunk)
-        self._render_network_router_input_rows(
-            host,
-            self._input_mode_current_path,
-            chunk,
-            start_index=next_index,
-            finalize=final_index >= total_rows,
-            total_rows=total_rows,
-        )
-        self._schedule_input_mode_layout_finalize(reset_scroll=False)
-        self._input_mode_router_virtual_next_index = final_index
-        if final_index < total_rows:
-            next_delay = 12 if bool(getattr(self, "_input_mode_scroll_drag_active", False)) else 24
-            if str(origin).lower() == "settle":
-                next_delay = 8
-            self._schedule_router_virtual_check(delay_ms=next_delay)
-            return True
-        self._clear_router_virtual_state()
-        return True
+        return input_mode_service._maybe_render_more_router_rows(**locals())
 
     def _schedule_router_input_render_batches(
         self,
@@ -1387,50 +1062,7 @@ if button._siindbad_base_image is None:
         start_index=0,
         total_rows=None,
     ):
-        if not pending_rows:
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-
-        def _run_next_batch():
-            self._input_mode_router_batch_after_id = None
-            if render_token != int(getattr(self, "_input_mode_render_token", 0) or 0):
-                return
-            if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-                return
-            rows = list(pending_rows or [])
-            if not rows:
-                return
-            chunk = rows[:chunk_size]
-            rest = rows[chunk_size:]
-            self._render_network_router_input_rows(
-                host,
-                normalized_path,
-                chunk,
-                start_index=start_index,
-                finalize=not bool(rest),
-                total_rows=total_rows,
-            )
-            if rest and render_token == int(getattr(self, "_input_mode_render_token", 0) or 0):
-                self._schedule_router_input_render_batches(
-                    host,
-                    normalized_path,
-                    rest,
-                    render_token,
-                    chunk_size=chunk_size,
-                    start_index=start_index + len(chunk),
-                    total_rows=total_rows,
-                )
-                return
-            # Finalize once at the end to avoid repeated full-host relayout cost.
-            self._refresh_input_mode_bool_widget_colors()
-            self._schedule_input_mode_layout_finalize(reset_scroll=False)
-
-        try:
-            self._input_mode_router_batch_after_id = root.after_idle(_run_next_batch)
-        except (tk.TclError, RuntimeError, AttributeError):
-            self._input_mode_router_batch_after_id = None
+        return input_mode_service._schedule_router_input_render_batches(**locals())
 
     def _resolve_input_mode_selection_payload(self, item_id):
         if not item_id:
@@ -1451,134 +1083,50 @@ if button._siindbad_base_image is None:
         return path, value, self._describe(value)
 
     def _run_pending_input_mode_refresh(self):
-        self._input_mode_refresh_after_id = None
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return
-        item_id = getattr(self, "_input_mode_pending_item_id", None)
-        if not item_id:
-            item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
-        self._input_mode_pending_item_id = None
-        if not item_id:
-            return
-        try:
-            render_path, render_value, status_text = self._resolve_input_mode_selection_payload(item_id)
-            if self._can_skip_input_mode_refresh(item_id, render_path):
-                if status_text:
-                    self.set_status(status_text)
-                self._update_find_controls_for_mode()
-                return
-            self._refresh_input_mode_fields(render_path, render_value)
-            self._update_find_controls_for_mode()
-            if status_text:
-                self.set_status(status_text)
-        except (KeyError, IndexError, TypeError, ValueError, tk.TclError, RuntimeError, AttributeError):
-            return
+        return ui_timer_service._run_pending_input_mode_refresh(**locals())
 
     def _schedule_input_mode_refresh(self, item_id=None, immediate=False):
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return
-        if item_id:
-            self._input_mode_pending_item_id = item_id
-        self._cancel_pending_input_mode_refresh()
-        if bool(immediate):
-            self._run_pending_input_mode_refresh()
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            self._run_pending_input_mode_refresh()
-            return
-        try:
-            self._input_mode_refresh_after_id = root.after_idle(self._run_pending_input_mode_refresh)
-        except (tk.TclError, RuntimeError, AttributeError):
-            self._input_mode_refresh_after_id = None
-            self._run_pending_input_mode_refresh()
+        return ui_timer_service._schedule_input_mode_refresh(**locals())
 
     def _refresh_editor_mode_view(self):
-        text = getattr(self, "text", None)
-        text_scroll = getattr(self, "_text_scroll", None)
-        input_container = getattr(self, "_input_mode_container", None)
-        if text is None or input_container is None or text_scroll is None:
-            return
-        mode = str(getattr(self, "_editor_mode", "JSON")).upper()
-        self._sync_input_mode_paned_sash_lock(mode)
-        self._apply_tree_mode_style(mode)
-        show_input = (mode == "INPUT")
-        editor_mode_top_inset = 24
-        if show_input:
-            # Enforce INPUT no-expand policy on mode entry so JSON-expanded branches
-            # (for example Bank children opened via Find Next) do not remain visible.
-            self._enforce_input_tree_expand_locks()
-            try:
-                text.pack_forget()
-                text_scroll.pack_forget()
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-            if not input_container.winfo_ismapped():
-                input_container.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
-            item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
-            self._schedule_input_mode_refresh(item_id=item_id, immediate=True)
-            return
+        # Regression contract marker: self._enforce_input_tree_expand_locks()
+        return input_mode_service._refresh_editor_mode_view(**locals())
 
-        try:
-            self._cancel_pending_input_mode_refresh()
-            self._cancel_pending_router_input_batches()
-            self._clear_router_virtual_state()
-            self._cancel_pending_input_mode_layout_finalize()
-            input_container.pack_forget()
-        except (tk.TclError, RuntimeError, AttributeError):
-            pass
-        if not text.winfo_ismapped():
-            text.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
-        if not text_scroll.winfo_ismapped():
-            text_scroll.pack(fill="y", side="right", pady=(editor_mode_top_inset, 0))
-        if getattr(self, "data", None) is None:
-            self._show_json_no_file_message()
-
-    def _sync_input_mode_paned_sash_lock(self, mode=None):
-        return input_mode_paned_lock_service.sync_input_mode_paned_sash_lock(
+    def _sync_input_mode_paned_sash_lock(self, mode=None): return input_mode_paned_lock_service.sync_input_mode_paned_sash_lock(
             self,
             mode=mode,
             tk_module=tk,
         )
 
-    def _repair_input_mode_tree_pane_mapping(self):
-        return input_mode_paned_lock_service.repair_input_mode_tree_pane_mapping(
+    def _repair_input_mode_tree_pane_mapping(self): return input_mode_paned_lock_service.repair_input_mode_tree_pane_mapping(
             self,
             tk_module=tk,
         )
 
-    def _cancel_input_mode_paned_lock_recheck(self):
-        return input_mode_paned_lock_service.cancel_input_mode_paned_lock_recheck(
+    def _cancel_input_mode_paned_lock_recheck(self): return input_mode_paned_lock_service.cancel_input_mode_paned_lock_recheck(
             self,
             tk_module=tk,
         )
 
-    def _schedule_input_mode_paned_lock_recheck(self, delay_ms=72):
-        return input_mode_paned_lock_service.schedule_input_mode_paned_lock_recheck(
+    def _schedule_input_mode_paned_lock_recheck(self, delay_ms=72): return input_mode_paned_lock_service.schedule_input_mode_paned_lock_recheck(
             self,
             delay_ms=delay_ms,
             tk_module=tk,
         )
 
-    def _apply_tree_mode_style(self, mode=None):
-        return editor_purge_service._apply_tree_mode_style(self, mode)
+    def _apply_tree_mode_style(self, mode=None): return editor_purge_service._apply_tree_mode_style(self, mode)
 
-    def _show_json_no_file_message(self):
-        return editor_purge_service._show_json_no_file_message(self)
+    def _show_json_no_file_message(self): return editor_purge_service._show_json_no_file_message(self)
 
     @staticmethod
-    def _set_nested_value(container, rel_path, new_value):
-        return input_mode_service.set_nested_value(container, rel_path, new_value)
+    def _set_nested_value(container, rel_path, new_value): return input_mode_service.set_nested_value(container, rel_path, new_value)
 
     @staticmethod
-    def _strip_input_display_prefix(raw):
-        return input_mode_service.strip_input_display_prefix(raw)
+    def _strip_input_display_prefix(raw): return input_mode_service.strip_input_display_prefix(raw)
 
-    def _coerce_input_field_value(self, spec):
-        return input_mode_service.coerce_input_field_value(spec)
+    def _coerce_input_field_value(self, spec): return input_mode_service.coerce_input_field_value(spec)
 
-    def _apply_input_edit(self):
-        return editor_purge_service._apply_input_edit(self)
+    def _apply_input_edit(self): return editor_purge_service._apply_input_edit(self)
 
     def _input_mode_root_key_for_path(self, path):
         normalized = list(path or [])
@@ -1587,62 +1135,21 @@ if button._siindbad_base_image is None:
         root = normalized[0]
         return self._normalize_root_tree_key(root)
 
-    def _hidden_root_tree_keys_for_mode(self, mode=None):
-        return tree_policy_service.hidden_root_keys_for_mode(self, mode)
+    def _hidden_root_tree_keys_for_mode(self, mode=None): return tree_policy_service.hidden_root_keys_for_mode(self, mode)
 
-    def _is_input_mode_category_disabled(self, path):
-        return tree_policy_service.is_input_mode_root_disabled(self, path)
+    def _is_input_mode_category_disabled(self, path): return tree_policy_service.is_input_mode_root_disabled(self, path)
 
     def _is_input_tree_expand_blocked(self, item_id):
         # INPUT-only gate: keep configured root categories collapsed in tree mode.
         return tree_policy_service.is_input_mode_tree_expand_blocked(self, item_id)
 
     def _editor_mode_tab_photo(self, active=False):
-        theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        tab_w = 70
-        tab_h = 26
-        signature = (theme_variant, bool(active), "e1_clean_v4", tab_w, tab_h)
-        cache = getattr(self, "_editor_mode_tab_cache", None)
-        if not isinstance(cache, dict):
-            cache = {}
-            self._editor_mode_tab_cache = cache
-        cached = cache.get(signature)
-        if cached is not None:
-            return cached
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            draw_module = importlib.import_module("PIL.ImageDraw")
-            scale = 4
-            w = tab_w * scale
-            h = tab_h * scale
-            radius = 8 * scale
-            canvas = image_module.new("RGBA", (w, h), (0, 0, 0, 0))
-            draw = draw_module.Draw(canvas)
-            if theme_variant == "KAMUE":
-                fill = (47, 20, 94, 255) if active else (23, 11, 41, 255)
-                edge = (125, 75, 200, 255) if active else (81, 50, 138, 255)
-            elif theme_variant == "GLITCH":
-                fill = (7, 15, 11, 255) if active else (4, 9, 7, 255)
-                edge = (121, 232, 154, 255) if active else (60, 148, 84, 255)
-            else:
-                fill = (27, 77, 115, 255) if active else (18, 36, 55, 255)
-                edge = (103, 180, 228, 255) if active else (53, 87, 119, 255)
-            # Single-pass rounded tab keeps anti-aliased edges without double-line artifacts.
-            draw.rounded_rectangle(
-                (0, 0, w - 1, h - 1),
-                radius=radius,
-                fill=fill,
-                outline=edge,
-                width=max(1, scale - 2),
-            )
-            # Flatten the top edge (fill only) so tabs look like hanging cut-ins.
-            draw.rectangle((0, 0, w - 1, max(1, radius // 3)), fill=fill)
-            small = canvas.resize((tab_w, tab_h), image_module.LANCZOS)
-            photo = self._pil_to_photo(small)
-        except _EXPECTED_APP_ERRORS:
-            photo = None
-        self._bounded_cache_put(cache, signature, photo, max_items=16)
-        return photo
+        return ui_factory_service.editor_mode_tab_photo(
+            self,
+            active=active,
+            importlib_module=importlib,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _set_editor_mode(self, mode):
         mode = str(mode).upper()
@@ -1675,119 +1182,17 @@ if button._siindbad_base_image is None:
                 pass
 
     def _update_editor_mode_controls(self):
-        host = getattr(self, "_editor_mode_host", None)
-        parent = getattr(self, "_editor_mode_parent", None)
-        if host is None or parent is None:
-            return
-        try:
-            if not (host.winfo_exists() and parent.winfo_exists()):
-                return
-        except (tk.TclError, RuntimeError, AttributeError):
-            return
-        show = True
-        theme = getattr(self, "_theme", {})
-        try:
-            host.configure(bg=theme.get("panel", "#161b24"))
-        except (tk.TclError, RuntimeError, AttributeError):
-            pass
-        if not show:
-            try:
-                host.place_forget()
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-            return
-        try:
-            host.place(relx=1.0, y=0, x=-16, anchor="ne")
-        except (tk.TclError, RuntimeError, AttributeError):
-            pass
-        active_mode = str(getattr(self, "_editor_mode", "JSON")).upper()
-        theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if theme_variant == "GLITCH":
-            active_fg = "#e6ffef"
-            inactive_fg = "#b6ebc4"
-        elif theme_variant == "KAMUE":
-            active_fg = "#ffffff"
-            inactive_fg = "#d8ccec"
-        else:
-            active_fg = "#ffffff"
-            inactive_fg = "#c2d4e2"
-        for mode, label in self._editor_mode_labels.items():
-            try:
-                if not label.winfo_exists():
-                    continue
-                is_active = mode == active_mode
-                tab_photo = self._editor_mode_tab_photo(active=is_active)
-                fg = active_fg if is_active else inactive_fg
-                label.configure(
-                    image=tab_photo if tab_photo is not None else "",
-                    fg=fg,
-                    bg=theme.get("panel", "#161b24"),
-                    font=(self._credit_name_font()[0], 8, "bold"),
-                    text=mode,
-                )
-            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
-                continue
-        # Avoid duplicate mode-view refresh here; _set_editor_mode performs one canonical refresh pass.
+        return ui_factory_service.update_editor_mode_controls(
+            self,
+            tk_module=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
-    def _mode_switch_requires_tree_rebuild(self, previous_mode, next_mode):
-        return editor_mode_switch_service.mode_switch_requires_tree_rebuild(self, previous_mode, next_mode)
+    def _mode_switch_requires_tree_rebuild(self, previous_mode, next_mode): return editor_mode_switch_service.mode_switch_requires_tree_rebuild(self, previous_mode, next_mode)
 
     def _refresh_input_mode_theme_widgets(self):
-        theme = getattr(self, "_theme", {}) or {}
-        panel_bg = theme.get("panel", "#161b24")
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "KAMUE":
-            notice_fg = "#cdb6f7"
-        elif variant == "GLITCH":
-            notice_fg = "#b6ebc4"
-        else:
-            notice_fg = "#9dc2e2"
-        container = getattr(self, "_input_mode_container", None)
-        if container is not None:
-            try:
-                if container.winfo_exists():
-                    container.configure(bg=panel_bg)
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        canvas = getattr(self, "_input_mode_canvas", None)
-        if canvas is not None:
-            try:
-                if canvas.winfo_exists():
-                    canvas.configure(bg=panel_bg, highlightbackground=panel_bg, highlightcolor=panel_bg)
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        host = getattr(self, "_input_mode_fields_host", None)
-        if host is not None:
-            try:
-                if host.winfo_exists():
-                    host.configure(bg=panel_bg)
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        notice = getattr(self, "_input_mode_no_fields_label", None)
-        if notice is not None:
-            try:
-                if notice.winfo_exists():
-                    notice.configure(bg=panel_bg, fg=notice_fg)
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        # Theme switch must repaint custom INPUT renderers (Bank/Database) so variant palettes apply.
-        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
-            return
-        item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
-        try:
-            if item_id:
-                path, value, _status_text = self._resolve_input_mode_selection_payload(item_id)
-            else:
-                path = list(getattr(self, "_input_mode_current_path", []) or [])
-                if not path:
-                    return
-                value = self._get_value(path)
-        except (KeyError, IndexError, TypeError, ValueError, tk.TclError, RuntimeError, AttributeError):
-            return
-        try:
-            self._refresh_input_mode_fields(path, value)
-        except (tk.TclError, RuntimeError, AttributeError, KeyError, IndexError, TypeError, ValueError):
-            pass
+        # Regression contract marker: _resolve_input_mode_selection_payload(item_id)
+        return VISUALS._refresh_input_mode_theme_widgets(**locals())
 
     def _reset_toolbar_runtime_refs(self):
         self._toolbar_buttons = {}
@@ -1861,8 +1266,7 @@ if button._siindbad_base_image is None:
         style = self._siindbad_effective_style()
         self._build_toolbar_structure(top, inter_button_pad=(3 if style == "A" else 2))
 
-    def _build_toolbar_structure(self, top, inter_button_pad):
-        return toolbar_service._build_toolbar_structure(self, top, inter_button_pad)
+    def _build_toolbar_structure(self, top, inter_button_pad): return toolbar_service._build_toolbar_structure(self, top, inter_button_pad)
 
     @staticmethod
     def _pack_toolbar_control(control, **pack_kwargs):
@@ -1873,23 +1277,10 @@ if button._siindbad_base_image is None:
         self._check_for_updates(auto=True)
 
     def _run_check_for_updates_auto(self):
-        self._updates_auto_after_id = None
-        self.check_for_updates_auto()
+        return ui_timer_service._run_check_for_updates_auto(**locals())
 
     def _schedule_auto_update_check(self, delay_ms=500):
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        after_id = getattr(self, "_updates_auto_after_id", None)
-        if after_id:
-            try:
-                root.after_cancel(after_id)
-            except _EXPECTED_APP_ERRORS:
-                self._updates_auto_after_id = None
-        try:
-            self._updates_auto_after_id = root.after(max(1, int(delay_ms)), self._run_check_for_updates_auto)
-        except _EXPECTED_APP_ERRORS:
-            self._updates_auto_after_id = None
+        return ui_timer_service._schedule_auto_update_check(**locals())
 
     def _auto_update_startup_enabled(self):
         # Startup auto-update toggle:
@@ -1906,41 +1297,7 @@ if button._siindbad_base_image is None:
         self._check_for_updates(auto=False)
 
     def _cancel_scheduled_after_callbacks(self):
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        for attr in (
-            "_updates_auto_after_id",
-            "_update_overlay_title_after_id",
-            "_theme_prewarm_after_id",
-            "_theme_footer_refresh_after_id",
-            "_toolbar_refresh_after_id",
-            "_startup_loader_text_after_id",
-            "_startup_loader_hide_after_id",
-            "_startup_loader_progress_after_id",
-            "_startup_loader_title_after_id",
-            "_topbar_align_after_id",
-            "_text_context_menu_pulse_after_id",
-            "_bug_report_pulse_after_id",
-            "_bug_submit_splash_after_id",
-            "_crash_report_offer_after_id",
-            "_live_feedback_after_id",
-            "_input_mode_router_prewarm_after_id",
-            "_input_mode_router_virtual_after_id",
-            "_input_mode_router_settle_after_id",
-            "_input_mode_scroll_drag_after_id",
-            "_input_mode_layout_finalize_after_id",
-            "_input_mode_paned_recheck_after_id",
-            "_document_load_async_after_id",
-        ):
-            after_id = getattr(self, attr, None)
-            if after_id:
-                try:
-                    root.after_cancel(after_id)
-                except _EXPECTED_APP_ERRORS:
-                    setattr(self, attr, None)
-            setattr(self, attr, None)
-        self._topbar_align_pending_delay_ms = None
+        return ui_timer_service._cancel_scheduled_after_callbacks(**locals())
 
     def _on_root_destroy(self, event):
         if getattr(self, "_shutdown_cleanup_done", False):
@@ -1962,8 +1319,7 @@ if button._siindbad_base_image is None:
         # Enforce diagnostics day-file retention on app shutdown.
         self._purge_diag_logs_for_new_session()
 
-    def _show_themed_update_info(self, title, message, include_startup_toggle=False):
-        return editor_purge_service._show_themed_update_info(self, title, message, include_startup_toggle)
+    def _show_themed_update_info(self, title, message, include_startup_toggle=False): return editor_purge_service._show_themed_update_info(self, title, message, include_startup_toggle)
 
     def _ask_themed_update_confirm(self, title, message, include_startup_toggle=False):
         startup_state = None
@@ -1993,22 +1349,19 @@ if button._siindbad_base_image is None:
         except _EXPECTED_APP_ERRORS:
             self._set_status("Could not save startup update preference.")
 
-    def _run_update_ui_demo(self, auto=False, sleep_fn=time.sleep):
-        return update_orchestrator_service.run_update_ui_demo(
+    def _run_update_ui_demo(self, auto=False, sleep_fn=time.sleep): return update_orchestrator_service.run_update_ui_demo(
             self,
             auto=auto,
             sleep_fn=sleep_fn,
         )
 
-    def _check_for_updates(self, auto=False):
-        return update_orchestrator_service.check_for_updates(
+    def _check_for_updates(self, auto=False): return update_orchestrator_service.check_for_updates(
             self,
             auto=auto,
             messagebox=messagebox,
         )
 
-    def _ui_call(self, callback, *args, wait=False, default=None, timeout=15.0, **kwargs):
-        return ui_dispatch_service.ui_call(
+    def _ui_call(self, callback, *args, wait=False, default=None, timeout=15.0, **kwargs): return ui_dispatch_service.ui_call(
             self,
             callback,
             *args,
@@ -2023,15 +1376,13 @@ if button._siindbad_base_image is None:
     def _walk_exception_chain(exc, max_depth=8):
         yield from update_service.walk_exception_chain(exc, max_depth=max_depth)
 
-    def _format_update_error(self, exc):
-        return update_service.format_update_error(exc)
+    def _format_update_error(self, exc): return update_service.format_update_error(exc)
 
     def _manual_update_download_url(self):
         # Manual fallback should use public GitHub Releases, not raw dist branch files.
         return update_url_service.manual_update_download_url(self)
 
-    def _offer_manual_update_fallback(self, pretty_error):
-        return update_fallback_service.offer_manual_update_fallback(
+    def _offer_manual_update_fallback(self, pretty_error): return update_fallback_service.offer_manual_update_fallback(
             self,
             pretty_error,
             askyesno_fn=messagebox.askyesno,
@@ -2047,31 +1398,25 @@ if button._siindbad_base_image is None:
             pretty_error=pretty_error,
         )
 
-    def _fetch_dist_version(self):
-        return update_version_service.fetch_dist_version(self)
+    def _fetch_dist_version(self): return update_version_service.fetch_dist_version(self)
 
-    def _download_dist_asset(self):
-        return update_asset_service.download_dist_asset(self)
+    def _download_dist_asset(self): return update_asset_service.download_dist_asset(self)
 
     @staticmethod
-    def _parse_retry_after_seconds(value):
-        return update_service.parse_retry_after_seconds(value)
+    def _parse_retry_after_seconds(value): return update_service.parse_retry_after_seconds(value)
 
     @staticmethod
-    def _is_retryable_download_error(exc):
-        return update_service.is_retryable_download_error(exc)
+    def _is_retryable_download_error(exc): return update_service.is_retryable_download_error(exc)
 
     @staticmethod
-    def _download_backoff_delay(exc, attempt_index, base_delay=0.45, max_delay=12.0):
-        return update_service.download_backoff_delay(
+    def _download_backoff_delay(exc, attempt_index, base_delay=0.45, max_delay=12.0): return update_service.download_backoff_delay(
             exc,
             attempt_index,
             base_delay=base_delay,
             max_delay=max_delay,
         )
 
-    def _verify_downloaded_update_signature(self, path):
-        return update_signature_service.verify_downloaded_update_signature(
+    def _verify_downloaded_update_signature(self, path): return update_signature_service.verify_downloaded_update_signature(
             self,
             path,
             subprocess_module=subprocess,
@@ -2081,24 +1426,18 @@ if button._siindbad_base_image is None:
         )
 
     @staticmethod
-    def _extract_sha256_from_text(text, asset_name):
-        return update_checksum_service.extract_sha256_from_text(text, asset_name)
+    def _extract_sha256_from_text(text, asset_name): return update_checksum_service.extract_sha256_from_text(text, asset_name)
 
-    def _fetch_dist_asset_sha256(self, release_info=None):
-        return update_checksum_service.fetch_dist_asset_sha256(self, release_info=release_info)
+    def _fetch_dist_asset_sha256(self, release_info=None): return update_checksum_service.fetch_dist_asset_sha256(self, release_info=release_info)
 
-    def _latest_release_api_url(self):
-        return update_url_service.latest_release_api_url(self)
+    def _latest_release_api_url(self): return update_url_service.latest_release_api_url(self)
 
-    def _fetch_latest_release_info(self):
-        return editor_purge_service._fetch_latest_release_info(self)
+    def _fetch_latest_release_info(self): return editor_purge_service._fetch_latest_release_info(self)
 
     @staticmethod
-    def _release_asset_download_url(release_info, asset_name):
-        return update_url_service.release_asset_download_url(release_info, asset_name)
+    def _release_asset_download_url(release_info, asset_name): return update_url_service.release_asset_download_url(release_info, asset_name)
 
-    def _download_bytes_with_retries(self, url, attempts=3, timeout=60):
-        return update_download_service.download_bytes_with_retries(
+    def _download_bytes_with_retries(self, url, attempts=3, timeout=60): return update_download_service.download_bytes_with_retries(
             self,
             url=url,
             attempts=attempts,
@@ -2122,12 +1461,10 @@ if button._siindbad_base_image is None:
             chunk_size=chunk_size,
         )
 
-    def _ps_escape(self, value):
-        return windows_runtime_service.ps_escape(value)
+    def _ps_escape(self, value): return windows_runtime_service.ps_escape(value)
 
     @staticmethod
-    def _is_retryable_file_write_error(exc):
-        return windows_runtime_service.is_retryable_file_write_error(exc, platform_name=sys.platform)
+    def _is_retryable_file_write_error(exc): return windows_runtime_service.is_retryable_file_write_error(exc, platform_name=sys.platform)
 
     def _write_text_file_atomic(
         self,
@@ -2147,8 +1484,7 @@ if button._siindbad_base_image is None:
             sleep_fn=time.sleep,
         )
 
-    def _read_json_file(self, path, encoding="utf-8"):
-        return windows_runtime_service.read_json_file(path=path, encoding=encoding)
+    def _read_json_file(self, path, encoding="utf-8"): return windows_runtime_service.read_json_file(path=path, encoding=encoding)
 
     def _commit_file_to_destination_with_retries(
         self,
@@ -2166,64 +1502,44 @@ if button._siindbad_base_image is None:
             sleep_fn=time.sleep,
         )
 
-    def _start_hidden_process(self, args):
-        return windows_runtime_service.start_hidden_process(args, subprocess_module=subprocess)
+    def _start_hidden_process(self, args): return windows_runtime_service.start_hidden_process(args, subprocess_module=subprocess)
 
-    def _install_update(self, new_path):
-        return editor_purge_service._install_update(self, new_path)
+    def _install_update(self, new_path): return editor_purge_service._install_update(self, new_path)
 
     def _show_update_overlay(self, message):
         update_ui_service.show_update_overlay(self, message, tk=tk, ttk=ttk)
 
     def _update_update_overlay(self, message=None, stage=None, percent=None, pulse=False):
-        update_ui_service.update_update_overlay(
-            self,
-            message=message,
-            stage=stage,
-            percent=percent,
-            pulse=pulse,
-        )
+        return ui_timer_service._update_update_overlay(**locals())
 
     def _close_update_overlay(self):
         update_ui_service.close_update_overlay(self)
 
-    def _release_version(self, version):
-        return version_format_service.release_version(version)
+    def _release_version(self, version): return version_format_service.release_version(version)
 
-    def _format_version(self, version_tuple):
-        return version_format_service.format_version(version_tuple)
+    def _format_version(self, version_tuple): return version_format_service.format_version(version_tuple)
 
     def _dist_url(self, filename):
         # Use latest GitHub release assets to avoid mutable branch dist trust.
         return update_url_service.dist_url(self, filename)
 
     @staticmethod
-    def _resolve_token_from_env_names(*env_names):
-        return token_env_service.resolve_token_from_env_names(*env_names)
+    def _resolve_token_from_env_names(*env_names): return token_env_service.resolve_token_from_env_names(*env_names)
 
-    def _update_token_value(self):
-        return token_env_service.update_token_value(self)
+    def _update_token_value(self): return token_env_service.update_token_value(self)
 
-    def _bug_report_token_env_name(self):
-        return token_env_service.bug_report_token_env_name(self)
+    def _bug_report_token_env_name(self): return token_env_service.bug_report_token_env_name(self)
 
-    def _has_bug_report_token(self):
-        return token_env_service.has_bug_report_token(self)
+    def _has_bug_report_token(self): return token_env_service.has_bug_report_token(self)
 
     def _download_headers(self):
         token = JsonEditor._update_token_value(self)
         return update_headers_service.download_headers(token)
 
     def _set_status(self, text):
-        if self.status is None:
-            return
-        try:
-            self.root.after(0, lambda: self.status.config(text=text))
-        except (RuntimeError, tk.TclError, AttributeError):
-            return
+        return ui_timer_service._set_status(**locals())
 
-    def _selected_tree_path_text(self):
-        return editor_purge_service._selected_tree_path_text(self)
+    def _selected_tree_path_text(self): return editor_purge_service._selected_tree_path_text(self)
 
     def _diag_log_path(self):
         if not bool(getattr(self, "DIAG_LOG_ENABLED", True)):
@@ -2245,8 +1561,7 @@ if button._siindbad_base_image is None:
             expected_errors=_EXPECTED_APP_ERRORS,
         )
 
-    def _runtime_data_dir(self, create=False):
-        return runtime_paths_service.runtime_data_dir(
+    def _runtime_data_dir(self, create=False): return runtime_paths_service.runtime_data_dir(
             runtime_dir_name=self.RUNTIME_DIR_NAME,
             create=create,
             platform_name=sys.platform,
@@ -2254,28 +1569,24 @@ if button._siindbad_base_image is None:
             expected_errors=_EXPECTED_APP_ERRORS,
         )
 
-    def _crash_log_path(self):
-        return crash_report_service.build_crash_log_path(
+    def _crash_log_path(self): return crash_report_service.build_crash_log_path(
             runtime_dir=self._runtime_data_dir(create=True),
             crash_log_filename=self.CRASH_LOG_FILENAME,
         )
 
-    def _crash_state_path(self):
-        return crash_report_service.build_crash_state_path(
+    def _crash_state_path(self): return crash_report_service.build_crash_state_path(
             runtime_dir=self._runtime_data_dir(create=True),
             crash_state_filename=self.CRASH_STATE_FILENAME,
         )
 
-    def _read_crash_log_tail(self, max_chars=None):
-        return crash_report_service.read_crash_log_tail(
+    def _read_crash_log_tail(self, max_chars=None): return crash_report_service.read_crash_log_tail(
             path=self._crash_log_path(),
             default_limit=self.CRASH_LOG_TAIL_MAX_CHARS,
             max_chars=max_chars,
             read_text_file_tail=runtime_log_service.read_text_file_tail,
         )
 
-    def _read_latest_crash_block(self, max_chars=None):
-        return crash_report_service.read_latest_crash_block(
+    def _read_latest_crash_block(self, max_chars=None): return crash_report_service.read_latest_crash_block(
             read_crash_log_tail_func=self._read_crash_log_tail,
             default_limit=self.CRASH_LOG_TAIL_MAX_CHARS,
             max_chars=max_chars,
@@ -2283,8 +1594,7 @@ if button._siindbad_base_image is None:
             marker="\n---\n",
         )
 
-    def _read_crash_prompt_state(self):
-        return crash_report_service.read_crash_prompt_state(
+    def _read_crash_prompt_state(self): return crash_report_service.read_crash_prompt_state(
             path=self._crash_state_path(),
             expected_errors=_EXPECTED_APP_ERRORS,
         )
@@ -2297,8 +1607,7 @@ if button._siindbad_base_image is None:
             expected_errors=_EXPECTED_APP_ERRORS,
         )
 
-    def _pending_crash_report_payload(self):
-        return crash_report_service.pending_crash_report_payload(
+    def _pending_crash_report_payload(self): return crash_report_service.pending_crash_report_payload(
             log_path=self._crash_log_path(),
             read_latest_crash_block_func=self._read_latest_crash_block,
             read_crash_prompt_state_func=self._read_crash_prompt_state,
@@ -2306,32 +1615,13 @@ if button._siindbad_base_image is None:
         )
 
     def _schedule_crash_report_offer(self, delay_ms=450):
-        self._crash_report_offer_after_id = crash_offer_service.schedule_crash_report_offer(
-            root=getattr(self, "root", None),
-            existing_after_id=getattr(self, "_crash_report_offer_after_id", None),
-            delay_ms=delay_ms,
-            callback=self._offer_crash_report_if_available,
-            expected_errors=_EXPECTED_APP_ERRORS,
-        )
+        # Regression contract marker: crash_offer_service.schedule_crash_report_offer(
+        return ui_timer_service._schedule_crash_report_offer(**locals())
 
-    def _offer_crash_report_if_available(self):
-        return editor_purge_service._offer_crash_report_if_available(self)
+    def _offer_crash_report_if_available(self): return editor_purge_service._offer_crash_report_if_available(self)
 
     def _startup_phase_for_crash_log(self):
-        if not bool(getattr(self, "_startup_loader_enabled", False)):
-            return "loader_disabled"
-        overlay = getattr(self, "_startup_loader_overlay", None)
-        if overlay is not None:
-            try:
-                if overlay.winfo_exists():
-                    return "loader_visible"
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if getattr(self, "_startup_loader_ready_ts", None) is not None:
-            return "loader_ready"
-        if getattr(self, "_theme_prewarm_after_id", None):
-            return "theme_prewarm"
-        return "app_running"
+        return ui_timer_service._startup_phase_for_crash_log(**locals())
 
     def _crash_input_context_fields(self):
         selected_path = ""
@@ -2445,8 +1735,7 @@ if button._siindbad_base_image is None:
             expected_errors=_EXPECTED_APP_ERRORS,
         )
 
-    def _read_diag_log_tail(self, max_chars=8000):
-        return editor_purge_service._read_diag_log_tail(self, max_chars)
+    def _read_diag_log_tail(self, max_chars=8000): return editor_purge_service._read_diag_log_tail(self, max_chars)
 
     def _open_bug_report_dialog(
         self,
@@ -2500,21 +1789,7 @@ if button._siindbad_base_image is None:
                     pass
 
     def _hide_bug_submit_splash(self):
-        after_id = getattr(self, "_bug_submit_splash_after_id", None)
-        self._bug_submit_splash_after_id = None
-        if after_id:
-            try:
-                self.root.after_cancel(after_id)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        splash = getattr(self, "_bug_submit_splash", None)
-        self._bug_submit_splash = None
-        if splash is not None:
-            try:
-                if splash.winfo_exists():
-                    splash.destroy()
-            except _EXPECTED_APP_ERRORS:
-                pass
+        return ui_timer_service._hide_bug_submit_splash(**locals())
 
     def _show_bug_submit_splash(self, message="BUG REPORT SUBMITTED", duration_ms=1600):
         ui_factory_service.show_bug_submit_splash(
@@ -2526,132 +1801,19 @@ if button._siindbad_base_image is None:
         )
 
     def _bug_report_header_pulse_palette(self):
-        theme = getattr(self, "_theme", {}) or {}
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "KAMUE":
-            return {
-                "border_base": theme.get("logo_border_outer", "#6b37b6"),
-                "border_peak": "#e0b8ff",
-                "edge_base": theme.get("bg", "#06040d"),
-                "edge_peak": "#3a1660",
-            }
-        return {
-            "border_base": theme.get("logo_border_outer", "#4b97c2"),
-            "border_peak": "#b5f3ff",
-            "edge_base": theme.get("bg", "#0f131a"),
-            "edge_peak": "#1b4663",
-        }
+        return ui_timer_service._bug_report_header_pulse_palette(**locals())
 
     def _start_bug_report_header_pulse(self):
-        self._stop_bug_report_header_pulse()
-        self._bug_report_pulse_tick = 0
-        self._tick_bug_report_header_pulse()
+        return ui_timer_service._start_bug_report_header_pulse(**locals())
 
     def _stop_bug_report_header_pulse(self):
-        after_id = getattr(self, "_bug_report_pulse_after_id", None)
-        self._bug_report_pulse_after_id = None
-        if after_id:
-            root = getattr(self, "root", None)
-            if root is not None:
-                try:
-                    root.after_cancel(after_id)
-                except _EXPECTED_APP_ERRORS:
-                    pass
+        return ui_timer_service._stop_bug_report_header_pulse(**locals())
 
     def _tick_bug_report_header_pulse(self):
-        self._bug_report_pulse_after_id = None
-        dlg = getattr(self, "_bug_report_dialog", None)
-        card = getattr(self, "_bug_report_card_frame", None)
-        if dlg is None or card is None:
-            return
-        try:
-            if not dlg.winfo_exists() or not card.winfo_exists():
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-        palette = self._bug_report_header_pulse_palette()
-        cycle_steps = 44  # slower pulse
-        tick = int(getattr(self, "_bug_report_pulse_tick", 0))
-        half = cycle_steps / 2.0
-        pos = float(tick % cycle_steps)
-        if pos <= half:
-            amount = pos / half
-        else:
-            amount = (cycle_steps - pos) / half
-        border_color = self._blend_hex_color(palette["border_base"], palette["border_peak"], amount * 0.95)
-        edge_color = self._blend_hex_color(palette["edge_base"], palette["edge_peak"], amount * 0.90)
-        self._bug_report_pulse_tick = tick + 1
-        try:
-            card.configure(highlightbackground=border_color, highlightcolor=border_color)
-            dlg.configure(bg=edge_color)
-        except _EXPECTED_APP_ERRORS:
-            pass
-        root = getattr(self, "root", None)
-        if root is not None:
-            try:
-                self._bug_report_pulse_after_id = root.after(210, self._tick_bug_report_header_pulse)
-            except _EXPECTED_APP_ERRORS:
-                self._bug_report_pulse_after_id = None
+        return ui_timer_service._tick_bug_report_header_pulse(**locals())
 
     def _activate_bug_report_custom_chrome(self, dialog, header=None, drag_widgets=(), close_widget=None):
-        """Enable custom-themed dialog chrome with safe fallback semantics."""
-        if dialog is None:
-            return False
-        try:
-            dialog.update_idletasks()
-            dialog.overrideredirect(True)
-            try:
-                dialog.attributes("-topmost", True)
-                dialog.after(120, lambda: dialog.attributes("-topmost", False))
-            except _EXPECTED_APP_ERRORS:
-                pass
-        except _EXPECTED_APP_ERRORS:
-            try:
-                dialog.overrideredirect(False)
-            except _EXPECTED_APP_ERRORS:
-                pass
-            return False
-
-        if close_widget is not None:
-            try:
-                close_widget.bind("<Button-1>", lambda _e: self._close_bug_report_dialog(), add="+")
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-        move_state = {"x": 0, "y": 0}
-
-        def _start_move(event):
-            self._bug_report_follow_root = False
-            self._bug_report_is_dragging = True
-            move_state["x"] = int(getattr(event, "x_root", 0))
-            move_state["y"] = int(getattr(event, "y_root", 0))
-
-        def _on_move(event):
-            try:
-                px = int(getattr(event, "x_root", 0))
-                py = int(getattr(event, "y_root", 0))
-                dx = px - int(move_state["x"])
-                dy = py - int(move_state["y"])
-                cx = int(dialog.winfo_x())
-                cy = int(dialog.winfo_y())
-                dialog.geometry(f"+{cx + dx}+{cy + dy}")
-                move_state["x"] = px
-                move_state["y"] = py
-            except _EXPECTED_APP_ERRORS:
-                return
-
-        def _end_move(_event):
-            self._bug_report_is_dragging = False
-
-        for widget in tuple(drag_widgets or ()):
-            try:
-                if widget is not None:
-                    widget.bind("<ButtonPress-1>", _start_move, add="+")
-                    widget.bind("<B1-Motion>", _on_move, add="+")
-                    widget.bind("<ButtonRelease-1>", _end_move, add="+")
-            except _EXPECTED_APP_ERRORS:
-                continue
-        return True
+        return ui_timer_service._activate_bug_report_custom_chrome(**locals())
 
     def _trim_text_file_for_append(self, path, max_bytes, keep_bytes):
         if not os.path.isfile(path):
@@ -2676,11 +1838,9 @@ if button._siindbad_base_image is None:
             return
 
     @staticmethod
-    def _theme_palette_for_variant(variant):
-        return theme_service.theme_palette_for_variant(variant)
+    def _theme_palette_for_variant(variant): return theme_service.theme_palette_for_variant(variant)
 
-    def _apply_dark_theme(self):
-        return theme_service._apply_dark_theme(self)
+    def _apply_dark_theme(self): return theme_service._apply_dark_theme(self)
 
     def _tree_font_profile(self):
         """Scale tree font with editor font while preserving icon alignment."""
@@ -2708,8 +1868,7 @@ if button._siindbad_base_image is None:
             "sub_weight": str(sub_weight),
         }
 
-    def _tree_font_family(self, is_variant_b):
-        return self._resolve_font_family(
+    def _tree_font_family(self, is_variant_b): return self._resolve_font_family(
             (
                 ["Tektur SBold", "Tektur SemiBold", "Tektur Med", "Tektur"]
                 if is_variant_b
@@ -2752,11 +1911,9 @@ if button._siindbad_base_image is None:
         )
 
     @staticmethod
-    def _hex_to_colorref(hex_color):
-        return color_utility_service.hex_to_colorref(hex_color)
+    def _hex_to_colorref(hex_color): return UI_FACTORY.hex_to_colorref(hex_color)
 
-    def _apply_windows_titlebar_theme(self, bg=None, fg=None, border=None, window_widget=None):
-        return theme_service._apply_windows_titlebar_theme(self, bg, fg, border, window_widget)
+    def _apply_windows_titlebar_theme(self, bg=None, fg=None, border=None, window_widget=None): return theme_service._apply_windows_titlebar_theme(self, bg, fg, border, window_widget)
 
     def _style_text_widget(self):
         theme = getattr(self, "_theme", None)
@@ -2785,65 +1942,21 @@ if button._siindbad_base_image is None:
         self._configure_json_lock_tags()
         self._style_text_context_menu()
 
-    def _build_text_context_menu(self):
-        return text_context_manager.TEXT_CONTEXT.text_context_menu_service.build_text_context_menu(
+    def _build_text_context_menu(self): return text_context_manager.TEXT_CONTEXT.text_context_menu_service.build_text_context_menu(
             self,
             tk=tk,
             expected_errors=_EXPECTED_APP_ERRORS,
         )
 
     def _text_context_menu_palette(self):
-        theme = getattr(self, "_theme", {}) or {}
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "KAMUE":
-            return {
-                "bg": "#12091d",
-                "frame_bg": "#0b1120",
-                "fg": theme.get("fg", "#f0e7ff"),
-                "shortcut_fg": "#c8b2e5",
-                "active_bg": "#48207a",
-                "active_fg": "#ffffff",
-                "active_border": "#bf95ff",
-                "border": theme.get("logo_border_outer", "#7947c6"),
-                "inset_border": "#2d174c",
-                "panel_border": "#3a205f",
-                "panel_bg": "#12091d",
-                "pulse_start_border": "#56308f",
-                "pulse_start_inset": "#24113d",
-                "pulse_start_panel": "#2a1645",
-                "pulse_border": "#b887ff",
-                "pulse_inset": "#3f2162",
-                "separator": "#4e2b84",
-                "disabled_fg": "#8f78aa",
-            }
-        return {
-            "bg": "#0c151f",
-            "frame_bg": "#0b1725",
-            "fg": theme.get("fg", "#e6f5ff"),
-            "shortcut_fg": "#a9d2e8",
-            "active_bg": "#15496a",
-            "active_fg": "#ffffff",
-            "active_border": "#74d5fb",
-            "border": theme.get("logo_border_outer", "#4b97c2"),
-            "inset_border": "#153850",
-            "panel_border": "#1e3d56",
-            "panel_bg": "#0c151f",
-            "pulse_start_border": "#2a5a7a",
-            "pulse_start_inset": "#102a3d",
-            "pulse_start_panel": "#163245",
-            "pulse_border": "#67e0ff",
-            "pulse_inset": "#1f4f70",
-            "separator": "#22506f",
-            "disabled_fg": "#6f879a",
-        }
+        return ui_timer_service._text_context_menu_palette(**locals())
 
     @staticmethod
     def _text_context_menu_scale():
         # Keep menu compact while preserving readability and click targets.
         return 0.8
 
-    def _style_text_context_menu(self):
-        return text_context_manager.TEXT_CONTEXT.text_context_menu_service.style_text_context_menu(
+    def _style_text_context_menu(self): return text_context_manager.TEXT_CONTEXT.text_context_menu_service.style_text_context_menu(
             self,
             expected_errors=_EXPECTED_APP_ERRORS,
         )
@@ -2913,40 +2026,16 @@ if button._siindbad_base_image is None:
             expected_errors=_EXPECTED_APP_ERRORS,
         )
 
-    def _has_text_selection(self):
-        return text_context_state_service.has_text_selection(self.text, _EXPECTED_APP_ERRORS)
+    def _has_text_selection(self): return text_context_state_service.has_text_selection(self.text, _EXPECTED_APP_ERRORS)
 
-    def _clipboard_has_text(self):
-        return text_context_state_service.clipboard_has_text(self.root, _EXPECTED_APP_ERRORS)
+    def _clipboard_has_text(self): return text_context_state_service.clipboard_has_text(self.root, _EXPECTED_APP_ERRORS)
 
-    def _text_can_undo(self):
-        return text_context_state_service.text_can_undo(self.text, _EXPECTED_APP_ERRORS)
+    def _text_can_undo(self): return text_context_state_service.text_can_undo(self.text, _EXPECTED_APP_ERRORS)
 
-    def _text_can_redo(self):
-        return text_context_state_service.text_can_redo(self.text, _EXPECTED_APP_ERRORS)
+    def _text_can_redo(self): return text_context_state_service.text_can_redo(self.text, _EXPECTED_APP_ERRORS)
 
     def _destroy_text_context_menu(self):
-        self._hide_text_context_menu()
-        popup = getattr(self, "_text_context_menu", None)
-        if popup is not None:
-            try:
-                if popup.winfo_exists():
-                    popup.destroy()
-            except _EXPECTED_APP_ERRORS:
-                pass
-        self._text_context_menu = None
-        self._text_context_menu_anchor = None
-        self._text_context_menu_frame = None
-        self._text_context_menu_panel = None
-        self._text_context_menu_body = None
-        self._text_context_menu_separator = None
-        self._text_context_menu_separators = []
-        self._text_context_menu_items = {}
-        self._text_context_menu_widget_actions = {}
-        self._text_context_menu_row_style = None
-        self._text_context_menu_item_states = {}
-        self._text_context_menu_hover_action = None
-        self._text_context_menu_pulse_tick = 0
+        return ui_timer_service._destroy_text_context_menu(**locals())
 
     def _set_text_context_menu_item_state(self, action, enabled):
         states = getattr(self, "_text_context_menu_item_states", None)
@@ -2954,8 +2043,7 @@ if button._siindbad_base_image is None:
             return
         states[action] = bool(enabled)
 
-    def _first_enabled_text_context_action(self):
-        return text_context_action_service.first_enabled_action(
+    def _first_enabled_text_context_action(self): return text_context_action_service.first_enabled_action(
             states=getattr(self, "_text_context_menu_item_states", {}) or {},
             ordered_actions=("undo", "redo", "copy", "paste", "autofix"),
         )
@@ -2976,15 +2064,13 @@ if button._siindbad_base_image is None:
         self._set_text_context_menu_hover_action(action)
         return "break"
 
-    def _text_context_menu_action_for_widget(self, widget):
-        return text_context_pointer_service.action_for_widget(
+    def _text_context_menu_action_for_widget(self, widget): return text_context_pointer_service.action_for_widget(
             widget=widget,
             widget_actions=getattr(self, "_text_context_menu_widget_actions", {}) or {},
             expected_errors=_EXPECTED_APP_ERRORS,
         )
 
-    def _text_context_menu_action_for_pointer(self):
-        return text_context_pointer_service.action_for_pointer(
+    def _text_context_menu_action_for_pointer(self): return text_context_pointer_service.action_for_pointer(
             popup=getattr(self, "_text_context_menu", None),
             root=getattr(self, "root", None),
             widget_actions=getattr(self, "_text_context_menu_widget_actions", {}) or {},
@@ -3020,8 +2106,7 @@ if button._siindbad_base_image is None:
         self._set_text_context_menu_hover_action(None)
         return "break"
 
-    def _on_text_context_menu_click(self, action):
-        return text_context_action_service.dispatch_click_action(
+    def _on_text_context_menu_click(self, action): return text_context_action_service.dispatch_click_action(
             action=action,
             states=getattr(self, "_text_context_menu_item_states", {}) or {},
             hide_menu_fn=self._hide_text_context_menu,
@@ -3039,8 +2124,7 @@ if button._siindbad_base_image is None:
         return "break"
 
     @staticmethod
-    def _widget_is_popup_child(widget, popup):
-        return text_context_widget_service.is_popup_child(widget, popup)
+    def _widget_is_popup_child(widget, popup): return text_context_widget_service.is_popup_child(widget, popup)
 
     def _bind_text_context_menu_global_dismiss(self):
         root = getattr(self, "root", None)
@@ -3084,26 +2168,10 @@ if button._siindbad_base_image is None:
         self._hide_text_context_menu()
 
     def _on_root_focus_out(self, event=None):
-        popup = getattr(self, "_text_context_menu", None)
-        if popup is None:
-            return
-        try:
-            if not popup.winfo_exists() or not popup.winfo_ismapped():
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-        try:
-            self.root.after(30, self._hide_text_context_menu_if_app_inactive)
-        except _EXPECTED_APP_ERRORS:
-            self._hide_text_context_menu_if_app_inactive()
+        return ui_timer_service._on_root_focus_out(**locals())
 
     def _on_root_focus_in(self, event=None):
-        if not bool(getattr(self, "BUG_REPORT_USE_CUSTOM_CHROME", True)):
-            return
-        try:
-            self.root.after(50, self._ensure_bug_report_dialog_visible)
-        except _EXPECTED_APP_ERRORS:
-            self._ensure_bug_report_dialog_visible()
+        return ui_timer_service._on_root_focus_in(**locals())
 
     def _ensure_bug_report_dialog_visible(self):
         dlg = getattr(self, "_bug_report_dialog", None)
@@ -3203,8 +2271,7 @@ if button._siindbad_base_image is None:
             self._hide_text_context_menu()
 
     @staticmethod
-    def _blend_hex_color(color_a, color_b, ratio):
-        return color_utility_service.blend_hex_color(
+    def _blend_hex_color(color_a, color_b, ratio): return color_utility_service.blend_hex_color(
             color_a,
             color_b,
             ratio,
@@ -3212,88 +2279,21 @@ if button._siindbad_base_image is None:
         )
 
     def _start_text_context_menu_pulse(self):
-        self._stop_text_context_menu_pulse()
-        self._text_context_menu_pulse_tick = 0
-        self._tick_text_context_menu_pulse()
+        return ui_timer_service._start_text_context_menu_pulse(**locals())
 
     def _stop_text_context_menu_pulse(self):
-        after_id = getattr(self, "_text_context_menu_pulse_after_id", None)
-        self._text_context_menu_pulse_after_id = None
-        if after_id:
-            root = getattr(self, "root", None)
-            if root is not None:
-                try:
-                    root.after_cancel(after_id)
-                except _EXPECTED_APP_ERRORS:
-                    pass
+        return ui_timer_service._stop_text_context_menu_pulse(**locals())
 
     def _tick_text_context_menu_pulse(self):
-        text_context_action_service.tick_text_context_menu_pulse(
-            self,
-            expected_errors=_EXPECTED_APP_ERRORS,
-        )
+        return ui_timer_service._tick_text_context_menu_pulse(**locals())
 
     def _hide_text_context_menu(self):
-        self._stop_text_context_menu_pulse()
-        self._unbind_text_context_menu_global_dismiss()
-        popup = getattr(self, "_text_context_menu", None)
-        if popup is None:
-            return
-        self._text_context_menu_hover_action = None
-        try:
-            if popup.winfo_exists():
-                popup.withdraw()
-        except _EXPECTED_APP_ERRORS:
-            pass
-        self._style_text_context_menu()
+        return ui_timer_service._hide_text_context_menu(**locals())
 
     def _show_text_context_menu_popup(self, popup_x, popup_y):
-        popup = getattr(self, "_text_context_menu", None)
-        if popup is None:
-            return False
-        try:
-            if not popup.winfo_exists():
-                return False
-        except _EXPECTED_APP_ERRORS:
-            return False
-        self._style_text_context_menu()
-        try:
-            popup.withdraw()
-            # Clear any stale WM size so first open uses current content metrics.
-            popup.geometry("")
-            popup.update_idletasks()
-            req_w = max(206, int(popup.winfo_reqwidth()))
-            req_h = max(1, int(popup.winfo_reqheight()))
-            # Use virtual desktop bounds so popup follows the app across monitors.
-            vroot_x = int(self.root.winfo_vrootx())
-            vroot_y = int(self.root.winfo_vrooty())
-            screen_w = max(req_w + 2, int(self.root.winfo_vrootwidth()))
-            screen_h = max(req_h + 2, int(self.root.winfo_vrootheight()))
-            max_x = max(vroot_x + 2, (vroot_x + screen_w) - req_w - 2)
-            max_y = max(vroot_y + 2, (vroot_y + screen_h) - req_h - 2)
-            x = max(vroot_x + 2, min(int(popup_x), max_x))
-            y = max(vroot_y + 2, min(int(popup_y), max_y))
-            # Keep natural widget size; only control position.
-            popup.geometry(f"+{x}+{y}")
-            popup.deiconify()
-            popup.lift()
-            # Re-measure after map to catch first-show metric changes (font/layout).
-            popup.update_idletasks()
-            final_w = max(req_w, int(popup.winfo_width()))
-            final_h = max(req_h, int(popup.winfo_height()))
-            max_x = max(vroot_x + 2, (vroot_x + screen_w) - final_w - 2)
-            max_y = max(vroot_y + 2, (vroot_y + screen_h) - final_h - 2)
-            x = max(vroot_x + 2, min(int(popup_x), max_x))
-            y = max(vroot_y + 2, min(int(popup_y), max_y))
-            popup.geometry(f"+{x}+{y}")
-        except _EXPECTED_APP_ERRORS:
-            return False
-        self._bind_text_context_menu_global_dismiss()
-        self._start_text_context_menu_pulse()
-        return True
+        return ui_timer_service._show_text_context_menu_popup(**locals())
 
-    def _show_text_context_menu(self, event=None):
-        return text_context_manager.TEXT_CONTEXT.text_context_menu_service.show_text_context_menu(
+    def _show_text_context_menu(self, event=None): return text_context_manager.TEXT_CONTEXT.text_context_menu_service.show_text_context_menu(
             self,
             event,
             expected_errors=_EXPECTED_APP_ERRORS,
@@ -3402,8 +2402,7 @@ if button._siindbad_base_image is None:
         except _EXPECTED_APP_ERRORS:
             return False
 
-    def _show_input_context_menu(self, event=None):
-        return self._show_input_context_with_text_menu(event)
+    def _show_input_context_menu(self, event=None): return self._show_input_context_with_text_menu(event)
 
     def _show_widget_context_with_text_menu(self, event=None, *, allow_paste=True):
         widget = getattr(event, "widget", None)
@@ -3452,8 +2451,7 @@ if button._siindbad_base_image is None:
         allow_paste = bool(getattr(widget, "_hh_input_allow_paste", False))
         return self._show_widget_context_with_text_menu(event, allow_paste=allow_paste)
 
-    def _show_find_entry_context_menu(self, event=None):
-        return self._show_widget_context_with_text_menu(event, allow_paste=True)
+    def _show_find_entry_context_menu(self, event=None): return self._show_widget_context_with_text_menu(event, allow_paste=True)
 
     def _on_input_context_copy(self):
         widget = getattr(self, "_input_context_target_widget", None)
@@ -3482,8 +2480,7 @@ if button._siindbad_base_image is None:
         )
 
     @staticmethod
-    def _parse_suggestion_before_after(message):
-        return error_service.parse_suggestion_before_after(message)
+    def _parse_suggestion_before_after(message): return error_service.parse_suggestion_before_after(message)
 
     def _current_error_line_number(self):
         focus_idx = getattr(self, "_error_focus_index", None)
@@ -3500,15 +2497,13 @@ if button._siindbad_base_image is None:
             pass
         return None
 
-    def _current_overlay_suggestion(self):
-        return editor_purge_service._current_overlay_suggestion(self)
+    def _current_overlay_suggestion(self): return editor_purge_service._current_overlay_suggestion(self)
 
     def _can_context_autofix(self):
         payload = self._current_overlay_suggestion()
         return bool(payload and payload.get("after") is not None)
 
-    def _apply_line_autofix(self, line_no, before_text, after_text):
-        return text_context_action_service.apply_line_autofix(
+    def _apply_line_autofix(self, line_no, before_text, after_text): return text_context_action_service.apply_line_autofix(
             self,
             line_no,
             before_text,
@@ -3597,14 +2592,11 @@ if button._siindbad_base_image is None:
             self._auto_apply_pending = True
 
     @staticmethod
-    def _error_symbol_notes():
-        return error_service.error_symbol_notes()
+    def _error_symbol_notes(): return error_service.error_symbol_notes()
 
-    def _is_symbol_error_note(self, note):
-        return error_service.is_symbol_error_note(note)
+    def _is_symbol_error_note(self, note): return error_service.is_symbol_error_note(note)
 
-    def _error_marker_colors(self, note, palette, insertion_only=False):
-        return error_service.error_marker_colors(note, palette, insertion_only=insertion_only)
+    def _error_marker_colors(self, note, palette, insertion_only=False): return error_service.error_marker_colors(note, palette, insertion_only=insertion_only)
 
     def _tag_has_ranges(self, tag_name):
         try:
@@ -3612,8 +2604,7 @@ if button._siindbad_base_image is None:
         except _EXPECTED_APP_ERRORS:
             return False
 
-    def _current_error_palette(self):
-        return error_service.current_error_palette(
+    def _current_error_palette(self): return error_service.current_error_palette(
             variant=getattr(self, "_app_theme_variant", "SIINDBAD"),
             theme=getattr(self, "_theme", {}),
         )
@@ -3633,45 +2624,19 @@ if button._siindbad_base_image is None:
         except _EXPECTED_APP_ERRORS:
             return
 
-    def _preferred_mono_family(self):
-        if self._mono_family:
-            return self._mono_family
-        preferred = [
-            "JetBrains Mono",
-            "Cascadia Code",
-            "Cascadia Mono",
-            "Consolas",
-            "Courier New",
-        ]
-        try:
-            families = {name.lower(): name for name in tkfont.families(self.root)}
-            for name in preferred:
-                hit = families.get(name.lower())
-                if hit:
-                    self._mono_family = hit
-                    return self._mono_family
-        except _EXPECTED_APP_ERRORS:
-            pass
-        self._mono_family = "Consolas"
-        return self._mono_family
+    def _preferred_mono_family(self): return UI_FACTORY.preferred_mono_family(
+            self,
+            tkfont_module=tkfont,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
-    def _resolve_font_family(self, preferred_families, fallback):
-        families = getattr(self, "_font_family_lookup_cache", None)
-        if families is None:
-            families = {}
-            try:
-                families = {name.lower(): name for name in tkfont.families(self.root)}
-            except _EXPECTED_APP_ERRORS:
-                families = {}
-            self._font_family_lookup_cache = families
-        try:
-            for family in preferred_families:
-                hit = families.get(str(family).lower())
-                if hit:
-                    return hit
-        except _EXPECTED_APP_ERRORS:
-            pass
-        return fallback
+    def _resolve_font_family(self, preferred_families, fallback): return UI_FACTORY.resolve_font_family(
+            self,
+            preferred_families,
+            fallback,
+            tkfont_module=tkfont,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _credit_name_font(self):
         fallback = self._preferred_mono_family()
@@ -3850,77 +2815,22 @@ if button._siindbad_base_image is None:
 
     def _load_user_settings(self):
         """Load user settings (font size, app theme, startup update-check preference)."""
-        paths = [self._settings_path()]
-        legacy_path = None
-        legacy_fn = getattr(self, "_legacy_settings_path", None)
-        if callable(legacy_fn):
-            try:
-                legacy_path = legacy_fn()
-            except _EXPECTED_APP_ERRORS:
-                legacy_path = None
-        if legacy_path:
-            paths.append(str(legacy_path))
-        for path in paths:
-            if not os.path.isfile(path):
-                continue
-            try:
-                reader = getattr(self, "_read_json_file", None)
-                if callable(reader):
-                    data = reader(path, encoding="utf-8")
-                else:
-                    data = windows_runtime_service.read_json_file(path=path, encoding="utf-8")
-                if not isinstance(data, dict):
-                    continue
-                fs = data.get("font_size")
-                if isinstance(fs, int) and 6 <= fs <= 32:
-                    self._font_size = fs
-                theme_variant = str(data.get("app_theme", "")).upper()
-                if theme_variant in ("SIINDBAD", "KAMUE", "GLITCH"):
-                    self._app_theme_variant = theme_variant
-                # Startup update-check preference accepts bool/int or 0/1-style text.
-                startup_pref = data.get("startup_update_check")
-                if isinstance(startup_pref, bool):
-                    self._startup_update_check_enabled = startup_pref
-                elif isinstance(startup_pref, (int, float)):
-                    self._startup_update_check_enabled = bool(int(startup_pref))
-                elif isinstance(startup_pref, str):
-                    token = startup_pref.strip().lower()
-                    if token in ("1", "true", "yes", "on"):
-                        self._startup_update_check_enabled = True
-                    elif token in ("0", "false", "no", "off"):
-                        self._startup_update_check_enabled = False
-                return
-            except _EXPECTED_APP_ERRORS:
-                continue
+        return user_settings_service.load_user_settings(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _save_user_settings(self):
         """Save user settings (font size, app theme, startup update-check preference)."""
-        path = self._settings_path()
-        data = {
-            "font_size": int(self._font_size),
-            "app_theme": str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper(),
-            "startup_update_check": bool(getattr(self, "_startup_update_check_enabled", False)),
-        }
-        try:
-            payload = json.dumps(data, ensure_ascii=False)
-            writer = getattr(self, "_write_text_file_atomic", None)
-            if callable(writer):
-                writer(path, payload, encoding="utf-8")
-            else:
-                windows_runtime_service.write_text_file_atomic(
-                    path=path,
-                    text=payload,
-                    encoding="utf-8",
-                )
-        except _EXPECTED_APP_ERRORS:
-            return
+        return user_settings_service.save_user_settings(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     @staticmethod
-    def _normalize_button_token(value):
-        return re.sub(r"[^a-z0-9]+", "", str(value).lower())
+    def _normalize_button_token(value): return re.sub(r"[^a-z0-9]+", "", str(value).lower())
 
-    def _siindbad_effective_style(self):
-        return editor_purge_service._siindbad_effective_style(self)
+    def _siindbad_effective_style(self): return VISUALS._siindbad_effective_style(self)
 
     def _toolbar_button_font(self, small=False):
         style = self._siindbad_effective_style()
@@ -3952,1561 +2862,132 @@ if button._siindbad_base_image is None:
             size = 10
         return (family, size, "bold")
 
-    def _siindbad_toolbar_button_symbol(self, key):
-        return toolbar_service.siindbad_toolbar_button_symbol(
+    def _siindbad_toolbar_button_symbol(self, key): return toolbar_service.siindbad_toolbar_button_symbol(
             style=self._siindbad_effective_style(),
             key=key,
         )
 
     @staticmethod
-    def _hex_to_rgb_tuple(hex_color, default_rgb=(220, 235, 245)):
-        return color_utility_service.hex_to_rgb_tuple(
+    def _hex_to_rgb_tuple(hex_color, default_rgb=(220, 235, 245)): return color_utility_service.hex_to_rgb_tuple(
             hex_color,
             default_rgb=default_rgb,
             expected_errors=_EXPECTED_APP_ERRORS,
         )
 
     @staticmethod
-    def _normalize_root_tree_key(value):
-        return tree_view_service.normalize_root_tree_key(value)
+    def _normalize_root_tree_key(value): return tree_view_service.normalize_root_tree_key(value)
 
-    def _tree_display_label_for_key(self, key):
-        return tree_view_service.tree_display_label_for_key(
+    def _tree_display_label_for_key(self, key): return tree_view_service.tree_display_label_for_key(
             key=key,
             tree_style_variant=getattr(self, "_tree_style_variant", "B"),
             safe_display_labels=self.TREE_B_SAFE_DISPLAY_LABELS,
         )
 
-    def _init_chrome_runtime_state(self):
-        # Core window chrome/editor runtime state used before UI widgets are built.
-        self.logo_image = None
-        self.logo_label = None
-        self.logo_frame = None
-        self._logo_frame_inner = None
-        self._logo_path = None
-        self._logo_photo_cache = {}
-        self._header_frame = None
-        self._header_variant_bar = None
-        self._header_variant_host = None
-        self._header_variant_is_footer = False
-        self._header_variant_labels = {}
-        self._header_variant = "A"
-        self._show_header_variant_controls = False
-        self._editor_mode = "JSON"
-        self._editor_mode_host = None
-        self._editor_mode_parent = None
-        self._editor_mode_labels = {}
-        self._editor_mode_tab_cache = {}
-        self._editor_right_parent = None
-        self._body_panedwindow = None
-        self._body_paned_bindtags_default = ()
-        self._input_mode_paned_sash_x = None
-        self._input_mode_paned_fixed_sash_x = None
-        self._input_mode_paned_recheck_after_id = None
-        self._input_mode_paned_lock_active = False
-        self._text_scroll = None
-        self._init_input_mode_runtime_state()
-        self._init_tree_runtime_state()
-        # INPUT mode is now public by default; keep flag for compatibility checks.
-        self._input_mode_public_enabled = True
-        self._app_theme_variant = "SIINDBAD"
-        self._app_theme_labels = {}
-        self._toolbar_style_variant = "B"
-        # Toolbar variants are finalized: use Variant-B for both themes.
-        self._toolbar_style_variant_by_theme = {"SIINDBAD": "B", "KAMUE": "B", "GLITCH": "B"}
-        # Dev toggle: set HACKHUB_ENABLE_TOOLBAR_VARIANTS=1 to show toolbar variant controls.
-        self._show_toolbar_variant_controls = (
-            str(os.environ.get("HACKHUB_ENABLE_TOOLBAR_VARIANTS", "0")).strip().lower()
-            in ("1", "true", "yes", "on")
-        )
-        # Optional forced style lock; keep unset so A/B can be switched from UI.
-        self._siindbad_style_focus = None
-        self._toolbar_button_images = {}
-        self._toolbar_asset_image_cache = {}
-        self._toolbar_theme_shade_cache = {}
-        self._toolbar_buttons = {}
-        self._toolbar_button_text = {}
-        self._toolbar_style_labels = {}
-        self._toolbar_style_title_label = None
-        self._toolbar_center_frame = None
-        self._toolbar_layout_mode = None
-        self._find_host_default_padx = None
-        self._find_button_default_padx = None
-        self._find_entry_width_override = None
-        self._topbar_align_after_id = None
-        self._topbar_align_pending_delay_ms = None
-        self._siindbad_button_icons = {}
-        self._siindbad_button_icon_signature = None
+    def _init_chrome_runtime_state(self): return LIFECYCLE.init_chrome_runtime_state(self)
 
-    def _init_footer_bugreport_runtime_state(self):
-        # Footer/chips/bug-report runtime state grouped for maintainability.
-        self._credit_badge_images = []
-        self._credit_badge_sources_cache = None
-        self._credit_github_icon_cache = {}
-        self._credit_discord_icon_cache = {}
-        self._credit_badge_render_signature = None
-        self._credit_discord_badge_render_signature = None
-        self._credit_badge_widget_pool = {}
-        self._credit_badge_active_signature = None
-        self._credit_discord_widget_pool = {}
-        self._credit_discord_active_signature = None
-        self._credit_badge_host = None
-        self._credit_discord_badge_host = None
-        self._credit_bar = None
-        self._credit_left_slot = None
-        self._credit_center_slot = None
-        self._credit_right_slot = None
-        self._credit_content = None
-        self._credit_label = None
-        self._credit_badges_divider = None
-        self._credit_badges_divider_lines = ()
-        self._credit_discord_badge_images = []
-        self._credit_discord_divider = None
-        self._credit_discord_divider_lines = ()
-        self._credit_theme_divider = None
-        self._credit_theme_divider_lines = ()
-        self._theme_selector_host = None
-        self._bug_report_host = None
-        self._bug_report_chip = None
-        self._bug_report_label = None
-        self._bug_report_chip_hovered = False
-        self._bug_report_chip_icon_photo = None
-        self._bug_report_icon_cache = {}
-        self._bug_report_chip_icon_label = None
-        self._bug_report_chip_text_label = None
-        self._bug_report_dialog = None
-        self._bug_report_card_frame = None
-        self._bug_report_header_frame = None
-        self._bug_report_header_icon = None
-        self._bug_report_header_icon_photo = None
-        self._bug_report_header_title = None
-        self._bug_report_close_badge = None
-        self._bug_report_pulse_after_id = None
-        self._bug_report_pulse_tick = 0
-        self._bug_report_follow_root = False
-        self._bug_report_offset_x = 0
-        self._bug_report_offset_y = 0
-        self._bug_report_is_dragging = False
-        self._last_bug_report_submit_monotonic = 0.0
-        self._bug_submit_splash = None
-        self._bug_submit_splash_after_id = None
-        self._theme_footer_refresh_after_id = None
-        self._titlebar_theme_signature_by_hwnd = {}
-        self._font_stepper_label = None
-        self._font_size_value_label = None
-        self._font_control_host = None
-        self._readme_window = None
-        self._find_entry_host = None
-        self._toolbar_host = None
-        self._body_top_separator = None
-        self._body_top_separator_inner = None
-        self.find_entry = None
+    def _init_footer_bugreport_runtime_state(self): return LIFECYCLE.init_footer_bugreport_runtime_state(self)
 
-    def _init_text_context_runtime_state(self):
-        # Text context menu and font-stepper sprite runtime state.
-        self._text_context_menu = None
-        self._text_context_menu_anchor = None
-        self._text_context_menu_frame = None
-        self._text_context_menu_panel = None
-        self._text_context_menu_body = None
-        self._text_context_menu_separator = None
-        self._text_context_menu_separators = []
-        self._text_context_menu_items = {}
-        self._text_context_menu_widget_actions = {}
-        self._text_context_menu_row_style = None
-        self._text_context_menu_item_states = {}
-        self._text_context_menu_hover_action = None
-        self._text_context_menu_global_bindings = []
-        self._text_context_menu_pulse_after_id = None
-        self._text_context_menu_pulse_tick = 0
-        self._input_context_menu = None
-        self._input_context_target_widget = None
-        self._input_context_target_allow_paste = False
-        self.font_size_combo = None
-        self.font_size_var = None
-        self._font_stepper_source_size = (1028, 253)
-        self._font_stepper_minus_box_src = (395, 43, 648, 174)
-        self._font_stepper_plus_box_src = (676, 43, 929, 174)
+    def _init_text_context_runtime_state(self): return LIFECYCLE.init_text_context_runtime_state(self)
 
     def _init_theme_update_runtime_state(self):
-        # Theme prewarm/update/startup-loader runtime state.
-        self._theme_prewarm_after_id = None
-        self._theme_prewarm_queue = []
-        self._theme_prewarm_done = set()
-        self._theme_prewarm_tasks = deque()
-        self._theme_prewarm_active_variant = None
-        self._theme_prewarm_budget_ms = 10
-        self._theme_prewarm_loader_budget_ms = 6
-        self._theme_prewarm_idle_tick_ms = 12
-        self._theme_prewarm_loader_tick_ms = 16
-        self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0, "GLITCH": 0}
-        self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0, "GLITCH": 0}
-        # Cache per-variant logo PhotoImage so theme switches avoid reload work.
-        self._theme_logo_photo_by_variant = {}
-        self._toolbar_refresh_after_id = None
-        self._updates_auto_after_id = None
-        # Saved startup update-check preference: default off unless user enables from update dialogs.
-        self._startup_update_check_enabled = False
-        self._update_overlay_title_after_id = None
-        self._update_overlay_progress_pct = 0.0
-        self._update_overlay_stage = ""
-        # Update-flow smoothing: keep install stage visible for a short handoff pause.
-        self._update_install_stage_hold_ms = 3000
-        # Update-flow smoothing: keep restart stage visible longer before root teardown.
-        self._update_restart_notice_ms = 4200
-        self._shutdown_cleanup_done = False
-        self._theme_perf_logging = (
-            # Perf debug toggle: set HACKHUB_THEME_PERF_LOG=1 to print theme switch timings.
-            str(os.environ.get("HACKHUB_THEME_PERF_LOG", "0")).strip().lower()
-            in ("1", "true", "yes", "on")
-        )
-        self._startup_loader_enabled = True
-        # Keep startup loader visible for a cinematic hold while prewarm catches up.
-        self._startup_loader_extra_hold_ms = 1600
-        self._startup_loader_overlay = None
-        self._startup_loader_pct_label = None
-        self._startup_loader_statement_label = None
-        self._startup_loader_top_fill = None
-        self._startup_loader_bottom_fill = None
-        self._startup_loader_started_ts = 0.0
-        self._startup_loader_ready_ts = None
-        self._startup_loader_text_after_id = None
-        self._startup_loader_hide_after_id = None
-        self._startup_loader_progress_after_id = None
-        self._startup_loader_statement_index = 0
-        self._startup_loader_line_pool_loading = []
-        self._startup_loader_line_pool_ready = []
-        self._startup_loader_required_variants = {"SIINDBAD", "KAMUE", "GLITCH"}
-        self._startup_loader_deferred_variants = set()
-        self._startup_loader_title_prefix_label = None
-        self._startup_loader_title_suffix_label = None
-        self._startup_loader_title_variant = "SIINDBAD"
-        self._startup_loader_title_after_id = None
-        self._startup_loader_title_cycle_ms = 4200
-        self._startup_loader_progress_interval_ms = 34
-        self._startup_loader_statement_interval_loading_ms = 1450
-        self._startup_loader_statement_interval_ready_ms = 1150
-        # Loader finish phase: smooth progress to 100 before teardown.
-        self._startup_loader_complete_dwell_ms = 260
-        # Keep 100% visible briefly so completion is perceptible before teardown.
-        self._startup_loader_finish_visible_hold_ms = 140
-        # Loader smoothing: keep visible progress moving forward without abrupt jumps.
-        self._startup_loader_display_pct = 0.0
-        self._startup_loader_last_progress_ts = 0.0
-        self._startup_loader_smooth_rate_pct_per_sec = 30.0
-        self._startup_loader_finishing = False
-        self._startup_loader_finish_started_ts = 0.0
-        self._startup_loader_finish_start_pct = 0.0
-        self._startup_loader_finish_reached_100_ts = 0.0
-        self._startup_loader_window_mode = bool(
-            getattr(self.root, "_hh_use_startup_loader_window", False)
-        )
-        self._startup_loader_title_cache = {}
-        self._startup_loader_fill_photo_cache = {}
-        self._startup_loader_panel_photo_cache = {}
-        self._theme_rgba_image_cache = {}
-        self._display_scale = 1.0
-        self._auto_display_profile_name = "default"
-        self._window_layout = None
+        # Regression marker: _update_install_stage_hold_ms = 3000
+        # Regression marker: _update_restart_notice_ms = 4200
+        return LIFECYCLE.init_theme_update_runtime_state(self)
 
     def _init_editor_session_runtime_state(self):
-        # Core editor/session diagnostics and interaction runtime state.
-        # Diagnostics file toggle:
-        # - False disables `sins_json_diagnostics` file writes/rotation.
-        self.DIAG_LOG_ENABLED = False
-        self.network_types = ["ROUTER", "DEVICE", "FIREWALL", "SPLITTER"]
-        self.network_types_set = set(self.network_types)
-        self.find_matches = []
-        self.find_index = 0
-        self.last_find_query = ""
-        # Cache searchable tree labels by data path to avoid expensive full-tree expansion on find.
-        self._find_search_entries = []
-        # Cache JSON path token text for incremental Find Next narrowing.
-        self._json_find_path_token_cache = {}
-        # Track configured JSON text widget for one-time find tag styling.
-        self._json_find_tag_widget = None
-        self.error_overlay = None
-        self.error_pin = None
-        self._mono_family = None
-        self._font_family_lookup_cache = None
-        self._font_size = 10  # Default font size
-        self._auto_apply_pending = False
-        self._auto_apply_in_progress = False
-        self._live_feedback_after_id = None
-        self._live_feedback_delay_ms = int(self.LIVE_FEEDBACK_DELAY_MS_DEFAULT)
-        self._pending_insert_restore_index = ""
-        self._diag_event_seq = 0
-        self._diag_action = "startup:0"
-        self._error_visual_mode = "guide"
-        self._last_edit_was_deletion = False
-        self._error_focus_index = None
-        self._last_error_highlight_note = ""
-        self._last_error_insertion_only = False
-        self._last_error_overlay_message = ""
-        self._error_overlay_actions = None
-        self._allow_highlight_key_change_once = False
-        self._last_tree_selected_item = None
-        self._json_lock_apply_after_id = None
-        self._json_render_seq = 0
-        self._last_json_error_diag = None
-        self._error_hooks_installed = False
-        self._crash_notice_shown = False
-        self._prev_sys_excepthook = None
-        self._prev_threading_excepthook = None
-        self._session_id = uuid.uuid4().hex[:12]
-        self._session_started_monotonic = time.monotonic()
-        self._last_callback_origin = ""
-        self._crash_report_offer_after_id = None
-        # Document-load session state keeps prewarm work from competing with active file open.
-        self._document_load_depth = 0
-        self._document_load_in_progress = False
-        self._document_load_request_seq = 0
-        self._active_document_load_request_id = 0
-        self._document_load_async_after_id = None
-        self._document_load_async_result = None
-        self._document_load_last_completed_ts = 0.0
-        self._document_load_quiet_window_ms = 220
-        self._list_labelers = tree_engine_service.default_list_labelers(self)
-        # INPUT mode uses custom Database entry names (Grades/BCC/INTERPOL) while
-        # JSON mode keeps canonical host-style labels through the same labeler hook.
-        self._list_labelers[("Database",)] = self._database_root_entry_label
+        # Regression marker: self._list_labelers = tree_engine_service.default_list_labelers(self)
+        # Regression marker: _allow_highlight_key_change_once
+        return LIFECYCLE.init_editor_session_runtime_state(self)
 
     def _init_input_mode_runtime_state(self):
-        # Keep INPUT-mode runtime state initialization grouped for easier maintenance.
-        self._input_mode_container = None
-        self._input_mode_canvas = None
-        self._input_mode_scroll = None
-        self._input_mode_fields_host = None
-        self._input_mode_field_specs = []
-        self._input_mode_current_path = []
-        self._input_mode_no_fields_label = None
-        self._input_mode_last_render_item = None
-        self._input_mode_last_render_path_key = None
-        self._input_mode_force_refresh = True
-        self._input_mode_render_token = 0
-        self._input_mode_router_batch_after_id = None
-        self._input_mode_router_prewarm_after_id = None
-        self._input_mode_router_virtual_after_id = None
-        self._input_mode_router_settle_after_id = None
-        self._input_mode_scroll_drag_after_id = None
-        self._input_mode_scroll_drag_active = False
-        self._input_mode_router_row_pool = []
-        self._input_mode_router_pool_host = None
-        self._input_mode_router_shell = None
-        self._input_mode_router_art_cache = {}
-        self._input_suspicion_phone_photo_cache = {}
-        # ROUTER INPUT prewarm defaults:
-        # - max rows caps per-render workload
-        # - prewarm row limit primes pooled rows for smooth first ROUTER open
-        self._router_input_max_rows = 60
-        self._router_input_prewarm_row_limit = 60
-        self._router_input_prewarm_row_limit_cap = 60
-        self._router_input_prewarm_delay_ms = 180
-        self._input_mode_router_virtual_rows = []
-        self._input_mode_router_virtual_next_index = 0
-        self._input_mode_router_virtual_total_rows = 0
-        self._input_mode_layout_finalize_after_id = None
-        self._input_mode_layout_finalize_reset_scroll = False
-        self._input_mode_refresh_after_id = None
-        self._input_mode_pending_item_id = None
+        # Regression marker: self._input_mode_last_render_path_key
+        return LIFECYCLE.init_input_mode_runtime_state(self)
 
-    def _init_tree_runtime_state(self):
-        # Keep shared tree UI runtime state initialization grouped by tree subsystem.
-        self._tree_style_variant = "B"
-        self._tree_style_labels = {}
-        self._tree_style_title_label = None
-        self._tree_content_top_gap = 2
-        self._tree_marker_icon_cache = {}
-        self._tree_marker_integrity_checked = False
-        self._tree_marker_integrity_ok = True
-        self._tree_item_layout_default = None
-        self._tree_item_layout_no_indicator = None
+    def _init_tree_runtime_state(self): return LIFECYCLE.init_tree_runtime_state(self)
 
     @staticmethod
-    def _bounded_cache_put(cache, key, value, max_items=128):
-        if not isinstance(cache, dict):
-            return
-        try:
-            if key in cache:
-                cache.pop(key, None)
-            cache[key] = value
-            limit = max(8, int(max_items))
-            while len(cache) > limit:
-                cache.pop(next(iter(cache)), None)
-        except _EXPECTED_APP_ERRORS:
-            try:
-                cache[key] = value
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-    def _siindbad_toolbar_style_palette(self):
-        theme = getattr(self, "_theme", {})
-        style = self._siindbad_effective_style()
-        theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        border_outer = theme.get("logo_border_outer", "#349fc7")
-        border_inner = theme.get("logo_border_inner", "#a9ddf0")
-        find_border = theme.get("find_border", border_inner)
-        if style == "B":
-            if theme_variant == "KAMUE":
-                return {
-                    "button_bg": "#1a1130",
-                    "button_fg": "#efe6ff",
-                    "button_active": "#2a1b4c",
-                    "button_pressed": "#130a25",
-                    # Match KAMUE FONT host outer frame border.
-                    "border": find_border,
-                    "border_active": find_border,
-                    "slot_bg": "#110a20",
-                    "size_bg": "#24133f",
-                    "inner_border": "#d2a4ff",
-                }
-            if theme_variant == "GLITCH":
-                return {
-                    "button_bg": "#060d0a",
-                    "button_fg": "#dff5ff",
-                    "button_active": "#11261c",
-                    "button_pressed": "#030806",
-                    "border": find_border,
-                    "border_active": find_border,
-                    "slot_bg": "#050b08",
-                    "size_bg": "#0a1611",
-                    "inner_border": "#79e89a",
-                }
-            return {
-                "button_bg": "#0f2439",
-                "button_fg": "#dff5ff",
-                "button_active": "#16324c",
-                "button_pressed": "#0b1623",
-                "border": border_outer,
-                "border_active": border_inner,
-                "slot_bg": "#0b1a2a",
-                "size_bg": "#11283c",
-                "inner_border": "#72d7ff",
-            }
-        if theme_variant == "GLITCH":
-            return {
-                "button_bg": "#070f0b",
-                "button_fg": "#dff5ff",
-                "button_active": "#143022",
-                "button_pressed": "#040906",
-                "border": border_outer,
-                "border_active": border_inner,
-                "slot_bg": "#060d0a",
-                "size_bg": "#0c1813",
-                "inner_border": border_inner,
-            }
-        return {
-            "button_bg": "#102236",
-            "button_fg": "#e2f3ff",
-            "button_active": "#17314b",
-            "button_pressed": "#0d1a2a",
-            "border": border_outer,
-            "border_active": border_inner,
-            "slot_bg": "#0d1d2d",
-            "size_bg": "#12283c",
-            "inner_border": border_inner,
-        }
-
-    def _draw_siindbad_toolbar_icon(self, key, fg_hex, accent_hex, style, accent2_hex=None):
-        return toolbar_service._draw_siindbad_toolbar_icon(self, key, fg_hex, accent_hex, style, accent2_hex)
-
-    def _ensure_siindbad_button_icons(self):
-        style = self._siindbad_effective_style()
-        palette = self._siindbad_toolbar_style_palette()
-        signature = (
-            style,
-            palette.get("button_fg"),
-            palette.get("border_active"),
-            palette.get("border"),
-            palette.get("inner_border"),
-        )
-        if signature == self._siindbad_button_icon_signature and self._siindbad_button_icons:
-            return
-        self._siindbad_button_icon_signature = signature
-        self._siindbad_button_icons = {}
-        try:
-            image_tk_module = importlib.import_module("PIL.ImageTk")
-            for key in ("open", "apply", "export", "find", "update", "readme"):
-                icon = self._draw_siindbad_toolbar_icon(
-                    key=key,
-                    fg_hex=palette.get("button_fg", "#deeff8"),
-                    accent_hex=palette.get("border_active", "#a9ddf0"),
-                    style=style,
-                    accent2_hex=palette.get("inner_border", palette.get("border_active", "#a9ddf0")),
-                )
-                self._siindbad_button_icons[key] = image_tk_module.PhotoImage(icon)
-        except _EXPECTED_APP_ERRORS:
-            self._siindbad_button_icons = {}
-
-    def _find_entry_target_width(self):
-        override = getattr(self, "_find_entry_width_override", None)
-        if isinstance(override, int) and override > 0:
-            return int(override)
-        style = self._siindbad_effective_style()
-        if style == "B":
-            spec = self._siindbad_b_search_spec()
-            if spec:
-                width_value = spec.get("width", 172)
-                if isinstance(width_value, int):
-                    return width_value
-                if isinstance(width_value, (float, str)):
-                    try:
-                        return int(width_value)
-                    except _EXPECTED_APP_ERRORS:
-                        return 172
-                return 172
-            return 172
-        return 156
-
+    def _bounded_cache_put(cache, key, value, max_items=128): return VISUALS._bounded_cache_put(cache, key, value, max_items)
+    def _siindbad_toolbar_style_palette(self): return VISUALS._siindbad_toolbar_style_palette(self)
+    def _draw_siindbad_toolbar_icon(self, key, fg_hex, accent_hex, style, accent2_hex=None): return VISUALS._draw_siindbad_toolbar_icon(self, key, fg_hex, accent_hex, style, accent2_hex)
+    def _ensure_siindbad_button_icons(self): return VISUALS._ensure_siindbad_button_icons(self)
+    def _find_entry_target_width(self): return VISUALS._find_entry_target_width(self)
     @staticmethod
-    def _siindbad_toolbar_label_text(style, key, text):
-        return toolbar_service.siindbad_toolbar_label_text(style, key, text)
-
-    def _update_find_entry_layout(self):
-        return toolbar_service.update_find_entry_layout(
-            self,
-            tk_module=tk,
-            expected_errors=_EXPECTED_APP_ERRORS,
-        )
-
-    def _schedule_topbar_alignment(self, delay_ms=35):
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        request_delay = max(0, int(delay_ms))
-        existing = getattr(self, "_topbar_align_after_id", None)
-        pending_delay = getattr(self, "_topbar_align_pending_delay_ms", None)
-        # Coalesce repeated configure bursts; keep the earliest already-scheduled alignment.
-        if existing and pending_delay is not None and request_delay >= int(pending_delay):
-            return
-        if existing:
-            try:
-                root.after_cancel(existing)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        self._topbar_align_after_id = None
-        self._topbar_align_pending_delay_ms = None
-        try:
-            self._topbar_align_after_id = root.after(
-                request_delay,
-                self._align_topbar_to_logo,
-            )
-            self._topbar_align_pending_delay_ms = request_delay
-        except _EXPECTED_APP_ERRORS:
-            self._topbar_align_after_id = None
-            self._topbar_align_pending_delay_ms = None
-
+    def _siindbad_toolbar_label_text(style, key, text): return VISUALS._siindbad_toolbar_label_text(style, key, text)
+    def _update_find_entry_layout(self): return VISUALS._update_find_entry_layout(self)
+    def _schedule_topbar_alignment(self, delay_ms=35): return VISUALS._schedule_topbar_alignment(self, delay_ms)
     @staticmethod
-    def _window_is_maximized(window):
-        if window is None:
-            return False
-        try:
-            return str(window.state()).lower() == "zoomed"
-        except _EXPECTED_APP_ERRORS:
-            return False
-
-    def _apply_toolbar_layout_mode(self, force=False):
-        host = getattr(self, "_toolbar_host", None)
-        center = getattr(self, "_toolbar_center_frame", None)
-        if host is None or center is None:
-            return
-        try:
-            if not (host.winfo_exists() and center.winfo_exists()):
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        mode = "maximized" if self._window_is_maximized(getattr(self, "root", None)) else "normal"
-        previous_mode = str(getattr(self, "_toolbar_layout_mode", "") or "")
-        if (not force) and previous_mode == mode:
-            self._apply_toolbar_spacing_for_mode(mode)
-            # Keep max-mode placement synced to logo center while resizing.
-            if mode == "maximized":
-                self._apply_toolbar_layout_max(center, host)
-            return
-
-        self._toolbar_layout_mode = mode
-        self._apply_toolbar_spacing_for_mode(mode)
-        if mode == "maximized":
-            self._apply_toolbar_layout_max(center, host)
-        else:
-            self._apply_toolbar_layout_normal(center)
-
-    def _apply_toolbar_spacing_for_mode(self, mode):
-        # Guard normal layout: only tighten the search->find gap in maximized mode.
-        find_host = getattr(self, "_find_entry_host", None)
-        find_btn = (getattr(self, "_toolbar_buttons", None) or {}).get("find")
-        if find_host is None or find_btn is None:
-            return
-        try:
-            if not (find_host.winfo_exists() and find_btn.winfo_exists()):
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        style = str(self._siindbad_effective_style()).upper()
-        default_host_padx = getattr(self, "_find_host_default_padx", None) or (2, 0)
-        default_btn_padx = getattr(self, "_find_button_default_padx", None) or (2, 0)
-        target_host_padx, target_btn_padx = layout_topbar_core.compute_mode_spacing(
-            mode=mode,
-            style=style,
-            default_host_padx=default_host_padx,
-            default_btn_padx=default_btn_padx,
-        )
-
-        try:
-            find_host.pack_configure(padx=target_host_padx)
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            find_btn_host = getattr(find_btn, "_siindbad_frame_host", find_btn)
-            find_btn_host.pack_configure(padx=target_btn_padx)
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-    def _find_entry_base_width(self):
-        style = self._siindbad_effective_style()
-        search_spec_width = None
-        if style == "B":
-            spec = self._siindbad_b_search_spec()
-            if spec:
-                width_value = spec.get("width", 172)
-                if isinstance(width_value, int):
-                    search_spec_width = width_value
-        return layout_topbar_core.resolve_find_entry_base_width(
-            style=style,
-            search_spec_width=search_spec_width,
-        )
-
-    def _apply_max_toolbar_search_compaction(self, toolbar_w, logo_w):
-        """Shrink search width in max mode so toolbar edges stay within logo bounds."""
-        current = getattr(self, "_find_entry_width_override", None)
-        base_width = int(self._find_entry_base_width())
-        style = self._siindbad_effective_style()
-        target = layout_topbar_core.compute_search_compaction_target(
-            toolbar_w=toolbar_w,
-            logo_w=logo_w,
-            base_width=base_width,
-            style=style,
-        )
-        if current == target:
-            return False
-        self._find_entry_width_override = target
-        self._update_find_entry_layout()
-        return True
-
-    def _apply_toolbar_layout_normal(self, center):
-        # Restore default search width outside maximize mode.
-        if getattr(self, "_find_entry_width_override", None) is not None:
-            self._find_entry_width_override = None
-            self._update_find_entry_layout()
-        try:
-            center.place_forget()
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            center.pack_forget()
-        except _EXPECTED_APP_ERRORS:
-            pass
-        try:
-            center.pack(anchor="center")
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-    def _apply_toolbar_layout_max(self, center, host):
-        return toolbar_service.apply_toolbar_layout_max(
-            self,
-            center,
-            host,
-            expected_errors=_EXPECTED_APP_ERRORS,
-            compute_centered_toolbar_position=layout_topbar_core.compute_centered_toolbar_position,
-        )
-
-    def _align_topbar_to_logo(self):
-        self._topbar_align_after_id = None
-        self._topbar_align_pending_delay_ms = None
-        self._apply_toolbar_layout_mode(force=False)
-
+    def _window_is_maximized(window): return VISUALS._window_is_maximized(window)
+    def _apply_toolbar_layout_mode(self, force=False): return VISUALS._apply_toolbar_layout_mode(self, force)
+    def _apply_toolbar_spacing_for_mode(self, mode): return VISUALS._apply_toolbar_spacing_for_mode(self, mode)
+    def _find_entry_base_width(self): return VISUALS._find_entry_base_width(self)
+    def _apply_max_toolbar_search_compaction(self, toolbar_w, logo_w): return VISUALS._apply_max_toolbar_search_compaction(self, toolbar_w, logo_w)
+    def _apply_toolbar_layout_normal(self, center): return VISUALS._apply_toolbar_layout_normal(self, center)
+    def _apply_toolbar_layout_max(self, center, host): return VISUALS._apply_toolbar_layout_max(self, center, host)
+    def _align_topbar_to_logo(self): return VISUALS._align_topbar_to_logo(self)
     @staticmethod
-    def _siindbad_toolbar_button_width(style, key, text):
-        return toolbar_service.siindbad_toolbar_button_width(style, key, text)
-
-    def _siindbad_toolbar_frame_width(self, style, key, text):
-        style = str(style).upper()
-        if style == "A":
-            widths = {
-                "open": 110,
-                "apply": 112,
-                "export": 138,
-                "find": 110,
-                "update": 102,
-                "readme": 102,
-            }
-            return widths.get(key, max(84, 14 + len(str(text)) * 8))
-        if style == "B":
-            manifest = self._siindbad_b_sprite_manifest()
-            button_meta = manifest.get("buttons", {}).get(str(key), {}) if isinstance(manifest, dict) else {}
-            sprite_width = int(button_meta.get("width", 0) or 0)
-            if sprite_width > 0:
-                return sprite_width
-            widths = {
-                "open": 102,
-                "apply": 116,
-                "export": 128,
-                "find": 108,
-                "update": 98,
-                "readme": 98,
-            }
-            return widths.get(key, max(86, 16 + len(str(text)) * 8))
-        return 0
-
-    def _siindbad_b_sprite_dir(self):
-        return theme_asset_service.siindbad_b_sprite_dir(self._resource_base_dir())
-
-    def _siindbad_b_sprite_manifest(self):
-        cached = getattr(self, "_siindbad_b_sprite_manifest_cache", None)
-        if cached is not None:
-            return cached
-        manifest_path = os.path.join(self._siindbad_b_sprite_dir(), "manifest.json")
-        data = {}
-        try:
-            if os.path.isfile(manifest_path):
-                with open(manifest_path, "r", encoding="utf-8") as fh:
-                    parsed = json.load(fh)
-                if isinstance(parsed, dict):
-                    data = parsed
-        except _EXPECTED_APP_ERRORS:
-            data = {}
-        self._siindbad_b_sprite_manifest_cache = data
-        return data
-
-    def _invalidate_siindbad_b_sprite_cache(self):
-        after_id = getattr(self, "_theme_prewarm_after_id", None)
-        root = getattr(self, "root", None)
-        if root is not None and after_id:
-            try:
-                root.after_cancel(after_id)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        self._theme_prewarm_after_id = None
-        self._siindbad_b_sprite_manifest_cache = None
-        self._siindbad_b_button_image_cache = {}
-        self._siindbad_b_search_sprite_cache = {}
-        self._theme_prewarm_done = set()
-        self._theme_prewarm_queue = []
-        self._theme_prewarm_tasks = deque()
-        self._theme_prewarm_total_by_variant = {"SIINDBAD": 0, "KAMUE": 0, "GLITCH": 0}
-        self._theme_prewarm_done_by_variant = {"SIINDBAD": 0, "KAMUE": 0, "GLITCH": 0}
-
-    def _siindbad_b_render_mode(self, override=None):
-        if override in ("fast", "full"):
-            return override
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "GLITCH":
-            # GLITCH uses full hover-frame rendering for smooth scan parity
-            # with warmed SIINDBAD/KAMUE/GLITCH Variant-B buttons.
-            return "full"
-        warmed = set(getattr(self, "_theme_prewarm_done", set()))
-        if variant in warmed:
-            return "full"
-        return "fast"
-
-    def _siindbad_b_sprite_bundle(self, key, width, height, render_mode="full"):
-        return toolbar_service._siindbad_b_sprite_bundle(self, key, width, height, render_mode)
-
-    def _siindbad_b_button_height(self, key, default_height=34):
-        manifest = self._siindbad_b_sprite_manifest()
-        if isinstance(manifest, dict):
-            buttons_meta = manifest.get("buttons", {})
-            if isinstance(buttons_meta, dict):
-                meta = buttons_meta.get(str(key), {})
-                if isinstance(meta, dict):
-                    value = int(meta.get("height", 0) or 0)
-                    if value > 0:
-                        return value
-        return int(default_height)
-
-    def _siindbad_b_search_spec(self):
-        manifest = self._siindbad_b_sprite_manifest()
-        if not isinstance(manifest, dict):
-            return None
-        search = manifest.get("search", {})
-        if not isinstance(search, dict):
-            return None
-        width = int(search.get("width", 0) or 0)
-        height = int(search.get("height", 0) or 0)
-        base_name = str(search.get("base", "") or "")
-        sprite_dir = self._siindbad_b_sprite_dir()
-        base_path = os.path.join(sprite_dir, base_name) if base_name else ""
-        input_box = search.get("input_box")
-        if width <= 0 or height <= 0:
-            return None
-        spec: dict[str, object] = {"width": width, "height": height}
-        if base_path and os.path.isfile(base_path):
-            spec["base_path"] = base_path
-            try:
-                image_module = importlib.import_module("PIL.Image")
-                with image_module.open(base_path) as base_img:
-                    spec["width"] = int(base_img.width)
-                    spec["height"] = int(base_img.height)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        if isinstance(input_box, (list, tuple)) and len(input_box) == 4:
-            try:
-                spec["input_box"] = tuple(int(v) for v in input_box)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        return spec
-
-    def _siindbad_b_search_sprite_image(self, width, height):
-        spec = self._siindbad_b_search_spec() or {}
-        base_path = str(spec.get("base_path", "") or "")
-        if not base_path or not os.path.isfile(base_path):
-            return None
-        cache = getattr(self, "_siindbad_b_search_sprite_cache", None)
-        if cache is None:
-            cache = {}
-            self._siindbad_b_search_sprite_cache = cache
-        theme_variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        theme = getattr(self, "_theme", {})
-        signature = (
-            base_path,
-            int(width),
-            int(height),
-            theme_variant,
-            theme.get("find_border"),
-            theme.get("logo_border_outer"),
-        )
-        cached = cache.get(signature)
-        if cached is not None:
-            return cached
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            image_tk_module = importlib.import_module("PIL.ImageTk")
-            image = image_module.open(base_path).convert("RGBA")
-            if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() in ("KAMUE", "GLITCH"):
-                try:
-                    image = self._shade_toolbar_button_for_theme(image, cache_key=f"search:{base_path}")
-                    image = self._harmonize_kamue_b_outer_frame(image)
-                except _EXPECTED_APP_ERRORS:
-                    pass
-            if image.width != int(width) or image.height != int(height):
-                image = image.resize((max(1, int(width)), max(1, int(height))), image_module.LANCZOS)
-            photo = image_tk_module.PhotoImage(image)
-            self._bounded_cache_put(cache, signature, photo, max_items=48)
-            return photo
-        except _EXPECTED_APP_ERRORS:
-            return None
-
-    def _siindbad_b_font_sprite_spec(self):
-        manifest = self._siindbad_b_sprite_manifest()
-        if not isinstance(manifest, dict):
-            return None
-        font_meta = manifest.get("font", {})
-        if not isinstance(font_meta, dict):
-            return None
-        sprite_dir = self._siindbad_b_sprite_dir()
-        base_name = str(font_meta.get("base", "font_base.png"))
-        base_path = os.path.join(sprite_dir, base_name)
-        if not os.path.isfile(base_path):
-            return None
-        hover_name = str(font_meta.get("hover", ""))
-        hover_path = os.path.join(sprite_dir, hover_name) if hover_name else ""
-        if hover_path and not os.path.isfile(hover_path):
-            hover_path = ""
-        width = int(font_meta.get("width", 0) or 0)
-        height = int(font_meta.get("height", 0) or 0)
-        minus = tuple(font_meta.get("minus_box", ()))
-        plus = tuple(font_meta.get("plus_box", ()))
-        if len(minus) != 4 or len(plus) != 4:
-            return None
-        if width <= 0 or height <= 0:
-            try:
-                image_module = importlib.import_module("PIL.Image")
-                probe = image_module.open(base_path)
-                width, height = probe.size
-            except _EXPECTED_APP_ERRORS:
-                return None
-        return {
-            "path": base_path,
-            "hover_path": hover_path,
-            "width": width,
-            "height": height,
-            "minus_box": minus,
-            "plus_box": plus,
-        }
-
-    def _load_siindbad_b_font_sprite_image(self):
-        spec = self._siindbad_b_font_sprite_spec()
-        if not spec:
-            return False
-        image = self._load_toolbar_button_image(
-            spec["path"],
-            max_width=max(1, int(spec["width"])),
-            max_height=max(1, int(spec["height"])),
-            stretch_to_fit=True,
-        )
-        if image is None:
-            return False
-        self._toolbar_button_images["font"] = image
-        hover_path = str(spec.get("hover_path", "") or "")
-        if hover_path and os.path.isfile(hover_path):
-            hover_image = self._load_toolbar_button_image(
-                hover_path,
-                max_width=max(1, int(spec["width"])),
-                max_height=max(1, int(spec["height"])),
-                stretch_to_fit=True,
-            )
-            if hover_image is not None:
-                self._toolbar_button_images["font_hover"] = hover_image
-        self._font_stepper_source_size = (int(spec["width"]), int(spec["height"]))
-        self._font_stepper_minus_box_src = tuple(int(v) for v in spec["minus_box"])
-        self._font_stepper_plus_box_src = tuple(int(v) for v in spec["plus_box"])
-        return True
-
-    def _siindbad_b_asset_button_path(self, key):
-        base_dir = self._resource_base_dir()
-        folder = os.path.join(base_dir, "assets", "buttons", "variants", "B")
-        candidates = [f"{key}2.png", f"{key}.png"]
-        for name in candidates:
-            path = os.path.join(folder, name)
-            if os.path.isfile(path):
-                return path
-        return None
-
+    def _siindbad_toolbar_button_width(style, key, text): return VISUALS._siindbad_toolbar_button_width(style, key, text)
+    def _siindbad_toolbar_frame_width(self, style, key, text): return VISUALS._siindbad_toolbar_frame_width(self, style, key, text)
+    def _siindbad_b_sprite_dir(self): return VISUALS._siindbad_b_sprite_dir(self)
+    def _siindbad_b_sprite_manifest(self): return VISUALS._siindbad_b_sprite_manifest(self)
+    def _invalidate_siindbad_b_sprite_cache(self): return VISUALS._invalidate_siindbad_b_sprite_cache(self)
+    def _siindbad_b_render_mode(self, override=None): return VISUALS._siindbad_b_render_mode(self, override)
+    def _siindbad_b_sprite_bundle(self, key, width, height, render_mode='full'): return VISUALS._siindbad_b_sprite_bundle(self, key, width, height, render_mode)
+    def _siindbad_b_button_height(self, key, default_height=34): return VISUALS._siindbad_b_button_height(self, key, default_height)
+    def _siindbad_b_search_spec(self): return VISUALS._siindbad_b_search_spec(self)
+    def _siindbad_b_search_sprite_image(self, width, height): return VISUALS._siindbad_b_search_sprite_image(self, width, height)
+    def _siindbad_b_font_sprite_spec(self): return VISUALS._siindbad_b_font_sprite_spec(self)
+    def _load_siindbad_b_font_sprite_image(self): return VISUALS._load_siindbad_b_font_sprite_image(self)
+    def _siindbad_b_asset_button_path(self, key): return VISUALS._siindbad_b_asset_button_path(self, key)
     @staticmethod
-    def _pointer_within_widget(widget):
-        try:
-            if widget is None or not widget.winfo_exists():
-                return False
-            px = widget.winfo_pointerx()
-            py = widget.winfo_pointery()
-            x1 = widget.winfo_rootx()
-            y1 = widget.winfo_rooty()
-            x2 = x1 + widget.winfo_width()
-            y2 = y1 + widget.winfo_height()
-            return x1 <= px < x2 and y1 <= py < y2
-        except _EXPECTED_APP_ERRORS:
-            return False
-
-    def _siindbad_b_render_button_bundle(self, key, text, width, height, palette, render_mode=None):
-        return toolbar_service._siindbad_b_render_button_bundle(self, key, text, width, height, palette, render_mode)
-
-    def _stop_siindbad_b_button_scan(self, button):
-        host = getattr(button, "_siindbad_frame_host", None)
-        after_id = getattr(button, "_siindbad_scan_after_id", None)
-        if host is not None and after_id:
-            try:
-                host.after_cancel(after_id)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        button._siindbad_scan_after_id = None
-        button._siindbad_scan_running = False
-        button._siindbad_scan_idx = -1
-        button._siindbad_scan_start_ts = None
-        base_image = getattr(button, "_siindbad_base_image", None)
-        if base_image is not None:
-            try:
-                button.configure(image=base_image)
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-    def _stop_all_siindbad_b_button_scans(self):
-        for button in getattr(self, "_toolbar_buttons", {}).values():
-            if button is None or not getattr(button, "winfo_exists", lambda: False)():
-                continue
-            if hasattr(button, "_siindbad_scan_running"):
-                self._stop_siindbad_b_button_scan(button)
-
-    def _invoke_siindbad_b_button(self, button, command):
-        # Strict hover behavior: after click, scan must not resume until pointer leaves
-        # and re-enters the button hit area.
-        try:
-            button._siindbad_hover_require_reenter = True
-        except _EXPECTED_APP_ERRORS:
-            pass
-        self._stop_all_siindbad_b_button_scans()
-        try:
-            command()
-        except _EXPECTED_APP_ERRORS:
-            raise
-
-    def _tick_siindbad_b_button_scan(self, button):
-        host = getattr(button, "_siindbad_frame_host", None)
-        if host is None or not host.winfo_exists() or not getattr(button, "_siindbad_scan_running", False):
-            self._stop_siindbad_b_button_scan(button)
-            return
-
-        frames = getattr(button, "_siindbad_hover_frames", None) or []
-        if not frames:
-            return
-        interval_ms = int(getattr(button, "_siindbad_scan_interval_ms", 40) or 40)
-        interval_ms = max(20, min(100, interval_ms))
-        start_ts = getattr(button, "_siindbad_scan_start_ts", None)
-        now = time.perf_counter()
-        if start_ts is None:
-            start_ts = now
-            button._siindbad_scan_start_ts = start_ts
-        elapsed_ms = max(0.0, (now - start_ts) * 1000.0)
-        idx = int(elapsed_ms // float(interval_ms)) % len(frames)
-        prev_idx = int(getattr(button, "_siindbad_scan_idx", -1))
-        if idx != prev_idx:
-            try:
-                button.configure(image=frames[idx])
-            except _EXPECTED_APP_ERRORS:
-                return
-            button._siindbad_scan_idx = idx
-
-        frame_step = int(elapsed_ms // float(interval_ms))
-        next_boundary_ms = (frame_step + 1) * float(interval_ms)
-        next_delay = int(round(next_boundary_ms - elapsed_ms))
-        next_delay = max(10, min(120, next_delay))
-        try:
-            button._siindbad_scan_after_id = host.after(
-                next_delay, lambda b=button: self._tick_siindbad_b_button_scan(b)
-            )
-        except _EXPECTED_APP_ERRORS:
-            button._siindbad_scan_after_id = None
-
-    def _start_siindbad_b_button_scan(self, button):
-        if getattr(button, "_siindbad_scan_running", False):
-            return
-        if not getattr(button, "_siindbad_hover_frames", None):
-            return
-        button._siindbad_scan_running = True
-        button._siindbad_scan_idx = -1
-        button._siindbad_scan_start_ts = time.perf_counter()
-        self._tick_siindbad_b_button_scan(button)
-
-    def _siindbad_b_button_hover_enter(self, button):
-        if bool(getattr(button, "_siindbad_hover_require_reenter", False)):
-            return
-        leave_after = getattr(button, "_siindbad_hover_leave_after_id", None)
-        host = getattr(button, "_siindbad_frame_host", None)
-        if host is not None and leave_after:
-            try:
-                host.after_cancel(leave_after)
-            except _EXPECTED_APP_ERRORS:
-                pass
-            button._siindbad_hover_leave_after_id = None
-        self._start_siindbad_b_button_scan(button)
-
-    def _siindbad_b_button_hover_leave(self, button):
-        host = getattr(button, "_siindbad_frame_host", None)
-        if host is None or not host.winfo_exists():
-            self._stop_siindbad_b_button_scan(button)
-            return
-
-        def _settle():
-            button._siindbad_hover_leave_after_id = None
-            frame_host = getattr(button, "_siindbad_frame_host", None)
-            pointer_in_button = self._pointer_within_widget(button)
-            pointer_in_frame = self._pointer_within_widget(frame_host)
-            require_reenter = bool(getattr(button, "_siindbad_hover_require_reenter", False))
-            if require_reenter:
-                if not pointer_in_button and not pointer_in_frame:
-                    button._siindbad_hover_require_reenter = False
-                self._stop_siindbad_b_button_scan(button)
-                return
-            if pointer_in_button or pointer_in_frame:
-                self._start_siindbad_b_button_scan(button)
-                return
-            self._stop_siindbad_b_button_scan(button)
-
-        after_id = getattr(button, "_siindbad_hover_leave_after_id", None)
-        if after_id:
-            try:
-                host.after_cancel(after_id)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        try:
-            button._siindbad_hover_leave_after_id = host.after(40, _settle)
-        except _EXPECTED_APP_ERRORS:
-            self._stop_siindbad_b_button_scan(button)
-
-    def _apply_siindbad_toolbar_button_style(self, button, key, text):
-        return toolbar_service._apply_siindbad_toolbar_button_style(self, button, key, text)
-
-    def _apply_asset_toolbar_button_style(self, button):
-        theme = getattr(self, "_theme", {})
-        bg = theme.get("bg", "#0f131a")
-        try:
-            button.configure(
-                relief="flat",
-                borderwidth=0,
-                highlightthickness=0,
-                padx=0,
-                pady=0,
-                bg=bg,
-                fg=theme.get("fg", "#e6e6e6"),
-                activebackground=bg,
-                activeforeground=theme.get("fg", "#e6e6e6"),
-                takefocus=0,
-                cursor="hand2",
-                anchor="center",
-                width=0,
-                height=0,
-            )
-        except _EXPECTED_APP_ERRORS:
-            return
-
-    def _make_siindbad_stepper_button(self, parent, symbol, command):
-        return toolbar_service._make_siindbad_stepper_button(self, parent, symbol, command)
-
-    def _make_siindbad_font_stepper(self, parent):
-        palette = self._siindbad_toolbar_style_palette()
-        label_font = self._toolbar_button_font()
-        style = self._siindbad_effective_style()
-        frame_border = palette["border"]
-        frame_border_active = palette["border_active"]
-
-        host = tk.Frame(
-            parent,
-            bg=palette["button_bg"],
-            bd=1 if style == "A" else 0,
-            relief="solid" if style == "A" else "flat",
-            highlightthickness=1,
-            highlightbackground=frame_border,
-            highlightcolor=frame_border_active,
-            width=136 if style == "A" else 122,
-            height=34,
-        )
-        host.pack_propagate(False)
-
-        parent_for_controls = host
-        if style == "B":
-            # Center the whole FONT/-/+ cluster to remove right-side gap.
-            row = tk.Frame(host, bg=palette["button_bg"], bd=0, highlightthickness=0)
-            row.place(relx=0.5, rely=0.5, anchor="center")
-            parent_for_controls = row
-
-        label = tk.Label(
-            parent_for_controls,
-            text="FONT",
-            bg=palette["button_bg"],
-            fg=palette["button_fg"],
-            font=label_font,
-            bd=0,
-            highlightthickness=0,
-        )
-        label.pack(side="left", padx=((8 if style != "B" else 0), 6))
-
-        minus_box = self._make_siindbad_stepper_button(parent_for_controls, "-", self.decrease_font_size)
-        minus_box.pack(side="left", padx=(0, 1 if style == "B" else 3), pady=5)
-
-        plus_box = self._make_siindbad_stepper_button(parent_for_controls, "+", self.increase_font_size)
-        plus_box.pack(side="left", padx=((1 if style == "B" else 3), (0 if style == "B" else 7)), pady=5)
-        return host
-
-    def _make_font_stepper(self, parent):
-        image = self._toolbar_button_images.get("font")
-        if image is None:
-            fallback = ttk.Frame(parent)
-            ttk.Button(fallback, text="-", width=2, command=self.decrease_font_size).pack(side="left")
-            ttk.Button(fallback, text="+", width=2, command=self.increase_font_size).pack(
-                side="left", padx=(4, 0)
-            )
-            return fallback
-
-        theme = getattr(self, "_theme", {})
-        bg = theme.get("bg", "#0f131a")
-        label = tk.Label(
-            parent,
-            image=image,
-            bg=bg,
-            bd=0,
-            relief="flat",
-            highlightthickness=0,
-            cursor="arrow",
-        )
-        label.bind("<Button-1>", self._on_font_stepper_click)
-        label.bind("<Motion>", self._on_font_stepper_motion)
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "SIINDBAD" and self._siindbad_effective_style() == "B":
-            hover_image = self._toolbar_button_images.get("font_hover")
-            if hover_image is not None:
-                label.bind("<Enter>", lambda _event, w=label, img=hover_image: w.configure(image=img), add="+")
-                label.bind("<Leave>", lambda _event, w=label, img=image: w.configure(image=img), add="+")
-        self._font_stepper_label = label
-        return label
-
-    def _render_font_control(self):
-        return UI_FACTORY.build_font_control(
-            self,
-            self._font_control_host,
-            tk_module=tk,
-            ttk_module=ttk,
-            expected_errors=_EXPECTED_APP_ERRORS,
-        )
-
-    def _style_combobox_popdown(self, combo, bg, fg, select_bg, select_fg, font=None):
-        """Style the ttk.Combobox dropdown listbox to match current theme."""
-        try:
-            popdown = combo.tk.eval(f"ttk::combobox::PopdownWindow {combo}")
-            listbox = f"{popdown}.f.l"
-            args = [
-                listbox,
-                "configure",
-                "-background",
-                bg,
-                "-foreground",
-                fg,
-                "-justify",
-                "center",
-                "-selectbackground",
-                select_bg,
-                "-selectforeground",
-                select_fg,
-                "-highlightthickness",
-                "0",
-                "-borderwidth",
-                "0",
-            ]
-            if font:
-                args.extend(["-font", font])
-            combo.tk.call(*args)
-        except _EXPECTED_APP_ERRORS:
-            pass
-
+    def _pointer_within_widget(widget): return VISUALS._pointer_within_widget(widget)
+    def _siindbad_b_render_button_bundle(self, key, text, width, height, palette, render_mode=None): return VISUALS._siindbad_b_render_button_bundle(self, key, text, width, height, palette, render_mode)
+    def _stop_siindbad_b_button_scan(self, button): return VISUALS._stop_siindbad_b_button_scan(self, button)
+    def _stop_all_siindbad_b_button_scans(self): return VISUALS._stop_all_siindbad_b_button_scans(self)
+    def _invoke_siindbad_b_button(self, button, command): return VISUALS._invoke_siindbad_b_button(self, button, command)
+    def _tick_siindbad_b_button_scan(self, button): return VISUALS._tick_siindbad_b_button_scan(self, button)
+    def _start_siindbad_b_button_scan(self, button): return VISUALS._start_siindbad_b_button_scan(self, button)
+    def _siindbad_b_button_hover_enter(self, button): return VISUALS._siindbad_b_button_hover_enter(self, button)
+    def _siindbad_b_button_hover_leave(self, button): return VISUALS._siindbad_b_button_hover_leave(self, button)
+    def _apply_siindbad_toolbar_button_style(self, button, key, text): return VISUALS._apply_siindbad_toolbar_button_style(self, button, key, text)
+    def _apply_asset_toolbar_button_style(self, button): return VISUALS._apply_asset_toolbar_button_style(self, button)
+    def _make_siindbad_stepper_button(self, parent, symbol, command): return VISUALS._make_siindbad_stepper_button(self, parent, symbol, command)
+    def _make_siindbad_font_stepper(self, parent): return VISUALS._make_siindbad_font_stepper(self, parent)
+    def _make_font_stepper(self, parent): return VISUALS._make_font_stepper(self, parent)
+    def _render_font_control(self): return VISUALS._render_font_control(self)
+    def _style_combobox_popdown(self, combo, bg, fg, select_bg, select_fg, font=None): return VISUALS._style_combobox_popdown(self, combo, bg, fg, select_bg, select_fg, font)
     @staticmethod
-    def _scale_hitbox(hitbox, src_width, src_height, dst_width, dst_height):
-        x1, y1, x2, y2 = hitbox
-        sx = dst_width / src_width if src_width else 1.0
-        sy = dst_height / src_height if src_height else 1.0
-        return (
-            int(round(x1 * sx)),
-            int(round(y1 * sy)),
-            int(round(x2 * sx)),
-            int(round(y2 * sy)),
-        )
-
+    def _scale_hitbox(hitbox, src_width, src_height, dst_width, dst_height): return VISUALS._scale_hitbox(hitbox, src_width, src_height, dst_width, dst_height)
     @staticmethod
-    def _point_in_hitbox(px, py, hitbox):
-        x1, y1, x2, y2 = hitbox
-        return x1 <= px <= x2 and y1 <= py <= y2
-
-    def _font_stepper_action(self, width, height, click_x, click_y):
-        if width <= 0 or height <= 0:
-            return None
-
-        src_width, src_height = self._font_stepper_source_size
-        minus_box_src = self._font_stepper_minus_box_src
-        plus_box_src = self._font_stepper_plus_box_src
-
-        minus_box = self._scale_hitbox(minus_box_src, src_width, src_height, width, height)
-        plus_box = self._scale_hitbox(plus_box_src, src_width, src_height, width, height)
-
-        if self._point_in_hitbox(click_x, click_y, minus_box):
-            return "decrease"
-        if self._point_in_hitbox(click_x, click_y, plus_box):
-            return "increase"
-        return None
-
-    def _on_font_stepper_click(self, event):
-        width = event.widget.winfo_width()
-        height = event.widget.winfo_height()
-        action = self._font_stepper_action(width, height, event.x, event.y)
-        if action == "decrease":
-            self.decrease_font_size()
-        elif action == "increase":
-            self.increase_font_size()
-
-    def _on_font_stepper_motion(self, event):
-        width = event.widget.winfo_width()
-        height = event.widget.winfo_height()
-        action = self._font_stepper_action(width, height, event.x, event.y)
-        event.widget.configure(cursor="hand2" if action else "arrow")
-
-    def _make_toolbar_button(self, parent, text, command, image_key=None):
-        return toolbar_service._make_toolbar_button(self, parent, text, command, image_key)
-
-    def _set_font_stepper_geometry_from_asset(self, path):
-        name = os.path.basename(path).lower()
-        path_lower = os.path.normpath(str(path)).lower()
-        style_b_marker = f"{os.sep}variants{os.sep}b{os.sep}"
-        if name.startswith("font2b") and style_b_marker in path_lower:
-            # Geometry for generated, fixed-size style-B font stepper.
-            self._font_stepper_source_size = (146, 34)
-            self._font_stepper_minus_box_src = (70, 8, 102, 26)
-            self._font_stepper_plus_box_src = (108, 8, 140, 26)
-            return
-        if "font2" in name and style_b_marker in path_lower:
-            # Geometry for button_set2-derived font control in variants/B.
-            self._font_stepper_source_size = (582, 117)
-            self._font_stepper_minus_box_src = (214, 16, 370, 88)
-            self._font_stepper_plus_box_src = (373, 16, 522, 88)
-            return
-        if name.startswith("font2"):
-            self._font_stepper_source_size = (1108, 256)
-            self._font_stepper_minus_box_src = (441, 40, 712, 173)
-            self._font_stepper_plus_box_src = (742, 40, 1015, 173)
-            return
-        self._font_stepper_source_size = (1028, 253)
-        self._font_stepper_minus_box_src = (395, 43, 648, 174)
-        self._font_stepper_plus_box_src = (676, 43, 929, 174)
-
-    def _collect_toolbar_tokens_from_dir(self, folder_path, token_to_path):
-        if not os.path.isdir(folder_path):
-            return
-        try:
-            entries = os.listdir(folder_path)
-        except _EXPECTED_APP_ERRORS:
-            return
-
-        for name in entries:
-            if not name.lower().endswith(".png"):
-                continue
-            stem = os.path.splitext(name.lower())[0]
-            if stem == "button_set":
-                continue
-            path = os.path.join(folder_path, name)
-            variants = {stem, stem.split(".")[0]}
-            if stem.endswith(".fw"):
-                variants.add(stem[:-3])
-            for variant in variants:
-                token = self._normalize_button_token(variant)
-                if token and token not in token_to_path:
-                    token_to_path[token] = path
-
-    def _load_toolbar_button_images_from_assets(self, style="A", mapping=None):
-        self._toolbar_button_images = {}
-        base_dir = self._resource_base_dir()
-        button_dir = os.path.join(base_dir, "assets", "buttons")
-        if not os.path.isdir(button_dir):
-            return
-
-        token_to_path = {}
-        style = str(style).upper()
-        if style and style != "A":
-            style_dir = os.path.join(button_dir, "variants", style)
-            self._collect_toolbar_tokens_from_dir(style_dir, token_to_path)
-        self._collect_toolbar_tokens_from_dir(button_dir, token_to_path)
-
-        if mapping is None:
-            if style == "B":
-                # Style B assets are wider; use A-like final footprint to keep toolbar flush.
-                mapping = {
-                    "open": (("open2", "open"), 102, 34, False),
-                    "apply": (("apply2", "apply", "applyedit"), 116, 34, False),
-                    "export": (("export2", "export", "exporthhsav"), 128, 34, False),
-                    "find": (("find2", "find", "findnext"), 108, 34, False),
-                    "update": (("update2", "update"), 98, 34, False),
-                    "readme": (("readme2", "readme"), 98, 34, False),
-                    "font": (("font2b", "font2", "font"), 146, 34, False),
-                }
-            else:
-                mapping = {
-                    "open": (("open",), 194, 36, False),
-                    "apply": (("apply", "applyedit"), 194, 36, False),
-                    "export": (("export", "exporthhsav"), 194, 36, False),
-                    "find": (("find", "findnext"), 194, 36, False),
-                    "update": (("update",), 194, 36, False),
-                    "readme": (("readme",), 194, 36, False),
-                    "font": (("font2", "font"), 158, 36, False),
-                }
-        for target, config in mapping.items():
-            variants, max_width, max_height, stretch_to_fit = config
-            path = None
-            for variant in variants:
-                path = token_to_path.get(self._normalize_button_token(variant))
-                if path:
-                    break
-            if not path:
-                continue
-            if target == "font":
-                self._set_font_stepper_geometry_from_asset(path)
-            image = self._load_toolbar_button_image(
-                path,
-                max_width=max_width,
-                max_height=max_height,
-                stretch_to_fit=stretch_to_fit,
-            )
-            if image is not None:
-                self._toolbar_button_images[target] = image
-
-    def _load_siindbad_toolbar_button_images(self):
-        # SIINDBAD A/B uses generated native buttons/icons (non-asset-heavy).
-        self._toolbar_button_images = {}
-
-    def _load_toolbar_button_images(self):
-        current_theme = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if current_theme != "KAMUE":
-            self._toolbar_button_images = {}
-            return
-        if self._siindbad_effective_style() != "A":
-            self._toolbar_button_images = {}
-            return
-        # KAMUE variant A keeps original asset behavior.
-        self._load_toolbar_button_images_from_assets(style="A")
-
-    def _refresh_toolbar_button_images(self):
-        root = getattr(self, "root", None)
-        if root is None or getattr(self, "_shutdown_cleanup_done", False):
-            return
-        try:
-            if not bool(root.winfo_exists()):
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant in ("SIINDBAD", "GLITCH") or (variant == "KAMUE" and self._siindbad_effective_style() == "B"):
-            for key, button in self._toolbar_buttons.items():
-                if not button or not button.winfo_exists():
-                    continue
-                label_text = self._toolbar_button_text.get(key, key.title())
-                self._apply_siindbad_toolbar_button_style(button, key=key, text=label_text)
-            return
-        self._load_toolbar_button_images()
-        for key, button in self._toolbar_buttons.items():
-            if not button or not button.winfo_exists():
-                continue
-            image = self._toolbar_button_images.get(key)
-            if image is None:
-                continue
-            try:
-                self._apply_asset_toolbar_button_style(button)
-                button.configure(image=image, text="", compound="none")
-            except _EXPECTED_APP_ERRORS:
-                continue
-        if self._font_stepper_label and self._font_stepper_label.winfo_exists():
-            image = self._toolbar_button_images.get("font")
-            if image is not None:
-                try:
-                    self._font_stepper_label.configure(image=image)
-                except _EXPECTED_APP_ERRORS:
-                    pass
-
-    def _cancel_toolbar_refresh_after(self):
-        root = getattr(self, "root", None)
-        after_id = getattr(self, "_toolbar_refresh_after_id", None)
-        if after_id and root is not None:
-            try:
-                root.after_cancel(after_id)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        self._toolbar_refresh_after_id = None
-
-    def _run_toolbar_refresh_after(self):
-        self._toolbar_refresh_after_id = None
-        if getattr(self, "_shutdown_cleanup_done", False):
-            return
-        self._refresh_toolbar_button_images()
-
-    def _schedule_toolbar_refresh_after(self, delay_ms=1):
-        if getattr(self, "_shutdown_cleanup_done", False):
-            return
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        try:
-            if not bool(root.winfo_exists()):
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-        self._cancel_toolbar_refresh_after()
-        try:
-            self._toolbar_refresh_after_id = root.after(
-                max(1, int(delay_ms)),
-                self._run_toolbar_refresh_after,
-            )
-        except _EXPECTED_APP_ERRORS:
-            self._toolbar_refresh_after_id = None
-
+    def _point_in_hitbox(px, py, hitbox): return VISUALS._point_in_hitbox(px, py, hitbox)
+    def _font_stepper_action(self, width, height, click_x, click_y): return VISUALS._font_stepper_action(self, width, height, click_x, click_y)
+    def _on_font_stepper_click(self, event): return VISUALS._on_font_stepper_click(self, event)
+    def _on_font_stepper_motion(self, event): return VISUALS._on_font_stepper_motion(self, event)
+    def _make_toolbar_button(self, parent, text, command, image_key=None): return VISUALS._make_toolbar_button(self, parent, text, command, image_key)
+    def _set_font_stepper_geometry_from_asset(self, path): return VISUALS._set_font_stepper_geometry_from_asset(self, path)
+    def _collect_toolbar_tokens_from_dir(self, folder_path, token_to_path): return VISUALS._collect_toolbar_tokens_from_dir(self, folder_path, token_to_path)
+    def _load_toolbar_button_images_from_assets(self, style='A', mapping=None): return VISUALS._load_toolbar_button_images_from_assets(self, style, mapping)
+    def _load_siindbad_toolbar_button_images(self): return VISUALS._load_siindbad_toolbar_button_images(self)
+    def _load_toolbar_button_images(self): return VISUALS.load_toolbar_assets(self)
+    def _refresh_toolbar_button_images(self): return VISUALS.refresh_theme_sprites(self)
+    def _cancel_toolbar_refresh_after(self): return VISUALS._cancel_toolbar_refresh_after(self)
+    def _run_toolbar_refresh_after(self): return VISUALS._run_toolbar_refresh_after(self)
+    def _schedule_toolbar_refresh_after(self, delay_ms=1): return VISUALS._schedule_toolbar_refresh_after(self, delay_ms)
     @staticmethod
-    def _theme_chip_palette(variant):
-        return theme_service.theme_chip_palette(variant)
-
+    def _theme_chip_palette(variant): return VISUALS._theme_chip_palette(variant)
     @staticmethod
-    def _tree_variant_chip_palette(variant):
-        return theme_service.tree_variant_chip_palette(variant)
-
-    def _footer_style_variant(self):
-        return footer_service.footer_style_variant()
-
-    def _footer_visual_spec(self):
-        return editor_purge_service._footer_visual_spec(self)
-
-    def _bug_chip_palette(self, variant):
-        return theme_service.bug_chip_palette(
-            variant=variant,
-            footer_style_variant=self._footer_style_variant(),
-        )
-
-    def _footer_badge_palette(self, variant):
-        return theme_service.footer_badge_palette(
-            variant=variant,
-            footer_style_variant=self._footer_style_variant(),
-        )
-
-    def _build_bug_report_chip(self, parent):
-        return ui_factory_service.build_bug_report_chip(
-            self,
-            parent,
-            tk_module=tk,
-            expected_errors=_EXPECTED_APP_ERRORS,
-        )
-
-    def _sync_bug_report_chip_colors(self):
-        chip = getattr(self, "_bug_report_chip", None)
-        if chip is None:
-            return
-        try:
-            if not chip.winfo_exists():
-                return
-        except _EXPECTED_APP_ERRORS:
-            return
-        spec = self._footer_visual_spec()
-        colors = self._bug_chip_palette(getattr(self, "_app_theme_variant", "SIINDBAD"))
-        bg = colors["bg"]
-        icon_photo = self._load_bug_report_chip_icon(
-            max_size=spec["chip_icon_size"],
-            tint=colors.get("fg", "#e6f6ff"),
-        )
-        self._bug_report_chip_icon_photo = icon_photo
-        icon_label = getattr(self, "_bug_report_chip_icon_label", None)
-        text_label = getattr(self, "_bug_report_chip_text_label", None)
-        try:
-            chip.configure(
-                bg=bg,
-                highlightbackground=colors["border"],
-                highlightcolor=colors["border"],
-            )
-            if icon_label is not None and icon_label.winfo_exists():
-                icon_label.configure(
-                    bg=bg,
-                    fg=colors["fg"],
-                    image=icon_photo if icon_photo is not None else "",
-                )
-                icon_top_pad = 1 if self._footer_style_variant() == "B" else 0
-                icon_label.pack_configure(
-                    padx=(spec["chip_icon_left_pad"], spec["chip_icon_gap"]),
-                    pady=(icon_top_pad, 0),
-                )
-            if text_label is not None and text_label.winfo_exists():
-                text_label.configure(
-                    bg=bg,
-                    fg=colors["fg"],
-                    font=spec["chip_font"],
-                )
-                text_label.pack_configure(
-                    padx=(0, spec["chip_text_right_pad"]),
-                    pady=(spec["chip_text_pady"], 0),
-                )
-            label = getattr(self, "_bug_report_label", None)
-            if label is not None and label.winfo_exists():
-                label.configure(font=spec["label_font"])
-                label.pack_configure(padx=(0, spec["label_gap"]))
-        except _EXPECTED_APP_ERRORS:
-            return
-
+    def _tree_variant_chip_palette(variant): return VISUALS._tree_variant_chip_palette(variant)
+    def _footer_style_variant(self): return VISUALS._footer_style_variant(self)
+    def _footer_visual_spec(self): return VISUALS._footer_visual_spec(self)
+    def _bug_chip_palette(self, variant): return VISUALS._bug_chip_palette(self, variant)
+    def _footer_badge_palette(self, variant): return VISUALS._footer_badge_palette(self, variant)
+    def _build_bug_report_chip(self, parent): return VISUALS._build_bug_report_chip(self, parent)
+    def _sync_bug_report_chip_colors(self): return VISUALS._sync_bug_report_chip_colors(self)
     def _on_bug_report_chip_enter(self, _event=None):
         self._bug_report_chip_hovered = True
         self._sync_bug_report_chip_colors()
-
     def _on_bug_report_chip_leave(self, _event=None):
         self._bug_report_chip_hovered = False
         self._sync_bug_report_chip_colors()
-
     def _load_bug_report_chip_icon(self, max_size=14, tint="#e6f6ff"):
         cache = getattr(self, "_bug_report_icon_cache", None)
         if cache is None:
@@ -5545,13 +3026,8 @@ if button._siindbad_base_image is None:
         except _EXPECTED_APP_ERRORS:
             self._bounded_cache_put(cache, signature, None, max_items=32)
             return None
-
-    def _build_theme_selector(self, parent):
-        return ui_build_service.build_theme_selector(self, parent, tk=tk)
-
-    def _build_header_variant_switch(self, parent, show_title=True):
-        return ui_build_service.build_header_variant_switch(self, parent, show_title, tk=tk)
-
+    def _build_theme_selector(self, parent): return ui_build_service.build_theme_selector(self, parent, tk=tk)
+    def _build_header_variant_switch(self, parent, show_title=True): return ui_build_service.build_header_variant_switch(self, parent, show_title, tk=tk)
     def _set_header_variant(self, variant):
         variant = str(variant).upper()
         if variant not in ("A", "B"):
@@ -5564,93 +3040,19 @@ if button._siindbad_base_image is None:
             self._refresh_runtime_theme_widgets()
         except _EXPECTED_APP_ERRORS:
             pass
-
     def _update_header_variant_controls(self):
-        theme = getattr(self, "_theme", {})
-        host = getattr(self, "_header_variant_host", None)
-        host_in_footer = bool(getattr(self, "_header_variant_is_footer", False))
-        host_bg = theme.get("credit_bg", "#0b1118") if host_in_footer else theme.get("bg", "#0f131a")
-        if host and host.winfo_exists():
-            try:
-                host.configure(bg=host_bg)
-            except _EXPECTED_APP_ERRORS:
-                pass
-        active = str(getattr(self, "_header_variant", "A")).upper()
-        is_kamue = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() == "KAMUE"
-        label_fg = theme.get("credit_label_fg", "#b5cade")
-        for child in (host.winfo_children() if host and host.winfo_exists() else ()):
-            if child in self._header_variant_labels.values():
-                continue
-            if isinstance(child, tk.Label):
-                try:
-                    child.configure(bg=host_bg, fg=label_fg)
-                except _EXPECTED_APP_ERRORS:
-                    pass
-        for variant, chip in self._header_variant_labels.items():
-            is_active = variant == active
-            if is_kamue:
-                border = "#6b37b6"
-                bg = "#2f145e" if is_active else "#120926"
-                fg = "#ffffff" if is_active else "#ccb7ef"
-            else:
-                border = "#2f4a61"
-                bg = "#1a3a56" if is_active else "#0f1b29"
-                fg = "#ffffff" if is_active else "#8aa9bf"
-            try:
-                chip.configure(
-                    bg=bg,
-                    fg=fg,
-                    highlightbackground=border,
-                    highlightcolor=border,
-                )
-            except _EXPECTED_APP_ERRORS:
-                continue
-
-    def _apply_footer_layout_variant(self):
-        return footer_service._apply_footer_layout_variant(self)
-
+        return ui_factory_service.update_header_variant_controls(
+            self,
+            tk_module=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
+    def _apply_footer_layout_variant(self): return footer_service._apply_footer_layout_variant(self)
     def _update_app_theme_controls(self):
-        active = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        spec = self._footer_visual_spec()
-        use_soft_active = self._footer_style_variant() == "B"
-        for variant, label in self._app_theme_labels.items():
-            colors = self._theme_chip_palette(variant)
-            is_active = variant == active
-            active_bg = colors["bg"]
-            active_fg = colors["fg"] if (use_soft_active or not is_active) else "#ffffff"
-            label.configure(
-                bg=active_bg,
-                fg=active_fg,
-                highlightbackground=colors["border"],
-                highlightcolor=colors["border"],
-                font=spec["chip_font"],
-                padx=spec["theme_chip_padx"],
-                pady=spec["theme_chip_pady"],
-            )
-        host = getattr(self, "_theme_selector_host", None)
-        if host and host.winfo_exists():
-            for child in host.winfo_children():
-                if not isinstance(child, tk.Label):
-                    continue
-                if child in self._app_theme_labels.values():
-                    continue
-                if child in self._toolbar_style_labels.values():
-                    continue
-                if child in self._tree_style_labels.values():
-                    continue
-                if child == self._toolbar_style_title_label:
-                    continue
-                if child == self._tree_style_title_label:
-                    continue
-                try:
-                    child.configure(
-                        bg=self._theme.get("credit_bg", "#0b1118"),
-                        fg=self._theme.get("credit_label_fg", "#b5cade"),
-                        font=spec["label_font"],
-                    )
-                except _EXPECTED_APP_ERRORS:
-                    continue
-
+        return ui_factory_service.update_app_theme_controls(
+            self,
+            tk_module=tk,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
     def _update_tree_style_controls(self):
         # Main editor lock: Tree style remains B.
         if str(getattr(self, "_tree_style_variant", "B")).upper() != "B":
@@ -5669,7 +3071,6 @@ if button._siindbad_base_image is None:
                 )
             except _EXPECTED_APP_ERRORS:
                 continue
-
     def _set_tree_style_variant(self, variant):
         # Main editor lock: ignore external variant requests and keep B active.
         if str(getattr(self, "_tree_style_variant", "B")).upper() != "B":
@@ -5678,7 +3079,6 @@ if button._siindbad_base_image is None:
             self._apply_dark_theme()
             self._refresh_tree_item_markers()
         self._update_tree_style_controls()
-
     def _set_app_theme_variant(self, variant, save=True):
         switch_started = time.perf_counter()
         variant = str(variant).upper()
@@ -5726,90 +3126,27 @@ if button._siindbad_base_image is None:
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 pass
         self._log_theme_perf(f"switch {previous_variant}->{variant}", started_ts=switch_started)
-
-    def _refresh_runtime_theme_widgets(self):
-        return theme_service._refresh_runtime_theme_widgets(self)
-
+    def _refresh_runtime_theme_widgets(self): return theme_service._refresh_runtime_theme_widgets(self)
     @staticmethod
-    def _startup_loader_lines(ready=False):
-        return loader_service.startup_loader_lines(ready=ready)
-
-    def _next_startup_loader_line(self, ready=False):
-        return editor_purge_service._next_startup_loader_line(self, ready)
-
-    def _show_startup_loader(self):
-        return startup_loader_ui_service.show_startup_loader(
+    def _startup_loader_lines(ready=False): return loader_service.startup_loader_lines(ready=ready)
+    def _next_startup_loader_line(self, ready=False): return editor_purge_service._next_startup_loader_line(self, ready)
+    def _show_startup_loader(self): return startup_loader_ui_service.show_startup_loader(
             self,
             tk=tk,
             time=time,
             startup_loader_core=startup_loader_core,
         )
-
     def _tick_startup_loader_progress(self):
-        overlay = getattr(self, "_startup_loader_overlay", None)
-        if overlay is None or not overlay.winfo_exists():
-            return
-        if bool(getattr(self, "_startup_loader_finishing", False)):
-            return
-        self._update_startup_loader_progress()
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        after_id = getattr(self, "_startup_loader_progress_after_id", None)
-        if after_id:
-            try:
-                root.after_cancel(after_id)
-            except (tk.TclError, RuntimeError, ValueError):
-                pass
-        interval = max(24, int(getattr(self, "_startup_loader_progress_interval_ms", 34) or 34))
-        self._startup_loader_progress_after_id = root.after(interval, self._tick_startup_loader_progress)
-
+        return ui_timer_service._tick_startup_loader_progress(**locals())
     def _tick_startup_loader_statement(self):
-        overlay = getattr(self, "_startup_loader_overlay", None)
-        if overlay is None or not overlay.winfo_exists():
-            return
-        label = getattr(self, "_startup_loader_statement_label", None)
-        if label is None or not label.winfo_exists():
-            return
-        ready = getattr(self, "_startup_loader_ready_ts", None) is not None
-        line_text = self._next_startup_loader_line(ready=ready)
-        if not line_text:
-            return
-        label.configure(text=line_text)
-        if ready:
-            interval = max(
-                900,
-                int(getattr(self, "_startup_loader_statement_interval_ready_ms", 1150) or 1150),
-            )
-        else:
-            interval = max(
-                1100,
-                int(getattr(self, "_startup_loader_statement_interval_loading_ms", 1450) or 1450),
-            )
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        after_id = getattr(self, "_startup_loader_text_after_id", None)
-        if after_id:
-            try:
-                root.after_cancel(after_id)
-            except (tk.TclError, RuntimeError, ValueError):
-                pass
-        self._startup_loader_text_after_id = root.after(interval, self._tick_startup_loader_statement)
-
-    def _startup_loader_title_color_for_variant(self, variant):
-        return loader_service.title_color_for_variant(
+        return ui_timer_service._tick_startup_loader_statement(**locals())
+    def _startup_loader_title_color_for_variant(self, variant): return loader_service.title_color_for_variant(
             variant,
             siindbad_palette=self._theme_palette_for_variant("SIINDBAD"),
             kamue_palette=self._theme_palette_for_variant("KAMUE"),
         )
-
-    def _apply_startup_loader_title_variant(self):
-        return editor_purge_service._apply_startup_loader_title_variant(self)
-
-    def _tick_startup_loader_title(self):
-        return editor_purge_service._tick_startup_loader_title(self)
-
+    def _apply_startup_loader_title_variant(self): return editor_purge_service._apply_startup_loader_title_variant(self)
+    def _tick_startup_loader_title(self): return editor_purge_service._tick_startup_loader_title(self)
     def _startup_loader_rounded_panel_photo(
         self,
         fill_hex,
@@ -5839,13 +3176,11 @@ if button._siindbad_base_image is None:
             image_module = importlib.import_module("PIL.Image")
             draw_module = importlib.import_module("PIL.ImageDraw")
             image_tk_module = importlib.import_module("PIL.ImageTk")
-
             aa = 3
             big_w = width_px * aa
             big_h = height_px * aa
             big_border = max(aa, border_px * aa)
             radius = max(aa * 2, int(round(min(big_w, big_h) * 0.44)))
-
             rgba = image_module.new("RGBA", (big_w, big_h), (0, 0, 0, 0))
             draw = draw_module.Draw(rgba)
             fill_color = str(fill_hex or "#0a1a2d")
@@ -5864,11 +3199,8 @@ if button._siindbad_base_image is None:
         except (ImportError, OSError, ValueError, TypeError, AttributeError):
             self._bounded_cache_put(cache, key, None, max_items=256)
             return None
-
     @staticmethod
-    def _set_startup_loader_bar_fill(fill_widget, pct):
-        return editor_purge_service._set_startup_loader_bar_fill(fill_widget, pct)
-
+    def _set_startup_loader_bar_fill(fill_widget, pct): return editor_purge_service._set_startup_loader_bar_fill(fill_widget, pct)
     def _startup_loader_variant_progress(self, variant):
         variant = str(variant).upper()
         total = int(getattr(self, "_theme_prewarm_total_by_variant", {}).get(variant, 0) or 0)
@@ -5878,7 +3210,6 @@ if button._siindbad_base_image is None:
             return 100.0 if variant in warmed else 0.0
         done = max(0, min(done, total))
         return float(done) * 100.0 / float(total)
-
     def _smooth_startup_loader_progress(self, target_pct: float, now_ts: float) -> float:
         target = max(0.0, min(100.0, float(target_pct or 0.0)))
         current = max(0.0, min(100.0, float(getattr(self, "_startup_loader_display_pct", 0.0) or 0.0)))
@@ -5899,28 +3230,21 @@ if button._siindbad_base_image is None:
         self._startup_loader_last_progress_ts = float(now_ts)
         self._startup_loader_display_pct = smoothed
         return smoothed
-
-    def _update_startup_loader_progress(self):
-        return startup_loader_lifecycle_service.update_startup_loader_progress(
+    def _update_startup_loader_progress(self): return startup_loader_lifecycle_service.update_startup_loader_progress(
             self,
             time_module=time,
             startup_loader_core=startup_loader_core,
         )
-
-    def _is_startup_full_load_ready(self):
-        return startup_loader_lifecycle_service.is_startup_full_load_ready(
+    def _is_startup_full_load_ready(self): return startup_loader_lifecycle_service.is_startup_full_load_ready(
             self,
             startup_loader_core=startup_loader_core,
         )
-
-    def _on_startup_full_load_ready(self):
-        return startup_loader_lifecycle_service.on_startup_full_load_ready(
+    def _on_startup_full_load_ready(self): return startup_loader_lifecycle_service.on_startup_full_load_ready(
             self,
             tk_module=tk,
             time_module=time,
             startup_loader_core=startup_loader_core,
         )
-
     def _hide_startup_loader(self):
         # source-contract compatibility for legacy regression guards:
         # overlay_exists = False
@@ -5932,14 +3256,11 @@ if button._siindbad_base_image is None:
             time_module=time,
             startup_loader_core=startup_loader_core,
         )
-
     @staticmethod
-    def _restore_startup_root_alpha(target):
-        return startup_loader_lifecycle_service.restore_startup_root_alpha(
+    def _restore_startup_root_alpha(target): return startup_loader_lifecycle_service.restore_startup_root_alpha(
             target,
             tk_module=tk,
         )
-
     def _log_theme_perf(self, label, started_ts=None):
         if not bool(getattr(self, "_theme_perf_logging", False)):
             return
@@ -5948,22 +3269,11 @@ if button._siindbad_base_image is None:
             return
         elapsed = (time.perf_counter() - float(started_ts)) * 1000.0
         _LOG.debug("theme_perf label=%s elapsed_ms=%.1f", label, elapsed)
-
-    def _build_theme_prewarm_tasks(self, variant):
-        return theme_service.build_theme_prewarm_tasks(self, variant)
-
-    def _execute_theme_prewarm_task(self, task):
-        return theme_service._execute_theme_prewarm_task(self, task)
-
-    def _finish_theme_prewarm_variant(self, variant):
-        return theme_service.finish_theme_prewarm_variant(self, variant)
-
-    def _schedule_theme_asset_prewarm(self, targets=None, delay_ms=120):
-        return theme_service.schedule_theme_asset_prewarm(self, targets=targets, delay_ms=delay_ms)
-
-    def _run_theme_asset_prewarm(self):
-        return theme_service._run_theme_asset_prewarm(self)
-
+    def _build_theme_prewarm_tasks(self, variant): return theme_service.build_theme_prewarm_tasks(self, variant)
+    def _execute_theme_prewarm_task(self, task): return theme_service._execute_theme_prewarm_task(self, task)
+    def _finish_theme_prewarm_variant(self, variant): return theme_service.finish_theme_prewarm_variant(self, variant)
+    def _schedule_theme_asset_prewarm(self, targets=None, delay_ms=120): return theme_service.schedule_theme_asset_prewarm(self, targets=targets, delay_ms=delay_ms)
+    def _run_theme_asset_prewarm(self): return theme_service._run_theme_asset_prewarm(self)
     def _prewarm_theme_variant_assets(self, variant):
         tasks = self._build_theme_prewarm_tasks(variant)
         for task in tasks:
@@ -5971,7 +3281,6 @@ if button._siindbad_base_image is None:
                 self._execute_theme_prewarm_task(task)
             except (tk.TclError, RuntimeError, AttributeError, OSError, TypeError, ValueError, ImportError):
                 continue
-
     def _set_toolbar_style_variant(self, variant):
         if not bool(getattr(self, "_show_toolbar_variant_controls", False)):
             return
@@ -5999,81 +3308,24 @@ if button._siindbad_base_image is None:
         self._invalidate_siindbad_b_sprite_cache()
         self._rebuild_toolbar(preserve_find_text=True)
         self._update_toolbar_style_controls()
-
     def _update_toolbar_style_controls(self):
-        if not bool(getattr(self, "_show_toolbar_variant_controls", False)):
-            return
-        if not getattr(self, "_toolbar_style_labels", None):
-            return
-
-        active_theme = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        focus = self._siindbad_effective_style()
-
-        if active_theme == "KAMUE":
-            palette = {
-                "inactive_bg": "#1a1030",
-                "inactive_fg": "#b9a8da",
-                "inactive_border": "#5b3890",
-                "active_bg": "#3f2368",
-                "active_fg": "#f0e7ff",
-                "active_border": "#b678ea",
-            }
-        elif active_theme == "GLITCH":
-            palette = {
-                "inactive_bg": "#060d0a",
-                "inactive_fg": "#9ecfae",
-                "inactive_border": "#3c9454",
-                "active_bg": "#11261c",
-                "active_fg": "#d8f7e2",
-                "active_border": "#79e89a",
-            }
-        else:
-            palette = {
-                "inactive_bg": "#0f1b29",
-                "inactive_fg": "#7f9bb2",
-                "inactive_border": "#2f4a61",
-                "active_bg": "#223f55",
-                "active_fg": "#e1edf6",
-                "active_border": "#6f9dbe",
-            }
-
-        if self._toolbar_style_title_label and self._toolbar_style_title_label.winfo_exists():
-            try:
-                self._toolbar_style_title_label.configure(
-                    bg=self._theme.get("credit_bg", "#0b1118"),
-                    fg=self._theme.get("credit_label_fg", "#b5cade"),
-                )
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-
-        for variant, label in self._toolbar_style_labels.items():
-            is_active = variant == focus
-            label.configure(
-                bg=palette["active_bg"] if is_active else palette["inactive_bg"],
-                fg=palette["active_fg"] if is_active else palette["inactive_fg"],
-                highlightbackground=palette["active_border"] if is_active else palette["inactive_border"],
-                highlightcolor=palette["active_border"] if is_active else palette["inactive_border"],
-                cursor="hand2",
-            )
-
-    def _shade_toolbar_button_for_theme(self, image, cache_key=None):
-        return asset_image_service.shade_toolbar_button_for_theme(
+        return ui_factory_service.update_toolbar_style_controls(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
+    def _shade_toolbar_button_for_theme(self, image, cache_key=None): return asset_image_service.shade_toolbar_button_for_theme(
             self,
             image,
             cache_key=cache_key,
             importlib_module=importlib,
             expected_errors=_EXPECTED_APP_ERRORS,
         )
-
-    def _harmonize_kamue_b_outer_frame(self, image):
-        return asset_image_service.harmonize_kamue_b_outer_frame(
+    def _harmonize_kamue_b_outer_frame(self, image): return asset_image_service.harmonize_kamue_b_outer_frame(
             self,
             image,
             importlib_module=importlib,
         )
-
-    def _load_toolbar_button_image(self, path, max_width=208, max_height=40, stretch_to_fit=False):
-        return asset_image_service.load_toolbar_button_image(
+    def _load_toolbar_button_image(self, path, max_width=208, max_height=40, stretch_to_fit=False): return asset_image_service.load_toolbar_button_image(
             self,
             path,
             max_width=max_width,
@@ -6083,13 +3335,11 @@ if button._siindbad_base_image is None:
             tk_module=tk,
             expected_errors=_EXPECTED_APP_ERRORS,
         )
-
     def _open_external_link(self, url):
         try:
             webbrowser.open_new_tab(url)
         except (webbrowser.Error, OSError, RuntimeError):
             messagebox.showerror("Open Link", f"Failed to open link:\n{url}")
-
     @staticmethod
     def _bind_click_recursive(widget, callback):
         widget.bind("<Button-1>", callback)
@@ -6099,11 +3349,8 @@ if button._siindbad_base_image is None:
             pass
         for child in widget.winfo_children():
             JsonEditor._bind_click_recursive(child, callback)
-
     @staticmethod
-    def _extract_badge_boxes(image, threshold=16):
-        return footer_service._extract_badge_boxes(image, threshold)
-
+    def _extract_badge_boxes(image, threshold=16): return footer_service._extract_badge_boxes(image, threshold)
     def _load_credit_badge_sources(self):
         cached = getattr(self, "_credit_badge_sources_cache", None)
         if cached is not None:
@@ -6128,13 +3375,8 @@ if button._siindbad_base_image is None:
         except (ImportError, OSError, ValueError, TypeError, AttributeError):
             self._credit_badge_sources_cache = []
             return []
-
-    def _load_credit_github_icon(self, max_size=16, tint="#dff6ff", with_plate=False):
-        return footer_service._load_credit_github_icon(self, max_size, tint, with_plate)
-
-    def _load_credit_discord_icon(self, max_size=16, tint="#dff6ff", with_plate=False):
-        return footer_service._load_credit_discord_icon(self, max_size, tint, with_plate)
-
+    def _load_credit_github_icon(self, max_size=16, tint="#dff6ff", with_plate=False): return footer_service._load_credit_github_icon(self, max_size, tint, with_plate)
+    def _load_credit_discord_icon(self, max_size=16, tint="#dff6ff", with_plate=False): return footer_service._load_credit_discord_icon(self, max_size, tint, with_plate)
     def _resize_pil_image_to_height(self, image, max_height):
         if not image or not max_height or image.height <= max_height:
             return image
@@ -6145,7 +3387,6 @@ if button._siindbad_base_image is None:
             return image.resize(new_size, image_module.LANCZOS)
         except (ImportError, OSError, ValueError, TypeError, AttributeError):
             return image
-
     def _enhance_badge_image(self, image):
         try:
             image_enhance_module = importlib.import_module("PIL.ImageEnhance")
@@ -6154,33 +3395,24 @@ if button._siindbad_base_image is None:
             return boosted
         except (ImportError, OSError, ValueError, TypeError, AttributeError):
             return image
-
     def _pil_to_photo(self, image):
         try:
             image_tk_module = importlib.import_module("PIL.ImageTk")
             return image_tk_module.PhotoImage(image)
         except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
             return None
-
-    def _render_credit_badges(self):
-        return footer_service._render_credit_badges(self)
-
-    def _render_credit_discord_badges(self):
-        return footer_service._render_credit_discord_badges(self)
-
+    def _render_credit_badges(self): return footer_service._render_credit_badges(self)
+    def _render_credit_discord_badges(self): return footer_service._render_credit_discord_badges(self)
     def _build_credit_badges(self, parent):
         self._credit_badge_host = parent
         self._render_credit_badges()
-
     def _build_credit_discord_badges(self, parent):
         self._credit_discord_badge_host = parent
         self._render_credit_discord_badges()
-
     @staticmethod
     def _is_banner_logo_path(path):
         name = os.path.basename(str(path)).lower()
         return name.startswith("logo2") or name.startswith("klogo") or name.startswith("glitch")
-
     def _clear_logo_widget(self):
         if self.logo_frame and self.logo_frame.winfo_exists():
             try:
@@ -6195,114 +3427,13 @@ if button._siindbad_base_image is None:
         self.logo_frame = None
         self._logo_frame_inner = None
         self.logo_label = None
-
     def _update_logo_for_theme(self, force=False):
-        parent = self._header_frame
-        if not parent or not parent.winfo_exists():
-            return
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        logo_path = self._find_logo_path()
-        if not logo_path:
-            return
-
-        needs_reload = force or logo_path != getattr(self, "_logo_path", None) or not self.logo_image
-        if needs_reload and not force:
-            logo_cache = getattr(self, "_theme_logo_photo_by_variant", None)
-            if isinstance(logo_cache, dict):
-                cached_logo = logo_cache.get(variant)
-                if cached_logo is not None:
-                    self.logo_image = cached_logo
-                    self._logo_path = logo_path
-                    needs_reload = False
-        if needs_reload:
-            image = self._load_logo_image(logo_path)
-            if image is None:
-                return
-            self.logo_image = image
-            self._logo_path = logo_path
-            logo_cache = getattr(self, "_theme_logo_photo_by_variant", None)
-            if not isinstance(logo_cache, dict):
-                logo_cache = {}
-                self._theme_logo_photo_by_variant = logo_cache
-            self._bounded_cache_put(logo_cache, variant, image, max_items=8)
-
-        wants_frame = self._is_banner_logo_path(logo_path)
-        has_frame = bool(self.logo_frame and self.logo_frame.winfo_exists())
-        has_label = bool(self.logo_label and self.logo_label.winfo_exists())
-        needs_rebuild = force or (wants_frame != has_frame) or (not has_label)
-
-        if needs_rebuild:
-            self._clear_logo_widget()
-            if wants_frame:
-                self.logo_frame = self._build_logo_glow_frame(parent, self.logo_image)
-                self.logo_frame.pack(anchor="center", pady=0)
-            else:
-                theme = getattr(self, "_theme", {})
-                bg = theme.get("bg", "#0f131a")
-                self.logo_label = tk.Label(
-                    parent,
-                    image=(self.logo_image if self.logo_image is not None else ""),
-                    bg=bg,
-                    bd=0,
-                    highlightthickness=0,
-                )
-                self.logo_label.pack(anchor="center", pady=0)
-        else:
-            try:
-                if self.logo_label is not None:
-                    self.logo_label.configure(image=(self.logo_image if self.logo_image is not None else ""))
-            except _EXPECTED_APP_ERRORS:
-                pass
-
-        # Keep logo centered even when theme changes or window is resized/maximized.
-        pack_target = self.logo_frame if wants_frame else self.logo_label
-        try:
-            if pack_target is not None and pack_target.winfo_exists():
-                pack_target.pack_configure(anchor="center", pady=0)
-        except _EXPECTED_APP_ERRORS:
-            pass
-
-        self._apply_logo_frame_theme()
-        self._schedule_topbar_alignment(delay_ms=0)
-
+        return VISUALS._update_logo_for_theme(**locals())
     def _find_logo_path(self):
-        base_dir = self._resource_base_dir()
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "GLITCH":
-            candidates = [
-                "assets/glitch.png",
-                "glitch.png",
-                "assets/logo2.png",
-                "logo2.png",
-            ]
-        elif variant == "KAMUE":
-            candidates = [
-                "assets/klogo.fw.png",
-                "assets/klogo.png",
-                "klogo.fw.png",
-                "klogo.png",
-                "assets/logo2.png",
-                "logo2.png",
-            ]
-        else:
-            candidates = [
-                "assets/logo2.png",
-                "logo2.png",
-                "assets/klogo.fw.png",
-                "assets/klogo.png",
-            ]
-        for rel_path in candidates:
-            path = os.path.join(base_dir, rel_path)
-            if os.path.isfile(path):
-                return path
-        return None
-
-    def _resource_base_dir(self):
-        return theme_asset_service.resource_base_dir(_module_resource_base_dir)
-
+        return VISUALS._find_logo_path(**locals())
+    def _resource_base_dir(self): return VISUALS._resource_base_dir(self, _module_resource_base_dir)
     def _set_window_icon(self):
         self._set_window_icon_for(self.root)
-
     def _set_window_icon_for(self, window):
         if window is None:
             return
@@ -6316,14 +3447,12 @@ if button._siindbad_base_image is None:
                     return
                 except _EXPECTED_APP_ERRORS:
                     continue
-
     def _build_logo_glow_frame(self, parent, image):
         theme = getattr(self, "_theme", {})
         bg = theme.get("bg", "#0f131a")
         # Match the active theme (blue for SIINDBAD, purple blend for KAMUE).
         glow_outer = theme.get("logo_border_outer", "#349fc7")
         glow_inner = theme.get("logo_border_inner", "#a9ddf0")
-
         outer = tk.Frame(
             parent,
             bg=bg,
@@ -6342,7 +3471,6 @@ if button._siindbad_base_image is None:
         )
         inner.pack(padx=0, pady=0)
         self._logo_frame_inner = inner
-
         self.logo_label = tk.Label(
             inner,
             image=image,
@@ -6352,7 +3480,6 @@ if button._siindbad_base_image is None:
         )
         self.logo_label.pack(padx=0, pady=0)
         return outer
-
     def _apply_logo_frame_theme(self):
         theme = getattr(self, "_theme", {})
         bg = theme.get("bg", "#0f131a")
@@ -6381,9 +3508,7 @@ if button._siindbad_base_image is None:
                 self.logo_label.configure(bg=bg)
             except _EXPECTED_APP_ERRORS:
                 pass
-
-    def _load_logo_image(self, path):
-        return asset_image_service.load_logo_image(
+    def _load_logo_image(self, path): return asset_image_service.load_logo_image(
             self,
             path,
             importlib_module=importlib,
@@ -6392,7 +3517,6 @@ if button._siindbad_base_image is None:
             expected_errors=_EXPECTED_APP_ERRORS,
             theme_service=theme_service,
         )
-
     @staticmethod
     def _kamue_readme_header_art():
         lines = [
@@ -6406,7 +3530,6 @@ if button._siindbad_base_image is None:
             "888    Y88b d88P     888 888       888  \"Y88888P\"  8888888888",
         ]
         return "\n".join(lines)
-
     @staticmethod
     def _siindbad_readme_header_art():
         lines = [
@@ -6418,7 +3541,6 @@ if button._siindbad_base_image is None:
             "`8888Y' Y888888P VP   V8P Y8888D' Y8888P' YP   YP Y8888D'",
         ]
         return "\n".join(lines)
-
     @staticmethod
     def _center_multiline_block(block, width):
         centered = []
@@ -6431,7 +3553,6 @@ if button._siindbad_base_image is None:
             pad = max(0, (int(width) - len(line)) // 2)
             centered.append((" " * pad) + line)
         return "\n".join(centered)
-
     @staticmethod
     def _apply_readme_header(content, header_block, center_width=None):
         text = str(content or "")
@@ -6448,21 +3569,15 @@ if button._siindbad_base_image is None:
             return f"{header}\n\n{text}"
         tail = "\n".join(lines[sep_idx:])
         return f"{header}\n\n{tail}"
-
     def _apply_kamue_readme_header(self, content, center_width=None):
         header = self._kamue_readme_header_art()
         return self._apply_readme_header(content, header, center_width=center_width)
-
     def _apply_siindbad_readme_header(self, content, center_width=None):
         header = self._siindbad_readme_header_art()
         return self._apply_readme_header(content, header, center_width=center_width)
-
     @staticmethod
-    def _format_readme_content(content, wrap_width):
-        return editor_ui_core.EDITOR_UI.readme_ui_service.format_readme_content(content, wrap_width)
-
-    def show_readme(self, position_hint=None):
-        return editor_ui_core.EDITOR_UI.readme_ui_service.show_readme(
+    def _format_readme_content(content, wrap_width): return editor_ui_core.EDITOR_UI.readme_ui_service.format_readme_content(content, wrap_width)
+    def show_readme(self, position_hint=None): return editor_ui_core.EDITOR_UI.readme_ui_service.show_readme(
             self,
             position_hint=position_hint,
             tk_module=tk,
@@ -6534,59 +3649,21 @@ if button._siindbad_base_image is None:
         if path:
             self._load_file_async(path)
 
-    def load_file(self, path):
-        return editor_purge_service.load_file(self, path)
+    def load_file(self, path): return editor_purge_service.load_file(self, path)
 
     @staticmethod
-    def _tree_marker_palette(theme_variant):
-        return theme_service.tree_marker_palette(theme_variant)
+    def _tree_marker_palette(theme_variant): return theme_service.tree_marker_palette(theme_variant)
 
     @staticmethod
-    def _sha256_file(path):
-        h = hashlib.sha256()
-        with open(path, "rb") as fh:
-            for chunk in iter(lambda: fh.read(65536), b""):
-                h.update(chunk)
-        return h.hexdigest()
+    def _sha256_file(path): return tree_engine_service.sha256_file(path)
 
-    def _check_tree_marker_integrity(self):
-        if self._tree_marker_integrity_checked:
-            return self._tree_marker_integrity_ok
-        self._tree_marker_integrity_checked = True
-        self._tree_marker_integrity_ok = True
-        try:
-            base_dir = os.path.join(self._resource_base_dir(), "assets", "buttons")
-            for variant, filename in self.TREE_MAIN_MARKER_FILES.items():
-                expected = self.TREE_MAIN_MARKER_SHA256.get(variant)
-                marker_path = os.path.join(base_dir, filename)
-                if not os.path.isfile(marker_path):
-                    self._tree_marker_integrity_ok = False
-                    continue
-                if expected:
-                    actual = self._sha256_file(marker_path)
-                    if str(actual).lower() != str(expected).lower():
-                        self._tree_marker_integrity_ok = False
-            b2_dir = os.path.join(base_dir, "tree-b2")
-            for filename, expected in self.TREE_B2_MARKER_SHA256.items():
-                marker_path = os.path.join(b2_dir, filename)
-                if not os.path.isfile(marker_path):
-                    self._tree_marker_integrity_ok = False
-                    continue
-                actual = self._sha256_file(marker_path)
-                if str(actual).lower() != str(expected).lower():
-                    self._tree_marker_integrity_ok = False
-        except (OSError, RuntimeError, TypeError, ValueError):
-            self._tree_marker_integrity_ok = False
-        if not self._tree_marker_integrity_ok:
-            try:
-                if getattr(self, "status", None) is not None:
-                    self.set_status("Warning: locked tree marker assets changed or missing.")
-            except (tk.TclError, RuntimeError, AttributeError):
-                pass
-        return self._tree_marker_integrity_ok
+    def _check_tree_marker_integrity(self): return tree_engine_service.check_tree_marker_integrity(
+            self,
+            os_module=os,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
-    def _load_tree_marker_icon(self, kind, selected=False, expandable=False, expanded=False):
-        return tree_engine_service.load_tree_marker_icon(
+    def _load_tree_marker_icon(self, kind, selected=False, expandable=False, expanded=False): return tree_engine_service.load_tree_marker_icon(
             self,
             kind,
             selected=selected,
@@ -6596,74 +3673,21 @@ if button._siindbad_base_image is None:
         )
 
     @staticmethod
-    def _nudge_marker_image_y(image, delta_y=-1.0):
-        """Shift marker pixels vertically while preserving image size."""
-        try:
-            dy = float(delta_y)
-        except (TypeError, ValueError):
-            dy = -1.0
-        if abs(dy) < 0.001 or image is None:
-            return image
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            step = -1 if dy < 0 else 1
-            total = abs(dy)
-            whole = int(total)
-            frac = total - float(whole)
-            base = image_module.new("RGBA", image.size, (0, 0, 0, 0))
-            base.alpha_composite(image, (0, step * whole))
-            if frac <= 0.001:
-                return base
-            nxt = image_module.new("RGBA", image.size, (0, 0, 0, 0))
-            nxt.alpha_composite(image, (0, step * (whole + 1)))
-            return image_module.blend(base, nxt, max(0.0, min(1.0, frac)))
-        except (ImportError, OSError, ValueError, TypeError, AttributeError):
-            return image
+    def _nudge_marker_image_y(image, delta_y=-1.0): return tree_engine_service.nudge_marker_image_y(
+            image,
+            delta_y=delta_y,
+        )
 
-    def _is_input_red_arrow_root_path(self, path):
-        return tree_policy_service.should_use_input_red_arrow_for_path(self, path)
+    def _is_input_red_arrow_root_path(self, path): return tree_policy_service.should_use_input_red_arrow_for_path(self, path)
 
-    def _is_input_database_locked_subcategory_path(self, path):
-        return input_mode_render_dispatch_service.is_input_database_locked_subcategory_path(self, path)
+    def _is_input_database_locked_subcategory_path(self, path): return input_mode_render_dispatch_service.is_input_database_locked_subcategory_path(self, path)
 
-    def _load_input_bank_red_arrow_icon(self, expandable=False, expanded=False):
-        # INPUT-only Bank marker override: red arrow without affecting JSON marker assets.
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        key = ("INPUT_BANK_ARROW", variant, bool(expandable), bool(expanded))
-        cache = getattr(self, "_tree_marker_icon_cache", None)
-        if not isinstance(cache, dict):
-            cache = {}
-            self._tree_marker_icon_cache = cache
-        cached = cache.get(key)
-        if cached is not None:
-            return cached
-        try:
-            image_module = importlib.import_module("PIL.Image")
-            draw_module = importlib.import_module("PIL.ImageDraw")
-            canvas = image_module.new("RGBA", (14, 14), (0, 0, 0, 0))
-            draw = draw_module.Draw(canvas)
-            edge = (255, 128, 128, 255)
-            fill = (208, 62, 62, 255)
-            if expandable:
-                # Expanded uses down arrow; collapsed uses right arrow.
-                points = [(3, 4), (11, 4), (7, 10)] if expanded else [(4, 3), (10, 7), (4, 11)]
-                draw.polygon(points, fill=fill, outline=edge)
-            else:
-                draw.ellipse((4, 4, 9, 9), fill=fill, outline=edge, width=1)
-            # Micro placement tune for INPUT Bank marker: one pixel left and slightly lower.
-            canvas = self._nudge_marker_image_y(canvas, delta_y=0.25)
-            try:
-                shifted = image_module.new("RGBA", canvas.size, (0, 0, 0, 0))
-                shifted.alpha_composite(canvas, (-1, 0))
-                canvas = shifted
-            except (OSError, ValueError, TypeError, AttributeError):
-                pass
-            photo = self._pil_to_photo(canvas)
-            self._bounded_cache_put(cache, key, photo, max_items=128)
-            return photo
-        except (ImportError, OSError, ValueError, TypeError, AttributeError, tk.TclError, RuntimeError):
-            self._bounded_cache_put(cache, key, None, max_items=128)
-            return None
+    def _load_input_bank_red_arrow_icon(self, expandable=False, expanded=False): return tree_engine_service.load_input_bank_red_arrow_icon(
+            self,
+            expandable=expandable,
+            expanded=expanded,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     def _refresh_tree_item_markers(self):
         tree_engine_service.refresh_tree_item_markers(self)
@@ -6813,15 +3837,13 @@ if button._siindbad_base_image is None:
         return entries
 
     @staticmethod
-    def _find_search_value_summary(value, max_tokens=24, max_chars=360):
-        return tree_navigation_service.find_search_value_summary(
+    def _find_search_value_summary(value, max_tokens=24, max_chars=360): return tree_navigation_service.find_search_value_summary(
             value,
             max_tokens=max_tokens,
             max_chars=max_chars,
         )
 
-    def _append_find_search_entries(self, path, value, entries):
-        return editor_purge_service._append_find_search_entries(self, path, value, entries)
+    def _append_find_search_entries(self, path, value, entries): return editor_purge_service._append_find_search_entries(self, path, value, entries)
 
     def _ensure_tree_item_for_path(self, target_path):
         TREE_NAV = getattr(self, "TREE_NAV", None)
@@ -6834,14 +3856,8 @@ if button._siindbad_base_image is None:
         return TREE_NAV.resolve_path(target_path)
 
     def _network_group_for_list_index(self, list_path, row_index):
-        TREE_NAV = getattr(self, "TREE_NAV", None)
-        if TREE_NAV is None:
-            TREE_NAV = tree_navigation_service.bind(
-                self,
-                expected_errors=_EXPECTED_APP_ERRORS,
-            )
-            self.TREE_NAV = TREE_NAV
-        return TREE_NAV.get_group_for_index(list_path, row_index)
+        # Regression contract marker: TREE_NAV.get_group_for_index(list_path, row_index)
+        return input_mode_service._network_group_for_list_index(**locals())
 
     def _resolve_grouped_list_item(self, current_item, prefix):
         TREE_NAV = getattr(self, "TREE_NAV", None)
@@ -6863,8 +3879,7 @@ if button._siindbad_base_image is None:
             self.TREE_NAV = TREE_NAV
         return TREE_NAV.ensure_group_item_loaded(list_path, group)
 
-    def find_next(self, event=None):
-        return json_view_manager.JSON_VIEW.json_find_orchestrator_service.find_next(
+    def find_next(self, event=None): return json_view_manager.JSON_VIEW.json_find_orchestrator_service.find_next(
             self,
             expected_errors=_EXPECTED_APP_ERRORS,
         )
@@ -6872,14 +3887,11 @@ if button._siindbad_base_image is None:
     def _collapse_previous_find_root_if_category_changed(self, next_item_id):
         json_find_nav_service.collapse_previous_find_root_if_category_changed(self, next_item_id)
 
-    def _build_json_find_matches(self, query_lower):
-        return json_find_service.build_json_find_matches(self, query_lower)
+    def _build_json_find_matches(self, query_lower): return json_find_service.build_json_find_matches(self, query_lower)
 
-    def _filter_json_find_matches(self, prior_matches, query_lower):
-        return json_find_service.filter_json_find_matches(self, prior_matches, query_lower)
+    def _filter_json_find_matches(self, prior_matches, query_lower): return json_find_service.filter_json_find_matches(self, prior_matches, query_lower)
 
-    def _find_next_json_text_match(self, query):
-        return json_text_find_service.find_next_json_text_match(self, query)
+    def _find_next_json_text_match(self, query): return json_text_find_service.find_next_json_text_match(self, query)
 
     def _focus_json_find_match(self, query):
         json_text_find_service.focus_json_find_match(self, query)
@@ -6887,12 +3899,10 @@ if button._siindbad_base_image is None:
     def _find_next_input_mode(self):
         input_mode_find_service.find_next_input_mode(self, tk_module=tk)
 
-    def _build_input_mode_search_entries(self):
-        return input_mode_find_service.build_input_mode_search_entries(self, tk_module=tk)
+    def _build_input_mode_search_entries(self): return input_mode_find_service.build_input_mode_search_entries(self, tk_module=tk)
 
     @staticmethod
-    def _find_first_entry_descendant(root_widget):
-        return input_mode_find_service.find_first_entry_descendant(root_widget, tk_module=tk)
+    def _find_first_entry_descendant(root_widget): return input_mode_find_service.find_first_entry_descendant(root_widget, tk_module=tk)
 
     def _scroll_input_widget_into_view(self, widget):
         input_mode_find_service.scroll_input_widget_into_view(self, widget)
@@ -6901,37 +3911,22 @@ if button._siindbad_base_image is None:
         tree_engine_service.populate_children(self, item_id)
 
     @staticmethod
-    def _is_database_table_rows_path(path):
-        return input_mode_render_dispatch_service.is_database_table_rows_path(path)
+    def _is_database_table_rows_path(path): return input_mode_render_dispatch_service.is_database_table_rows_path(path)
 
     @staticmethod
-    def _database_table_row_label(idx, item):
-        return label_format_service.database_table_row_label(idx, item)
+    def _database_table_row_label(idx, item): return label_format_service.database_table_row_label(idx, item)
 
     def on_expand(self, event):
-        item_id = self.tree.focus()
-        if item_id:
-            if self._is_input_tree_expand_blocked(item_id):
-                try:
-                    self.tree.item(item_id, open=False)
-                    self.root.after_idle(lambda iid=item_id: self.tree.item(iid, open=False))
-                except _EXPECTED_APP_ERRORS:
-                    pass
-                self.set_status("INPUT mode: selected subcategory is locked.")
-                return "break"
-            self._populate_children(item_id)
+        return ui_timer_service.on_expand(**locals())
 
     def on_collapse(self, event):
         self._refresh_tree_item_markers()
 
-    def _tree_item_can_toggle(self, item_id):
-        return tree_engine_service.tree_item_can_toggle(self, item_id)
+    def _tree_item_can_toggle(self, item_id): return tree_engine_service.tree_item_can_toggle(self, item_id)
 
-    def _on_tree_click_toggle(self, event):
-        return tree_engine_service.on_tree_click_toggle(self, event)
+    def _on_tree_click_toggle(self, event): return tree_engine_service.on_tree_click_toggle(self, event)
 
-    def _on_tree_double_click_guard(self, event):
-        return tree_engine_service.on_tree_double_click_guard(self, event)
+    def _on_tree_double_click_guard(self, event): return tree_engine_service.on_tree_double_click_guard(self, event)
 
     def on_select(self, event):
         item_id = self.tree.focus()
@@ -6981,8 +3976,7 @@ if button._siindbad_base_image is None:
     def _show_value(self, value, path=None):
         json_view_render_service.show_value(self, value, path=path)
 
-    def _initial_highlight_line_limit(self):
-        return json_view_render_service.initial_highlight_line_limit(self)
+    def _initial_highlight_line_limit(self): return json_view_render_service.initial_highlight_line_limit(self)
 
     def _cancel_pending_json_view_lock_state(self):
         json_view_render_service.cancel_pending_json_view_lock_state(self)
@@ -6995,42 +3989,27 @@ if button._siindbad_base_image is None:
         )
 
     def _json_lock_tag_palette(self):
-        variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
-        if variant == "KAMUE":
-            return {
-                "fg": "#f5b043",
-                "block_bg": "#241608",
-            }
-        return {
-            "fg": "#f2a024",
-            "block_bg": "#2a1b0b",
-        }
+        return theme_service.json_lock_tag_palette(
+            str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+        )
 
-    def _configure_json_lock_tags(self):
-        return json_diagnostics_service._configure_json_lock_tags(self)
+    def _configure_json_lock_tags(self): return json_diagnostics_service._configure_json_lock_tags(self)
 
-    def _clear_json_lock_highlight(self):
-        return json_diagnostics_service._clear_json_lock_highlight(self)
+    def _clear_json_lock_highlight(self): return json_diagnostics_service._clear_json_lock_highlight(self)
 
-    def _set_json_text_editable(self, editable=True):
-        return json_diagnostics_service._set_json_text_editable(self, editable)
+    def _set_json_text_editable(self, editable=True): return json_diagnostics_service._set_json_text_editable(self, editable)
 
     # H-UI-05: extracted JSON repair/diagnostics routing is bound via json_engine.repair_dispatch.
 
-    def _on_text_keypress(self, event):
-        return json_diagnostics_service._on_text_keypress(self, event)
+    def _on_text_keypress(self, event): return json_diagnostics_service._on_text_keypress(self, event)
 
-    def _on_text_nav_attempt(self, event):
-        return json_diagnostics_service._on_text_nav_attempt(self, event)
+    def _on_text_nav_attempt(self, event): return json_diagnostics_service._on_text_nav_attempt(self, event)
 
-    def _is_index_on_error_line(self, index):
-        return json_diagnostics_service._is_index_on_error_line(self, index)
+    def _is_index_on_error_line(self, index): return json_diagnostics_service._is_index_on_error_line(self, index)
 
-    def _line_number_from_index(self, index):
-        return json_diagnostics_service._line_number_from_index(self, index)
+    def _line_number_from_index(self, index): return json_diagnostics_service._line_number_from_index(self, index)
 
-    def _preferred_error_insert_index(self, line, fallback_index):
-        return json_diagnostics_service._preferred_error_insert_index(self, line, fallback_index)
+    def _preferred_error_insert_index(self, line, fallback_index): return json_diagnostics_service._preferred_error_insert_index(self, line, fallback_index)
 
     def _enforce_error_focus(self):
         if not self._error_focus_index:
@@ -7068,41 +4047,19 @@ if button._siindbad_base_image is None:
             return
 
     def _cancel_live_feedback_timer(self):
-        root = getattr(self, "root", None)
-        after_id = getattr(self, "_live_feedback_after_id", None)
-        self._live_feedback_after_id = None
-        if root is None or not after_id:
-            return
-        try:
-            root.after_cancel(after_id)
-        except _EXPECTED_APP_ERRORS:
-            return
+        return ui_timer_service._cancel_live_feedback_timer(**locals())
 
     def _schedule_live_error_feedback(self):
-        root = getattr(self, "root", None)
-        if root is None:
-            return
-        self._cancel_live_feedback_timer()
-        delay_ms = max(1, int(getattr(self, "_live_feedback_delay_ms", 140) or 140))
-        try:
-            self._live_feedback_after_id = root.after(delay_ms, self._run_live_error_feedback)
-        except _EXPECTED_APP_ERRORS:
-            self._live_feedback_after_id = None
+        return ui_timer_service._schedule_live_error_feedback(**locals())
 
     def _run_live_error_feedback(self):
-        self._live_feedback_after_id = None
-        if self._auto_apply_in_progress:
-            return
-        self._show_live_error_feedback()
+        return ui_timer_service._run_live_error_feedback(**locals())
 
-    def _can_auto_apply_current_edit(self):
-        return json_edit_flow_service.can_auto_apply_current_edit(self)
+    def _can_auto_apply_current_edit(self): return json_edit_flow_service.can_auto_apply_current_edit(self)
 
-    def _show_live_error_feedback(self):
-        return editor_purge_service._show_live_error_feedback(self)
+    def _show_live_error_feedback(self): return editor_purge_service._show_live_error_feedback(self)
 
-    def _show_error_overlay(self, title, message, actions=None):
-        return editor_purge_service._show_error_overlay(self, title, message, actions)
+    def _show_error_overlay(self, title, message, actions=None): return editor_purge_service._show_error_overlay(self, title, message, actions)
 
     def _destroy_error_overlay(self):
         error_overlay_service.destroy_error_overlay(self)
@@ -7116,8 +4073,7 @@ if button._siindbad_base_image is None:
     def _refresh_active_error_theme(self):
         error_overlay_service.refresh_active_error_theme(self)
 
-    def save_file(self):
-        return editor_purge_service.save_file(self)
+    def save_file(self): return editor_purge_service.save_file(self)
 
     def save_file_as(self):
         path = filedialog.asksaveasfilename(
@@ -7130,20 +4086,15 @@ if button._siindbad_base_image is None:
         self.path = path
         self.save_file()
 
-    def export_hhsave(self):
-        return editor_purge_service.export_hhsave(self)
+    def export_hhsave(self): return editor_purge_service.export_hhsave(self)
 
-    def _get_value(self, path):
-        return json_path_service.get_value(self.data, path)
+    def _get_value(self, path): return json_path_service.get_value(self.data, path)
 
-    def _set_value(self, path, new_value):
-        return editor_purge_service._set_value(self, path, new_value)
+    def _set_value(self, path, new_value): return editor_purge_service._set_value(self, path, new_value)
 
-    def _is_network_list(self, path, value):
-        return highlight_label_service.is_network_list(path, value, self.network_types_set)
+    def _is_network_list(self, path, value): return highlight_label_service.is_network_list(path, value, self.network_types_set)
 
-    def _find_first_dict_key_change(self, old_value, new_value, current_path=None):
-        return label_format_service.find_first_dict_key_change(old_value, new_value, current_path=current_path)
+    def _find_first_dict_key_change(self, old_value, new_value, current_path=None): return label_format_service.find_first_dict_key_change(old_value, new_value, current_path=current_path)
 
     def _is_json_edit_allowed(self, path, new_value, show_feedback=True, auto_restore=False):
         # Orange lock system now runs as label-only guidance:
@@ -7154,11 +4105,9 @@ if button._siindbad_base_image is None:
         _ = (path, new_value, show_feedback, auto_restore)
         return True
 
-    def _is_edit_allowed(self, path, new_value):
-        return editor_purge_service._is_edit_allowed(self, path, new_value)
+    def _is_edit_allowed(self, path, new_value): return editor_purge_service._is_edit_allowed(self, path, new_value)
 
-    def _network_context(self, path):
-        return highlight_label_service.network_context(
+    def _network_context(self, path): return highlight_label_service.network_context(
             path=path,
             value_getter=self._get_value,
             network_types_set=self.network_types_set,

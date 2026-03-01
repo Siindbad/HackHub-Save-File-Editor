@@ -4,6 +4,71 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.domain_impl.ui import color_utility_service
+from core.domain_impl.ui import theme_service
+
+
+def preferred_mono_family(
+    owner: Any,
+    *,
+    tkfont_module: Any,
+    expected_errors: tuple[type[BaseException], ...],
+) -> str:
+    """Resolve and cache the preferred monospace family."""
+    current = getattr(owner, "_mono_family", None)
+    if current:
+        return str(current)
+    preferred = [
+        "JetBrains Mono",
+        "Cascadia Code",
+        "Cascadia Mono",
+        "Consolas",
+        "Courier New",
+    ]
+    try:
+        families = {name.lower(): name for name in tkfont_module.families(owner.root)}
+        for name in preferred:
+            hit = families.get(name.lower())
+            if hit:
+                owner._mono_family = hit
+                return str(owner._mono_family)
+    except expected_errors:
+        pass
+    owner._mono_family = "Consolas"
+    return str(owner._mono_family)
+
+
+def resolve_font_family(
+    owner: Any,
+    preferred_families: Any,
+    fallback: Any,
+    *,
+    tkfont_module: Any,
+    expected_errors: tuple[type[BaseException], ...],
+) -> str:
+    """Resolve preferred family names against available OS font families."""
+    families = getattr(owner, "_font_family_lookup_cache", None)
+    if families is None:
+        families = {}
+        try:
+            families = {name.lower(): name for name in tkfont_module.families(owner.root)}
+        except expected_errors:
+            families = {}
+        owner._font_family_lookup_cache = families
+    try:
+        for family in preferred_families:
+            hit = families.get(str(family).lower())
+            if hit:
+                return str(hit)
+    except expected_errors:
+        pass
+    return str(fallback)
+
+
+def hex_to_colorref(hex_color: Any) -> int | None:
+    """Convert #RRGGBB into Windows COLORREF integer."""
+    return color_utility_service.hex_to_colorref(hex_color)
+
 
 def apply_styles(
     owner: Any,
@@ -435,3 +500,215 @@ def show_bug_submit_splash(
         )
     except expected_errors:
         owner._hide_bug_submit_splash()
+
+
+def editor_mode_tab_photo(
+    owner: Any,
+    *,
+    active: Any = False,
+    importlib_module: Any,
+    expected_errors: tuple[type[BaseException], ...],
+) -> Any:
+    theme_variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    tab_w = 70
+    tab_h = 26
+    signature = (theme_variant, bool(active), "e1_clean_v4", tab_w, tab_h)
+    cache = getattr(owner, "_editor_mode_tab_cache", None)
+    if not isinstance(cache, dict):
+        cache = {}
+        owner._editor_mode_tab_cache = cache
+    cached = cache.get(signature)
+    if cached is not None:
+        return cached
+    try:
+        image_module = importlib_module.import_module("PIL.Image")
+        draw_module = importlib_module.import_module("PIL.ImageDraw")
+        scale = 4
+        w = tab_w * scale
+        h = tab_h * scale
+        radius = 8 * scale
+        canvas = image_module.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = draw_module.Draw(canvas)
+        palette = theme_service.editor_mode_tab_palette(theme_variant, active=bool(active))
+        fill = palette["fill"]
+        edge = palette["edge"]
+        draw.rounded_rectangle(
+            (0, 0, w - 1, h - 1),
+            radius=radius,
+            fill=fill,
+            outline=edge,
+            width=max(1, scale - 2),
+        )
+        draw.rectangle((0, 0, w - 1, max(1, radius // 3)), fill=fill)
+        small = canvas.resize((tab_w, tab_h), image_module.LANCZOS)
+        photo = owner._pil_to_photo(small)
+    except expected_errors:
+        photo = None
+    owner._bounded_cache_put(cache, signature, photo, max_items=16)
+    return photo
+
+
+def update_editor_mode_controls(
+    owner: Any,
+    *,
+    tk_module: Any,
+    expected_errors: tuple[type[BaseException], ...],
+) -> None:
+    host = getattr(owner, "_editor_mode_host", None)
+    parent = getattr(owner, "_editor_mode_parent", None)
+    if host is None or parent is None:
+        return
+    try:
+        if not (host.winfo_exists() and parent.winfo_exists()):
+            return
+    except expected_errors:
+        return
+    theme = getattr(owner, "_theme", {})
+    try:
+        host.configure(bg=theme.get("panel", "#161b24"))
+    except expected_errors:
+        pass
+    try:
+        host.place(relx=1.0, y=0, x=-16, anchor="ne")
+    except expected_errors:
+        pass
+    active_mode = str(getattr(owner, "_editor_mode", "JSON")).upper()
+    text_palette = theme_service.editor_mode_text_palette(
+        str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    )
+    for mode, label in dict(getattr(owner, "_editor_mode_labels", {}) or {}).items():
+        try:
+            if not label.winfo_exists():
+                continue
+            is_active = mode == active_mode
+            tab_photo = owner._editor_mode_tab_photo(active=is_active)
+            fg = text_palette["active_fg"] if is_active else text_palette["inactive_fg"]
+            label.configure(
+                image=tab_photo if tab_photo is not None else "",
+                fg=fg,
+                bg=theme.get("panel", "#161b24"),
+                font=(owner._credit_name_font()[0], 8, "bold"),
+                text=mode,
+            )
+        except (expected_errors + (TypeError, ValueError)):
+            continue
+
+
+def update_header_variant_controls(
+    owner: Any,
+    *,
+    tk_module: Any,
+    expected_errors: tuple[type[BaseException], ...],
+) -> None:
+    theme = getattr(owner, "_theme", {})
+    host = getattr(owner, "_header_variant_host", None)
+    host_in_footer = bool(getattr(owner, "_header_variant_is_footer", False))
+    host_bg = theme.get("credit_bg", "#0b1118") if host_in_footer else theme.get("bg", "#0f131a")
+    if host and host.winfo_exists():
+        try:
+            host.configure(bg=host_bg)
+        except expected_errors:
+            pass
+    active_variant = str(getattr(owner, "_header_variant", "A")).upper()
+    theme_variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    label_fg = theme.get("credit_label_fg", "#b5cade")
+    for child in (host.winfo_children() if host and host.winfo_exists() else ()):
+        if child in getattr(owner, "_header_variant_labels", {}).values():
+            continue
+        if isinstance(child, tk_module.Label):
+            try:
+                child.configure(bg=host_bg, fg=label_fg)
+            except expected_errors:
+                pass
+    for variant, chip in dict(getattr(owner, "_header_variant_labels", {}) or {}).items():
+        colors = theme_service.header_variant_chip_palette(theme_variant, active=variant == active_variant)
+        try:
+            chip.configure(
+                bg=colors["bg"],
+                fg=colors["fg"],
+                highlightbackground=colors["border"],
+                highlightcolor=colors["border"],
+            )
+        except expected_errors:
+            continue
+
+
+def update_app_theme_controls(
+    owner: Any,
+    *,
+    tk_module: Any,
+    expected_errors: tuple[type[BaseException], ...],
+) -> None:
+    active = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    spec = owner._footer_visual_spec()
+    use_soft_active = owner._footer_style_variant() == "B"
+    for variant, label in dict(getattr(owner, "_app_theme_labels", {}) or {}).items():
+        colors = owner._theme_chip_palette(variant)
+        is_active = variant == active
+        active_bg = colors["bg"]
+        active_fg = colors["fg"] if (use_soft_active or not is_active) else "#ffffff"
+        label.configure(
+            bg=active_bg,
+            fg=active_fg,
+            highlightbackground=colors["border"],
+            highlightcolor=colors["border"],
+            font=spec["chip_font"],
+            padx=spec["theme_chip_padx"],
+            pady=spec["theme_chip_pady"],
+        )
+    host = getattr(owner, "_theme_selector_host", None)
+    if host is None or not host.winfo_exists():
+        return
+    for child in host.winfo_children():
+        if not isinstance(child, tk_module.Label):
+            continue
+        if child in getattr(owner, "_app_theme_labels", {}).values():
+            continue
+        if child in getattr(owner, "_toolbar_style_labels", {}).values():
+            continue
+        if child in getattr(owner, "_tree_style_labels", {}).values():
+            continue
+        if child == getattr(owner, "_toolbar_style_title_label", None):
+            continue
+        if child == getattr(owner, "_tree_style_title_label", None):
+            continue
+        try:
+            child.configure(
+                bg=getattr(owner, "_theme", {}).get("credit_bg", "#0b1118"),
+                fg=getattr(owner, "_theme", {}).get("credit_label_fg", "#b5cade"),
+                font=spec["label_font"],
+            )
+        except expected_errors:
+            continue
+
+
+def update_toolbar_style_controls(
+    owner: Any,
+    *,
+    expected_errors: tuple[type[BaseException], ...],
+) -> None:
+    if not bool(getattr(owner, "_show_toolbar_variant_controls", False)):
+        return
+    if not getattr(owner, "_toolbar_style_labels", None):
+        return
+    active_theme = str(getattr(owner, "_app_theme_variant", "SIINDBAD")).upper()
+    focus = owner._siindbad_effective_style()
+    palette = theme_service.toolbar_style_variant_palette(active_theme)
+    title = getattr(owner, "_toolbar_style_title_label", None)
+    if title is not None and title.winfo_exists():
+        try:
+            title.configure(
+                bg=getattr(owner, "_theme", {}).get("credit_bg", "#0b1118"),
+                fg=getattr(owner, "_theme", {}).get("credit_label_fg", "#b5cade"),
+            )
+        except expected_errors:
+            pass
+    for variant, label in dict(getattr(owner, "_toolbar_style_labels", {}) or {}).items():
+        is_active = variant == focus
+        label.configure(
+            bg=palette["active_bg"] if is_active else palette["inactive_bg"],
+            fg=palette["active_fg"] if is_active else palette["inactive_fg"],
+            highlightbackground=palette["active_border"] if is_active else palette["inactive_border"],
+            highlightcolor=palette["active_border"] if is_active else palette["inactive_border"],
+            cursor="hand2",
+        )

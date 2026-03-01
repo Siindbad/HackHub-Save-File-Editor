@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-03-01 (startup loader/theme prewarm contract now covers SIINDBAD, KAMUE, and GLITCH variants with instant-switch readiness).
+Last sync: 2026-03-01 (continued consolidation moved user settings/timer helpers into core infra/ui service modules for thinner editor orchestration).
 
 | Module | Purpose |
 | --- | --- |

@@ -1,9 +1,22 @@
 import json
+import logging
+import time
+import tkinter as tk
 from decimal import Decimal, InvalidOperation
 from typing import Any
+
+from core.domain_impl.support import input_bank_style_service
+from core.domain_impl.support import input_database_bcc_style_service
+from core.domain_impl.support import input_database_style_service
+from core.domain_impl.support import input_network_device_bcc_style_service
+from core.domain_impl.support import input_network_device_geoip_style_service
+from core.domain_impl.support import input_network_firewall_style_service
+from core.domain_impl.support import input_network_router_style_service
+from core.domain_impl.ui import tree_navigation_service
 from core.exceptions import EXPECTED_ERRORS
-import logging
+
 _LOG = logging.getLogger(__name__)
+_EXPECTED_APP_ERRORS = EXPECTED_ERRORS
 
 
 def is_input_scalar(value: Any) -> Any:
@@ -439,3 +452,727 @@ def show_input_mode_notice(
     label.pack(fill="x", expand=False)
     owner._input_mode_no_fields_label = label
     return label
+
+
+def _complete_input_render(owner: Any, normalized_path: Any) -> None:
+    owner._refresh_input_mode_bool_widget_colors()
+    owner._schedule_input_mode_layout_finalize(reset_scroll=True)
+    mark_input_mode_render_complete(owner, normalized_path)
+
+
+def _build_input_render_context(owner: Any, normalized_path: Any, value: Any) -> dict[str, Any]:
+    database_grades_matrix = owner._database_grades_matrix_for_input_path(normalized_path, value)
+    return {
+        "root_key": owner._input_mode_root_key_for_path(normalized_path),
+        "database_grades_matrix": database_grades_matrix,
+        "database_bcc_payload": owner._database_bcc_payload_for_input_path(normalized_path, value),
+        "database_interpol_payload": owner._database_interpol_payload_for_input_path(normalized_path, value),
+        "is_database_payload": bool(database_grades_matrix),
+        "is_network_router_payload": owner._is_network_router_input_style_payload(normalized_path, value),
+        "is_network_bcc_domains_payload": owner._is_network_bcc_domains_input_style_payload(normalized_path, value),
+        "is_network_blue_table_payload": owner._is_network_blue_table_input_style_payload(normalized_path, value),
+        "is_network_interpol_payload": owner._is_network_interpol_input_style_payload(normalized_path, value),
+        "is_network_geoip_payload": owner._is_network_geoip_input_style_payload(normalized_path, value),
+        "is_network_device_payload": owner._is_network_device_input_style_payload(normalized_path, value),
+        "is_network_firewall_payload": owner._is_network_firewall_input_style_payload(normalized_path, value),
+    }
+
+
+def _render_bank_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    _context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not owner._is_bank_input_style_path(normalized_path):
+        return False
+    bank_rows = owner._collect_bank_input_rows(value)
+    if not bank_rows:
+        return False
+    owner._render_bank_input_style_rows(host, normalized_path, bank_rows)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_database_bcc_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    _value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    payload = context.get("database_bcc_payload")
+    if not payload:
+        return False
+    owner._render_database_bcc_table(host, normalized_path, payload)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_database_interpol_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    _value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    payload = context.get("database_interpol_payload")
+    if not payload:
+        return False
+    owner._render_database_interpol_table(host, normalized_path, payload)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_database_grades_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    _value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not owner._is_database_input_style_path(normalized_path):
+        return False
+    matrix_payload = context.get("database_grades_matrix")
+    if not matrix_payload:
+        return False
+    owner._render_database_grades_input_matrix(host, normalized_path, matrix_payload)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_suspicion_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    _context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not owner._is_suspicion_input_style_path(normalized_path):
+        return False
+    if not owner._render_suspicion_phone_input(host, normalized_path, value):
+        return False
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_phone_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    _context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not owner._is_phone_input_style_path(normalized_path):
+        return False
+    if not owner._render_phone_preview_input(host, normalized_path, value):
+        return False
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_skypersky_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    _context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not owner._is_skypersky_input_style_path(normalized_path):
+        return False
+    if not owner._render_skypersky_input(host, normalized_path, value):
+        return False
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_network_router_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not bool(context.get("is_network_router_payload")):
+        return False
+    router_rows = owner._collect_network_router_input_rows(normalized_path, value)
+    if not router_rows:
+        return False
+    owner._render_network_router_input_rows(
+        host,
+        normalized_path,
+        router_rows,
+        start_index=0,
+        finalize=True,
+        total_rows=len(router_rows),
+    )
+    owner._clear_router_virtual_state()
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_network_firewall_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not bool(context.get("is_network_firewall_payload")):
+        return False
+    firewall_rows = owner._collect_network_firewall_input_rows(normalized_path, value)
+    if not firewall_rows:
+        return False
+    owner._render_network_firewall_input_rows(host, normalized_path, firewall_rows)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_network_bcc_domains_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not bool(context.get("is_network_bcc_domains_payload")):
+        return False
+    payload = owner._collect_network_bcc_domains_payload(normalized_path, value)
+    if not payload:
+        return False
+    owner._render_network_bcc_domains_input(host, normalized_path, payload)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_network_blue_table_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not bool(context.get("is_network_blue_table_payload")):
+        return False
+    payload = owner._collect_network_blue_table_payload(normalized_path, value)
+    if not payload:
+        return False
+    owner._render_network_blue_table_input(host, normalized_path, payload)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_network_interpol_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not bool(context.get("is_network_interpol_payload")):
+        return False
+    payload = owner._collect_network_interpol_payload(normalized_path, value)
+    if not payload:
+        return False
+    owner._render_network_interpol_input(host, normalized_path, payload)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_network_geoip_payload(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    value: Any,
+    context: dict[str, Any],
+    _panel_bg: str,
+    _tk_module: Any,
+) -> bool:
+    if not bool(context.get("is_network_geoip_payload")):
+        return False
+    payload = owner._collect_network_geoip_payload(normalized_path, value)
+    if not payload:
+        return False
+    owner._render_network_geoip_input(host, normalized_path, payload)
+    _complete_input_render(owner, normalized_path)
+    return True
+
+
+def _render_network_device_placeholder(
+    owner: Any,
+    host: Any,
+    normalized_path: list[Any],
+    _value: Any,
+    context: dict[str, Any],
+    panel_bg: str,
+    tk_module: Any,
+) -> bool:
+    if not bool(context.get("is_network_device_payload")):
+        return False
+    show_input_mode_notice(
+        owner,
+        host,
+        panel_bg,
+        "Selected A Sub Category",
+        font_size=11,
+        tk_module=tk_module,
+    )
+    mark_input_mode_render_complete(owner, normalized_path)
+    return True
+
+
+_INPUT_RENDER_REGISTRY: dict[str, Any] = {
+    "bank": _render_bank_payload,
+    "database_bcc": _render_database_bcc_payload,
+    "database_interpol": _render_database_interpol_payload,
+    "database_grades": _render_database_grades_payload,
+    "suspicion": _render_suspicion_payload,
+    "phone": _render_phone_payload,
+    "skypersky": _render_skypersky_payload,
+    "network_router": _render_network_router_payload,
+    "network_firewall": _render_network_firewall_payload,
+    "network_bcc_domains": _render_network_bcc_domains_payload,
+    "network_blue_table": _render_network_blue_table_payload,
+    "network_interpol": _render_network_interpol_payload,
+    "network_geoip": _render_network_geoip_payload,
+    "network_device_placeholder": _render_network_device_placeholder,
+}
+
+
+def render_payload(
+    owner: Any,
+    path: Any,
+    value: Any,
+    *,
+    host: Any = None,
+    panel_bg: str | None = None,
+    tk_module: Any = None,
+) -> bool:
+    normalized_path = list(path or [])
+    target_host = host if host is not None else getattr(owner, "_input_mode_fields_host", None)
+    if target_host is None:
+        return False
+    if panel_bg is None:
+        theme = getattr(owner, "_theme", {}) or {}
+        panel_bg = str(theme.get("panel", "#161b24"))
+    if tk_module is None:
+        tk_module = tk
+
+    context = _build_input_render_context(owner, normalized_path, value)
+    root_key = str(context.get("root_key", ""))
+    if owner._is_input_mode_category_disabled(normalized_path):
+        show_input_mode_notice(
+            owner,
+            target_host,
+            panel_bg,
+            owner.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
+            font_size=11,
+            tk_module=tk_module,
+        )
+        mark_input_mode_render_complete(owner, normalized_path)
+        return True
+    if len(normalized_path) == 0:
+        has_data = getattr(owner, "data", None) is not None
+        message = (
+            "No direct value fields here. Select a specific item node to edit."
+            if has_data
+            else "No File Loaded. Open A .HHSAV File Before Continuing."
+        )
+        show_input_mode_notice(
+            owner,
+            target_host,
+            panel_bg,
+            message,
+            font_size=9,
+            tk_module=tk_module,
+        )
+        return True
+    if len(normalized_path) == 1 and root_key == "network":
+        has_custom_network_payload = any(
+            bool(context.get(flag))
+            for flag in ("is_network_router_payload", "is_network_device_payload", "is_network_firewall_payload")
+        )
+        if not has_custom_network_payload:
+            show_input_mode_notice(
+                owner,
+                target_host,
+                panel_bg,
+                "Select A Sub Category To View Input Fields",
+                font_size=11,
+                tk_module=tk_module,
+            )
+            mark_input_mode_render_complete(owner, normalized_path)
+            return True
+    if len(normalized_path) == 1 and root_key == "database":
+        show_input_mode_notice(
+            owner,
+            target_host,
+            panel_bg,
+            "Select A Sub Category To View Input Fields",
+            font_size=11,
+            tk_module=tk_module,
+        )
+        mark_input_mode_render_complete(owner, normalized_path)
+        return True
+
+    for handler in _INPUT_RENDER_REGISTRY.values():
+        if handler(owner, target_host, normalized_path, value, context, panel_bg, tk_module):
+            return True
+    show_input_mode_notice(
+        owner,
+        target_host,
+        panel_bg,
+        owner.INPUT_MODE_DISABLED_CATEGORY_MESSAGE,
+        font_size=11,
+        tk_module=tk_module,
+    )
+    mark_input_mode_render_complete(owner, normalized_path)
+    return True
+
+
+def _is_bank_input_style_path(self, path):
+    normalized = list(path or [])
+    if len(normalized) != 1:
+        return False
+    return self._input_mode_root_key_for_path(normalized) == "bank"
+
+def _render_bank_input_style_rows(self, host, normalized_path, row_defs):
+    input_bank_style_service.render_bank_input_style_rows(
+        self,
+        host,
+        normalized_path,
+        row_defs,
+    )
+
+def _render_database_grades_input_matrix(self, host, normalized_path, matrix_payload):
+    input_database_style_service.render_database_grades_matrix(
+        self,
+        host,
+        normalized_path,
+        matrix_payload,
+    )
+
+def _render_database_bcc_table(self, host, normalized_path, payload):
+    input_database_bcc_style_service.render_database_bcc_table(
+        self,
+        host,
+        normalized_path,
+        payload,
+    )
+
+def _render_database_interpol_table(self, host, normalized_path, payload):
+    input_database_bcc_style_service.render_database_interpol_table(
+        self,
+        host,
+        normalized_path,
+        payload,
+    )
+
+def _render_network_bcc_domains_input(self, host, normalized_path, payload):
+    input_network_device_bcc_style_service.render_bcc_domains_input(self, host, normalized_path, payload)
+
+def _render_network_blue_table_input(self, host, normalized_path, payload):
+    input_network_device_bcc_style_service.render_blue_table_input(self, host, normalized_path, payload)
+
+def _render_network_interpol_input(self, host, normalized_path, payload):
+    input_network_device_bcc_style_service.render_interpol_input(self, host, normalized_path, payload)
+
+def _render_network_geoip_input(self, host, normalized_path, payload):
+    input_network_device_geoip_style_service.render_geoip_input(self, host, normalized_path, payload)
+
+def _render_network_firewall_input_rows(self, host, normalized_path, row_defs):
+    input_network_firewall_style_service.render_firewall_input_rows(
+        self,
+        host,
+        normalized_path,
+        row_defs,
+    )
+
+def _render_network_router_input_rows(
+    self,
+    host,
+    normalized_path,
+    row_defs,
+    *,
+    start_index=0,
+    finalize=False,
+    total_rows=None,
+):
+    input_network_router_style_service.render_router_input_rows(
+        self,
+        host,
+        normalized_path,
+        row_defs,
+        start_index=start_index,
+        finalize=bool(finalize),
+        total_rows=total_rows,
+    )
+
+def _run_router_input_prewarm(self):
+    self._input_mode_router_prewarm_after_id = None
+    if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+        return
+    if bool(self._is_document_load_cooldown_active()):
+        root = getattr(self, "root", None)
+        if root is not None:
+            try:
+                delay_ms = max(120, int(getattr(self, "_router_input_prewarm_delay_ms", 180) or 180))
+                self._input_mode_router_prewarm_after_id = root.after(delay_ms, self._run_router_input_prewarm)
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                self._input_mode_router_prewarm_after_id = None
+        return
+    try:
+        self._prewarm_input_mode_assets()
+    except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+        pass
+    host = getattr(self, "_input_mode_fields_host", None)
+    if host is None:
+        return
+    data = getattr(self, "data", None)
+    if not isinstance(data, dict):
+        return
+    network = data.get("Network")
+    if not isinstance(network, list) or not network:
+        return
+    routers = [
+        item for item in network
+        if isinstance(item, dict) and str(item.get("type", "")).upper() == "ROUTER"
+    ]
+    if not routers:
+        return
+    max_rows = max(1, int(getattr(self, "_router_input_max_rows", 60) or 60))
+    rows = self._collect_network_router_input_rows(["Network"], routers, max_rows=max_rows)
+    if not rows:
+        return
+    # Prewarm enough pooled rows to keep first ROUTER open smooth without scroll-time injection.
+    prewarm_limit = max(
+        1,
+        min(
+            len(rows),
+            int(getattr(self, "_router_input_prewarm_row_limit_cap", max_rows) or max_rows),
+            int(getattr(self, "_router_input_prewarm_row_limit", max_rows) or max_rows),
+        ),
+    )
+    prewarm_rows = list(rows[:prewarm_limit])
+    if not prewarm_rows:
+        return
+    input_network_router_style_service.prepare_router_render_host(self, host, reset_pool=True)
+    self._render_network_router_input_rows(
+        host,
+        ["Network"],
+        prewarm_rows,
+        start_index=0,
+        finalize=True,
+        total_rows=len(prewarm_rows),
+    )
+    input_network_router_style_service.suspend_router_render_host(self, host)
+    self._input_mode_field_specs = []
+    self._input_mode_router_virtual_rows = []
+    self._input_mode_router_virtual_next_index = 0
+    self._input_mode_router_virtual_total_rows = 0
+
+def _schedule_router_input_prewarm(self):
+    self._cancel_pending_router_input_prewarm()
+    if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
+        return
+    root = getattr(self, "root", None)
+    if root is None:
+        self._run_router_input_prewarm()
+        return
+    try:
+        # Defer prewarm so open-file flow returns before non-critical cache work.
+        delay_ms = max(100, int(getattr(self, "_router_input_prewarm_delay_ms", 180) or 180))
+        self._input_mode_router_prewarm_after_id = root.after(delay_ms, self._run_router_input_prewarm)
+    except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+        self._input_mode_router_prewarm_after_id = None
+
+def _run_router_settle_barrier(self):
+    self._input_mode_router_settle_after_id = None
+    if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+        return
+    start_time = time.perf_counter()
+    budget_seconds = 0.12
+    while (time.perf_counter() - start_time) < budget_seconds:
+        progressed = self._maybe_render_more_router_rows(force_prefetch=True, origin="settle")
+        if not progressed:
+            break
+    if int(getattr(self, "_input_mode_router_virtual_next_index", 0) or 0) < int(
+        getattr(self, "_input_mode_router_virtual_total_rows", 0) or 0
+    ):
+        self._schedule_router_virtual_check(delay_ms=20)
+
+def _maybe_render_more_router_rows(self, force_prefetch=False, origin="idle"):
+    self._input_mode_router_virtual_after_id = None
+    if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+        return False
+    host = getattr(self, "_input_mode_fields_host", None)
+    canvas = getattr(self, "_input_mode_canvas", None)
+    if host is None or canvas is None:
+        return False
+    rows = list(getattr(self, "_input_mode_router_virtual_rows", []) or [])
+    next_index = int(getattr(self, "_input_mode_router_virtual_next_index", 0) or 0)
+    total_rows = int(getattr(self, "_input_mode_router_virtual_total_rows", 0) or 0)
+    if not rows or next_index >= total_rows:
+        return False
+    try:
+        _y0, y1 = canvas.yview()
+    except (tk.TclError, RuntimeError, ValueError, TypeError, AttributeError):
+        y1 = 1.0
+    # Keep a prefetch band so wheel/drag scroll does not outrun row materialization.
+    if y1 < self._router_virtual_prefetch_threshold(force_prefetch=bool(force_prefetch)):
+        return False
+    backlog = max(0, total_rows - next_index)
+    chunk_size = self._router_virtual_chunk_size(backlog)
+    chunk = rows[next_index : next_index + chunk_size]
+    if not chunk:
+        return False
+    final_index = next_index + len(chunk)
+    self._render_network_router_input_rows(
+        host,
+        self._input_mode_current_path,
+        chunk,
+        start_index=next_index,
+        finalize=final_index >= total_rows,
+        total_rows=total_rows,
+    )
+    self._schedule_input_mode_layout_finalize(reset_scroll=False)
+    self._input_mode_router_virtual_next_index = final_index
+    if final_index < total_rows:
+        next_delay = 12 if bool(getattr(self, "_input_mode_scroll_drag_active", False)) else 24
+        if str(origin).lower() == "settle":
+            next_delay = 8
+        self._schedule_router_virtual_check(delay_ms=next_delay)
+        return True
+    self._clear_router_virtual_state()
+    return True
+
+def _schedule_router_input_render_batches(
+    self,
+    host,
+    normalized_path,
+    pending_rows,
+    render_token,
+    chunk_size=10,
+    start_index=0,
+    total_rows=None,
+):
+    if not pending_rows:
+        return
+    root = getattr(self, "root", None)
+    if root is None:
+        return
+
+    def _run_next_batch():
+        self._input_mode_router_batch_after_id = None
+        if render_token != int(getattr(self, "_input_mode_render_token", 0) or 0):
+            return
+        if str(getattr(self, "_editor_mode", "JSON")).upper() != "INPUT":
+            return
+        rows = list(pending_rows or [])
+        if not rows:
+            return
+        chunk = rows[:chunk_size]
+        rest = rows[chunk_size:]
+        self._render_network_router_input_rows(
+            host,
+            normalized_path,
+            chunk,
+            start_index=start_index,
+            finalize=not bool(rest),
+            total_rows=total_rows,
+        )
+        if rest and render_token == int(getattr(self, "_input_mode_render_token", 0) or 0):
+            self._schedule_router_input_render_batches(
+                host,
+                normalized_path,
+                rest,
+                render_token,
+                chunk_size=chunk_size,
+                start_index=start_index + len(chunk),
+                total_rows=total_rows,
+            )
+            return
+        # Finalize once at the end to avoid repeated full-host relayout cost.
+        self._refresh_input_mode_bool_widget_colors()
+        self._schedule_input_mode_layout_finalize(reset_scroll=False)
+
+    try:
+        self._input_mode_router_batch_after_id = root.after_idle(_run_next_batch)
+    except (tk.TclError, RuntimeError, AttributeError):
+        self._input_mode_router_batch_after_id = None
+
+def _refresh_editor_mode_view(self):
+    text = getattr(self, "text", None)
+    text_scroll = getattr(self, "_text_scroll", None)
+    input_container = getattr(self, "_input_mode_container", None)
+    if text is None or input_container is None or text_scroll is None:
+        return
+    mode = str(getattr(self, "_editor_mode", "JSON")).upper()
+    self._sync_input_mode_paned_sash_lock(mode)
+    self._apply_tree_mode_style(mode)
+    show_input = (mode == "INPUT")
+    editor_mode_top_inset = 24
+    if show_input:
+        # Enforce INPUT no-expand policy on mode entry so JSON-expanded branches
+        # (for example Bank children opened via Find Next) do not remain visible.
+        self._enforce_input_tree_expand_locks()
+        try:
+            text.pack_forget()
+            text_scroll.pack_forget()
+        except (tk.TclError, RuntimeError, AttributeError):
+            pass
+        if not input_container.winfo_ismapped():
+            input_container.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
+        item_id = self.tree.focus() if getattr(self, "tree", None) is not None else None
+        self._schedule_input_mode_refresh(item_id=item_id, immediate=True)
+        return
+
+    try:
+        self._cancel_pending_input_mode_refresh()
+        self._cancel_pending_router_input_batches()
+        self._clear_router_virtual_state()
+        self._cancel_pending_input_mode_layout_finalize()
+        input_container.pack_forget()
+    except (tk.TclError, RuntimeError, AttributeError):
+        pass
+    if not text.winfo_ismapped():
+        text.pack(fill="both", expand=True, side="left", pady=(editor_mode_top_inset, 0))
+    if not text_scroll.winfo_ismapped():
+        text_scroll.pack(fill="y", side="right", pady=(editor_mode_top_inset, 0))
+    if getattr(self, "data", None) is None:
+        self._show_json_no_file_message()
+
+def _network_group_for_list_index(self, list_path, row_index):
+    TREE_NAV = getattr(self, "TREE_NAV", None)
+    if TREE_NAV is None:
+        TREE_NAV = tree_navigation_service.bind(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
+        self.TREE_NAV = TREE_NAV
+    return TREE_NAV.get_group_for_index(list_path, row_index)

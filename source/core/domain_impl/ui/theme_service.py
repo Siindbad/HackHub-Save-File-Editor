@@ -196,6 +196,106 @@ def theme_chip_palette(variant: Any) -> Any:
             return {"bg": "#132230", "fg": "#d4e3ee", "border": "#4e6e86"}
 
 
+def editor_mode_text_palette(variant: Any) -> dict[str, str]:
+    """Text colors for INPUT/JSON mode tabs by theme variant."""
+    use_variant = str(variant).upper()
+    match use_variant:
+        case "GLITCH":
+            return {"active_fg": "#e6ffef", "inactive_fg": "#b6ebc4"}
+        case "KAMUE":
+            return {"active_fg": "#ffffff", "inactive_fg": "#d8ccec"}
+        case _:
+            return {"active_fg": "#ffffff", "inactive_fg": "#c2d4e2"}
+
+
+def editor_mode_tab_palette(variant: Any, *, active: bool) -> dict[str, tuple[int, int, int, int]]:
+    """RGBA fill/edge palette for generated editor mode tab sprites."""
+    use_variant = str(variant).upper()
+    is_active = bool(active)
+    match use_variant:
+        case "KAMUE":
+            return {
+                "fill": (47, 20, 94, 255) if is_active else (23, 11, 41, 255),
+                "edge": (125, 75, 200, 255) if is_active else (81, 50, 138, 255),
+            }
+        case "GLITCH":
+            return {
+                "fill": (7, 15, 11, 255) if is_active else (4, 9, 7, 255),
+                "edge": (121, 232, 154, 255) if is_active else (60, 148, 84, 255),
+            }
+        case _:
+            return {
+                "fill": (27, 77, 115, 255) if is_active else (18, 36, 55, 255),
+                "edge": (103, 180, 228, 255) if is_active else (53, 87, 119, 255),
+            }
+
+
+def header_variant_chip_palette(theme_variant: Any, *, active: bool) -> dict[str, str]:
+    """Header-variant toggle chip colors by theme variant and active state."""
+    use_variant = str(theme_variant).upper()
+    is_active = bool(active)
+    match use_variant:
+        case "KAMUE":
+            return {
+                "border": "#6b37b6",
+                "bg": "#2f145e" if is_active else "#120926",
+                "fg": "#ffffff" if is_active else "#ccb7ef",
+            }
+        case _:
+            return {
+                "border": "#2f4a61",
+                "bg": "#1a3a56" if is_active else "#0f1b29",
+                "fg": "#ffffff" if is_active else "#8aa9bf",
+            }
+
+
+def toolbar_style_variant_palette(theme_variant: Any) -> dict[str, str]:
+    """Toolbar style chip palette by active app theme variant."""
+    use_variant = str(theme_variant).upper()
+    match use_variant:
+        case "KAMUE":
+            return {
+                "inactive_bg": "#1a1030",
+                "inactive_fg": "#b9a8da",
+                "inactive_border": "#5b3890",
+                "active_bg": "#3f2368",
+                "active_fg": "#f0e7ff",
+                "active_border": "#b678ea",
+            }
+        case "GLITCH":
+            return {
+                "inactive_bg": "#060d0a",
+                "inactive_fg": "#9ecfae",
+                "inactive_border": "#3c9454",
+                "active_bg": "#11261c",
+                "active_fg": "#d8f7e2",
+                "active_border": "#79e89a",
+            }
+        case _:
+            return {
+                "inactive_bg": "#0f1b29",
+                "inactive_fg": "#7f9bb2",
+                "inactive_border": "#2f4a61",
+                "active_bg": "#223f55",
+                "active_fg": "#e1edf6",
+                "active_border": "#6f9dbe",
+            }
+
+
+def json_lock_tag_palette(variant: Any) -> dict[str, str]:
+    """JSON lock tag colors by active theme."""
+    if str(variant).upper() == "KAMUE":
+        return {"fg": "#f5b043", "block_bg": "#241608"}
+    return {"fg": "#f2a024", "block_bg": "#2a1b0b"}
+
+
+def input_bool_value_palette(variant: Any) -> dict[str, str]:
+    """INPUT bool field foreground colors for true/false values."""
+    if str(variant).upper() == "KAMUE":
+        return {"true_fg": "#70e58a", "false_fg": "#f3a1ad"}
+    return {"true_fg": "#62d67a", "false_fg": "#ff9ea1"}
+
+
 def tree_variant_chip_palette(variant: Any) -> Any:
     use_variant = str(variant).upper()
     match use_variant:

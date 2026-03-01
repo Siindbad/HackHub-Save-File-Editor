@@ -519,6 +519,7 @@ source/core/constants.py
 source/core/display_profile.py
 source/core/domain_impl/__init__.py
 source/core/domain_impl/infra/__init__.py
+source/core/domain_impl/infra/editor_lifecycle_service.py
 source/core/domain_impl/infra/input_mode_diag_service.py
 source/core/domain_impl/infra/input_mode_find_service.py
 source/core/domain_impl/infra/input_mode_render_dispatch_service.py
@@ -527,6 +528,7 @@ source/core/domain_impl/infra/runtime_log_service.py
 source/core/domain_impl/infra/runtime_paths_service.py
 source/core/domain_impl/infra/token_env_service.py
 source/core/domain_impl/infra/update_engine_core.py
+source/core/domain_impl/infra/user_settings_service.py
 source/core/domain_impl/infra/windows_runtime_service.py
 source/core/domain_impl/json/__init__.py
 source/core/domain_impl/json/json_diagnostics_core.py
@@ -580,6 +582,8 @@ source/core/domain_impl/ui/tree_view_service.py
 source/core/domain_impl/ui/ui_build_service.py
 source/core/domain_impl/ui/ui_dispatch_service.py
 source/core/domain_impl/ui/ui_factory_service.py
+source/core/domain_impl/ui/ui_timer_service.py
+source/core/domain_impl/ui/visual_asset_service.py
 source/core/editor_state.py
 source/core/exceptions.py
 source/core/json_diagnostics.py

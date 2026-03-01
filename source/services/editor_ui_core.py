@@ -11,6 +11,7 @@ from core.domain_impl.ui import toolbar_service
 from core.domain_impl.ui import ui_build_service
 from core.domain_impl.ui import ui_dispatch_service
 from core.domain_impl.ui import ui_factory_service
+from core.domain_impl.ui import ui_timer_service
 
 
 class EditorUICore:
@@ -25,6 +26,7 @@ class EditorUICore:
     ui_build_service = ui_build_service
     ui_dispatch_service = ui_dispatch_service
     ui_factory_service = ui_factory_service
+    ui_timer_service = ui_timer_service
 
 
 EDITOR_UI = EditorUICore()
