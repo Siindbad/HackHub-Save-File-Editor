@@ -1,18 +1,17 @@
 # Services Suite
 
-Last sync: 2026-03-01 (runtime and UI facades now include extracted settings/timer domains with expanded GLITCH smoke coverage).
+Last sync: 2026-03-01 (Phase 2 consolidation moved JSON lifecycle and INPUT workflow orchestration into facade masters with compatibility shims).
 
 | Module | Purpose |
 | --- | --- |
-| `bug_report_manager.py` | Bug-report trigger-flow, payload/cooldown orchestration, crash-report, diagnostics-log domain, and bug-report token-env resolution for screenshot upload. |
-| `document_service.py` | Document load/save/export, editor mode-switch, async document-load apply/worker orchestration domain, and explicit `save(path, data)` JSON writer wrapper. |
-| `editor_ui_core.py` | Core UI assembly domain for loader, toolbar, footer, startup loader UI, README popup rendering, and dispatch helpers. |
-| `input_mode_manager.py` | INPUT mode rendering/find/diagnostics/value-mapping orchestration domain. |
-| `json_engine.py` | JSON diagnostics, repair, path, apply/feedback, syntax-rule orchestration, repair-dispatch binding domain, and `JSON_ENGINE.load(path)` IO wrapper. |
-| `json_view_manager.py` | JSON view/render/find-navigation/text-find/find-orchestration domain. |
-| `runtime_service.py` | Runtime paths/logs, token/env resolution, and OS/runtime helper orchestration domain. |
-| `text_context_manager.py` | Text-context popup state/pointer/action/widget/menu-style orchestration domain. |
-| `theme_manager.py` | Theme and INPUT style orchestration domain, including prewarm and RGBA cache flow. |
-| `tree_manager.py` | Tree engine, mode policy, tree navigation/path-resolution, and tree-view behavior orchestration domain. |
-| `update_orchestrator.py` | Full update pipeline orchestration domain (URL, headers, download, checksum, signature, UI, fallback). |
-| `validation_engine.py` | Validation and formatting domain for input sanitization and label/version formatting helpers. |
+| `bug_report_manager.py` | Compatibility shim exposing legacy bug-report module symbols via `infra_facade` telemetry exports. |
+| `document_service.py` | Compatibility shim exposing legacy document service symbols via `json_lifecycle_facade`. |
+| `infra_facade.py` | Consolidated infrastructure facade for runtime, update pipeline, and telemetry/bug-report orchestration symbols. |
+| `input_workflow_facade.py` | Consolidated INPUT workflow facade for INPUT mode render/find/diag orchestration plus game-specific INPUT style services. |
+| `json_engine.py` | Compatibility shim exposing legacy `JSON_ENGINE` access via `json_lifecycle_facade`. |
+| `json_lifecycle_facade.py` | Consolidated JSON lifecycle facade for document load/save, JSON diagnostics/repair, JSON view/find, and validation formatting services. |
+| `presentation_facade.py` | Consolidated presentation facade for UI assembly, theme assets/colors, text-context actions, and tree services. |
+| `registry.py` | Central `SERVICES` registry that initializes facade/master singleton instances for service access. |
+| `runtime_service.py` | Compatibility shim exposing legacy runtime singleton access via `infra_facade`. |
+| `tree_manager.py` | Compatibility shim exposing legacy tree singleton access via `presentation_facade`. |
+| `update_orchestrator.py` | Compatibility shim exposing legacy update singleton access via `infra_facade`. |
