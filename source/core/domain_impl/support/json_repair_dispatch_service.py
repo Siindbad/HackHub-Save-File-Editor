@@ -568,12 +568,6 @@ def _find_value_span_in_editor(owner, value, preferred_key=None):
 def _find_invalid_email_in_value(owner, base_path, value):
     return json_repair_service._find_invalid_email_in_value(owner, base_path, value)
 
-def _best_domain_root_similarity(owner, root):
-    return json_diagnostics_service._best_domain_root_similarity(owner, root)
-
-def _suggest_known_domain_from_local_and_domain(owner, local, domain):
-    return json_diagnostics_service._suggest_known_domain_from_local_and_domain(owner, local, domain)
-
 def _suggest_email_for_malformed(owner, value):
     return json_repair_service._suggest_email_for_malformed(owner, value)
 
@@ -817,8 +811,6 @@ _REPAIR_DISPATCH_HANDLERS: dict[str, Callable[..., Any]] = {
     "_format_path_for_display": _format_path_for_display,
     "_find_value_span_in_editor": _find_value_span_in_editor,
     "_find_invalid_email_in_value": _find_invalid_email_in_value,
-    "_best_domain_root_similarity": _best_domain_root_similarity,
-    "_suggest_known_domain_from_local_and_domain": _suggest_known_domain_from_local_and_domain,
     "_suggest_email_for_malformed": _suggest_email_for_malformed,
     "_validate_email_address": _validate_email_address,
     "_is_valid_email_domain": _is_valid_email_domain,
@@ -873,4 +865,3 @@ def build_editor_method(method_name: str) -> Callable[..., Any]:
 
     _method.__name__ = name
     return _method
-

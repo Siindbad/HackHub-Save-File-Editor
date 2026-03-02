@@ -2732,9 +2732,6 @@ def _suggest_email_for_malformed(owner: Any, value):
             if not owner._is_valid_email_domain(cand_domain):
                 continue
             score = 0.0
-            if cand_sld.lower() in owner.KNOWN_EMAIL_DOMAIN_ROOTS:
-                score += 500.0
-            score += owner._best_domain_root_similarity(cand_sld) * 100.0
             score -= abs(cut - original_len) * 2.0
             if score > best_score:
                 best_score = score
@@ -2778,26 +2775,6 @@ def _validate_email_address(owner: Any, value):
                 "log_msg": "Malformed email format",
                 "note": "invalid_email_format",
                 "suggested": owner._suggest_email_for_malformed(value),
-            }
-
-        domain_lower = domain.lower()
-        if domain_lower not in owner.KNOWN_EMAIL_DOMAINS:
-            suggestion = owner._suggest_known_domain_from_local_and_domain(local, domain_lower)
-            if not suggestion:
-                # NOTE: Keep this as the final fallback; fuzzy matching is expensive in hot parse loops.
-                near_match = difflib.get_close_matches(
-                    domain_lower,
-                    sorted(owner.KNOWN_EMAIL_DOMAINS),
-                    n=1,
-                    cutoff=0.72,
-                )
-                if near_match:
-                    suggestion = f"{local}@{near_match[0]}"
-            return {
-                "message": "Invalid Entry: unknown email domain.",
-                "log_msg": "Unknown email domain",
-                "note": "unknown_email_domain",
-                "suggested": suggestion or "<name>@<domain.tld>",
             }
 
         return None
@@ -3958,50 +3935,6 @@ def _find_value_span_in_editor(owner: Any, value, preferred_key=None):
             _, end_col = to_line_col(end)
             return line, start_col, end_col
         return None
-
-
-def _best_domain_root_similarity(owner: Any, root):
-        if not root:
-            return 0.0
-        return max(
-            (difflib.SequenceMatcher(None, root.lower(), known).ratio() for known in owner.KNOWN_EMAIL_DOMAIN_ROOTS),
-            default=0.0,
-        )
-
-
-def _suggest_known_domain_from_local_and_domain(owner: Any, local, domain):
-        domain = (domain or "").lower()
-        if "." not in domain:
-            return None
-        parts = domain.split(".")
-        if len(parts) < 2:
-            return None
-        sld = parts[-2]
-        tld = parts[-1]
-        local_re = re.compile(r"^[A-Za-z0-9._%+\-]+$")
-        best = None
-        for known in sorted(owner.KNOWN_EMAIL_DOMAINS, key=len, reverse=True):
-            kparts = known.split(".")
-            if len(kparts) < 2:
-                continue
-            ksld = kparts[-2]
-            ktld = kparts[-1]
-            if ktld != tld:
-                continue
-            if sld and not ksld.endswith(sld):
-                continue
-            missing_prefix = ksld[: len(ksld) - len(sld)] if sld else ksld
-            if not missing_prefix:
-                continue
-            if not local.lower().endswith(missing_prefix):
-                continue
-            cand_local = local[: len(local) - len(missing_prefix)]
-            if not cand_local or not local_re.fullmatch(cand_local):
-                continue
-            candidate = f"{cand_local}@{known}"
-            best = candidate
-            break
-        return best
 
 
 def _apply_json_error_highlight(owner: Any, exc, line, start_index, end_index, note=""):

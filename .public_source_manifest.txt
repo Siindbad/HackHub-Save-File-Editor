@@ -485,7 +485,6 @@ source/assets/installer/wizard/sin_wizard_left.bmp
 source/assets/installer/wizard/sin_wizard_left_clean.bmp
 source/assets/installer/wizard/sin_wizard_small.bmp
 source/assets/klogo.fw.png
-source/assets/known_email_domains.json
 source/assets/logo2.png
 source/assets/network/device_glitch.png
 source/assets/network/device_kam.png

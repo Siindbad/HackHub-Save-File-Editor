@@ -206,19 +206,6 @@ def _module_resource_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
-def _load_known_email_domains():
-    path = os.path.join(_module_resource_base_dir(), "assets", "known_email_domains.json")
-    try:
-        # Accept UTF-8 with or without BOM to avoid empty-domain fallbacks.
-        with open(path, "r", encoding="utf-8-sig") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
-        return set()
-    if not isinstance(data, list):
-        return set()
-    return {item.strip().lower() for item in data if isinstance(item, str) and item.strip()}
-
-
 def _enable_windows_dpi_awareness():
     """Delegate Windows DPI awareness setup to runtime service."""
     return windows_runtime_service.enable_windows_dpi_awareness()
@@ -273,10 +260,9 @@ class JsonEditor:
     UPDATE_VERIFY_AUTHENTICODE = app_constants.UPDATE_VERIFY_AUTHENTICODE
     UPDATE_REQUIRE_AUTHENTICODE = app_constants.UPDATE_REQUIRE_AUTHENTICODE
     UPDATE_AUTHENTICODE_ALLOWED_SUBJECTS = app_constants.UPDATE_AUTHENTICODE_ALLOWED_SUBJECTS
-    KNOWN_EMAIL_DOMAINS = _load_known_email_domains()
-    KNOWN_EMAIL_DOMAIN_ROOTS = {
-        domain.split(".")[-2] for domain in KNOWN_EMAIL_DOMAINS if "." in domain
-    }
+    # Known-domain allowlist validation is retired; keep empty compatibility fields.
+    KNOWN_EMAIL_DOMAINS: set[str] = set()
+    KNOWN_EMAIL_DOMAIN_ROOTS: set[str] = set()
     HIDDEN_ROOT_TREE_CATEGORIES_JSON = app_constants.HIDDEN_ROOT_TREE_CATEGORIES
     HIDDEN_ROOT_TREE_CATEGORIES_INPUT = app_constants.HIDDEN_ROOT_TREE_CATEGORIES_INPUT
     HIDDEN_ROOT_TREE_KEYS_JSON = app_constants.HIDDEN_ROOT_TREE_KEYS_JSON
