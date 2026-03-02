@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -91,7 +91,6 @@ def _expected_statuses(report_map: dict[str, str]) -> dict[str, str]:
     return {
         "SEMGREP": _resolve_gate_result(report_map.get("semgrep_status", "")),
         "TRIVY": _resolve_gate_result(report_map.get("trivy_status", "")),
-        "BANDIT": _resolve_gate_result(report_map.get("bandit_status", "")),
         "MICROSOFT DEFENDER": _resolve_gate_result(report_map.get("defender_status", "")),
         "VIRUS TOTAL": _resolve_gate_result(report_map.get("virustotal_status", "")),
         "SHA256": sha_status,

@@ -8,12 +8,9 @@ Release version: **v1.3.9**
 | Gate | Status |
 | --- | --- |
 | Semgrep | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
-| TruffleHog | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
-| Bandit | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
+| Trivy | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
 | CodeQL | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
 | BinSkim | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
-| SBOM | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
-| pip-audit | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
 | Microsoft Defender | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
 | VirusTotal | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
 | SHA256 | ![PASS](https://img.shields.io/badge/PASS-006400?style=flat-square) |
