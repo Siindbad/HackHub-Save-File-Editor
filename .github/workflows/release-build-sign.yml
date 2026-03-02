@@ -61,38 +61,24 @@ jobs:
           python -m pip install -r source/requirements-build.txt
           python -m pip install semgrep bandit safety requests
 
-      - name: Install TruffleHog
+      - name: Install Trivy
         shell: powershell
         run: |
           try {
-            $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/trufflesecurity/trufflehog/releases/latest" -Headers @{ "User-Agent" = "hackhub-release-build" }
-            $asset = $rel.assets | Where-Object { $_.name -match "windows_amd64\.(zip|tar\.gz)$" } | Select-Object -First 1
-            if (-not $asset) {
-              Write-Host "TruffleHog asset not found for windows_amd64; continuing without install."
-              exit 0
-            }
-            $tmp = Join-Path $env:RUNNER_TEMP "trufflehog_pkg"
+            $tmp = Join-Path $env:RUNNER_TEMP "trivy_install"
             if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
             New-Item -Path $tmp -ItemType Directory | Out-Null
-            $pkg = Join-Path $tmp $asset.name
-            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $pkg
-            $outDir = Join-Path $tmp "out"
-            New-Item -Path $outDir -ItemType Directory | Out-Null
-            if ($asset.name -like "*.zip") {
-              Expand-Archive -Path $pkg -DestinationPath $outDir -Force
-            } else {
-              tar -xzf $pkg -C $outDir
+            $scriptPath = Join-Path $tmp "install-trivy.ps1"
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.ps1" -OutFile $scriptPath
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version latest -InstallDir $tmp
+            $exe = Get-ChildItem -Path $tmp -Recurse -File | Where-Object { $_.Name -ieq "trivy.exe" } | Select-Object -First 1
+            if (-not $exe) {
+              throw "trivy.exe not found after install."
             }
-            $exe = Get-ChildItem -Path $outDir -Recurse -File | Where-Object { $_.Name -ieq "trufflehog.exe" } | Select-Object -First 1
-            if ($exe) {
-              Add-Content -Path $env:GITHUB_PATH -Value $exe.DirectoryName
-              Write-Host "Installed TruffleHog at $($exe.FullName)"
-            } else {
-              Write-Host "TruffleHog executable not found after extraction; continuing without install."
-            }
+            Add-Content -Path $env:GITHUB_PATH -Value $exe.DirectoryName
+            Write-Host "Installed Trivy at $($exe.FullName)"
           } catch {
-            Write-Host "TruffleHog install failed: $($_.Exception.Message)"
-            Write-Host "Continuing release workflow with SKIPPED trufflehog status if binary unavailable."
+            throw "Trivy install failed: $($_.Exception.Message)"
           }
 
       - name: Install Inno Setup (hosted runners)
@@ -329,55 +315,100 @@ jobs:
           except Exception:
               semgrep_status = "SKIPPED"
 
-          # TruffleHog
-          trufflehog_status = "SKIPPED"
-          trufflehog_findings = 0
-          trufflehog_verified = 0
-          trufflehog_unverified = 0
-          trufflehog_unknown = 0
-          trufflehog_strict = "true"
-          trufflehog_results = "verified,unknown"
-          trufflehog_exclude = "n/a (public workflow)"
-          trufflehog_bin = shutil.which("trufflehog")
-          if trufflehog_bin:
-              rc, out, err = run_cmd(
-                  [
-                      trufflehog_bin,
-                      "filesystem",
-                      str(src_root),
-                      "--json",
-                      "--no-update",
-                      "--results=verified,unknown",
-                      "--force-skip-binaries",
-                      "--force-skip-archives",
-                  ]
-              )
-              findings = []
-              for raw in (out or "").splitlines():
-                  raw = raw.strip()
-                  if not raw:
-                      continue
-                  try:
-                      obj = json.loads(raw)
-                  except Exception:
-                      continue
-                  # Finding objects include detector/source metadata; ignore pure info rows.
-                  if isinstance(obj, dict) and (
-                      "DetectorName" in obj or "Raw" in obj or "SourceMetadata" in obj
-                  ):
-                      findings.append(obj)
-              trufflehog_findings = len(findings)
-              for obj in findings:
-                  v = obj.get("Verified")
-                  if v is True:
-                      trufflehog_verified += 1
-                  elif v is False:
-                      trufflehog_unverified += 1
-                  else:
-                      trufflehog_unknown += 1
-              trufflehog_status = "PASS" if trufflehog_findings == 0 else "FAIL"
-              if trufflehog_findings > 0:
-                  raise SystemExit("TruffleHog strict mode: findings detected.")
+          # Trivy composite gate (vulnerabilities + secrets + license + SBOM)
+          trivy_status = "FAIL"
+          trivy_vulnerabilities = 0
+          trivy_secrets = 0
+          trivy_licenses = 0
+          trivy_strict = (os.getenv("HACKHUB_TRIVY_STRICT") or "1").strip().lower() in {"1", "true", "yes", "on"}
+          trivy_sbom_status = "FAIL"
+          trivy_sbom_components = 0
+          sbom_output = dist / "sbom.cdx.json"
+          trivy_bin = shutil.which("trivy")
+          if not trivy_bin:
+              raise SystemExit("Trivy gate failed: trivy CLI is not installed.")
+
+          rc, out, err = run_cmd(
+              [
+                  trivy_bin,
+                  "fs",
+                  "--format",
+                  "json",
+                  "--quiet",
+                  "--timeout",
+                  "5m",
+                  "--scanners",
+                  "vuln,secret,license",
+                  "--skip-dirs",
+                  ".git",
+                  "--skip-dirs",
+                  ".venv",
+                  "--skip-dirs",
+                  ".venv-clean",
+                  "--skip-dirs",
+                  "artifacts",
+                  "--skip-dirs",
+                  "dist",
+                  str(src_root),
+              ]
+          )
+          if rc != 0:
+              raise SystemExit((err or out or "Trivy filesystem scan failed.").strip())
+          report = json.loads(out or "{}")
+          results = report.get("Results", []) if isinstance(report, dict) else []
+          for result in (results if isinstance(results, list) else []):
+              if not isinstance(result, dict):
+                  continue
+              vulns = result.get("Vulnerabilities", [])
+              secrets = result.get("Secrets", [])
+              licenses = result.get("Licenses", [])
+              if isinstance(vulns, list):
+                  trivy_vulnerabilities += len(vulns)
+              if isinstance(secrets, list):
+                  trivy_secrets += len(secrets)
+              if isinstance(licenses, list):
+                  trivy_licenses += len(licenses)
+          trivy_status = "PASS" if trivy_vulnerabilities == 0 else "FAIL"
+          if trivy_status != "PASS":
+              raise SystemExit("Trivy strict mode: vulnerability findings detected.")
+          if trivy_strict and trivy_secrets > 0:
+              raise SystemExit("Trivy strict mode: secret findings detected.")
+
+          rc, out, err = run_cmd(
+              [
+                  trivy_bin,
+                  "fs",
+                  "--format",
+                  "cyclonedx",
+                  "--quiet",
+                  "--timeout",
+                  "5m",
+                  "--output",
+                  str(sbom_output),
+                  "--skip-dirs",
+                  ".git",
+                  "--skip-dirs",
+                  ".venv",
+                  "--skip-dirs",
+                  ".venv-clean",
+                  "--skip-dirs",
+                  "artifacts",
+                  "--skip-dirs",
+                  "dist",
+                  str(src_root),
+              ]
+          )
+          if rc != 0 or not sbom_output.exists():
+              raise SystemExit((err or out or "Trivy SBOM generation failed.").strip())
+          sbom_payload = json.loads(sbom_output.read_text(encoding="utf-8", errors="replace"))
+          if isinstance(sbom_payload, dict) and str(sbom_payload.get("bomFormat", "")).strip() == "CycloneDX":
+              components = sbom_payload.get("components", [])
+              trivy_sbom_components = len(components) if isinstance(components, list) else 0
+              trivy_sbom_status = "PASS"
+          else:
+              trivy_sbom_status = "FAIL"
+          if trivy_sbom_status != "PASS":
+              raise SystemExit("Trivy gate failed: SBOM must be PASS before release publish.")
 
           # Defender local scan
           # Strict policy can block release on Defender FAIL and on SKIPPED when installation is required.
@@ -789,101 +820,14 @@ jobs:
               safety_status = "PASS" if safety_vuln == 0 else "FAIL"
               break
 
-          # pip-audit
-          pip_audit_status = "SKIPPED"
-          pip_audit_dependencies = 0
-          pip_audit_vuln = 0
-          rc, _, _ = run_cmd(
-              [
-                  os.sys.executable,
-                  "-c",
-                  "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('pip_audit') else 1)",
-              ]
-          )
-          if rc != 0:
-              run_cmd([os.sys.executable, "-m", "pip", "install", "pip-audit>=2.7,<3"])
-
-          rc, out, err = run_cmd(
-              [
-                  os.sys.executable,
-                  "-m",
-                  "pip_audit",
-                  "--format",
-                  "json",
-                  "-r",
-                  str(src_root / "requirements-dev.txt"),
-                  "-r",
-                  str(src_root / "requirements-dev-tools.txt"),
-              ]
-          )
-          try:
-              payload = json.loads(out or "[]")
-              dependencies = []
-              if isinstance(payload, dict):
-                  dependencies = payload.get("dependencies", []) or []
-              elif isinstance(payload, list):
-                  dependencies = payload
-              pip_audit_dependencies = len([d for d in dependencies if isinstance(d, dict)])
-              pip_audit_vuln = 0
-              for dep in dependencies:
-                  if not isinstance(dep, dict):
-                      continue
-                  vulns = dep.get("vulns", [])
-                  if isinstance(vulns, list):
-                      pip_audit_vuln += len(vulns)
-              pip_audit_status = "PASS" if pip_audit_vuln == 0 else "FAIL"
-          except Exception:
-              pip_audit_status = "SKIPPED"
-          if pip_audit_status == "FAIL":
-              raise SystemExit("pip-audit strict mode: vulnerabilities detected.")
-
-          # SBOM (CycloneDX)
-          sbom_status = "SKIPPED"
-          sbom_format = "CycloneDX-JSON"
-          sbom_components = 0
-          sbom_output = dist / "sbom.cdx.json"
-          sbom_input = dist / "sbom-requirements.txt"
-          try:
-              merged_requirements = []
-              for req_file in (src_root / "requirements-dev.txt", src_root / "requirements-dev-tools.txt"):
-                  if req_file.exists():
-                      merged_requirements.append(req_file.read_text(encoding="utf-8", errors="replace").strip())
-              sbom_input.write_text("\n".join([chunk for chunk in merged_requirements if chunk]) + "\n", encoding="utf-8")
-
-              rc, _, _ = run_cmd([os.sys.executable, "-m", "pip", "install", "cyclonedx-bom>=4,<5"])
-              if rc != 0:
-                  raise RuntimeError("failed to install cyclonedx-bom")
-
-              rc, out, err = run_cmd(
-                  [
-                      "cyclonedx-py",
-                      "requirements",
-                      str(sbom_input),
-                      "--of",
-                      "JSON",
-                      "-o",
-                      str(sbom_output),
-                      "--no-validate",
-                  ]
-              )
-              if rc != 0 or not sbom_output.exists():
-                  raise RuntimeError((err or out or "SBOM generation failed").strip())
-
-              sbom_payload = json.loads(sbom_output.read_text(encoding="utf-8", errors="replace"))
-              components = sbom_payload.get("components", []) if isinstance(sbom_payload, dict) else []
-              sbom_components = len(components) if isinstance(components, list) else 0
-              sbom_status = "PASS"
-          except Exception:
-              sbom_status = "FAIL"
-              if not sbom_output.exists():
-                  sbom_output.write_text("{\"bomFormat\":\"CycloneDX\",\"specVersion\":\"1.6\",\"components\":[]}\n", encoding="utf-8")
-
           if codeql_status != "PASS":
               raise SystemExit(f"CodeQL gate must be PASS before release publish (latest={codeql_conclusion}).")
           if binskim_status != "PASS":
               raise SystemExit(f"BinSkim gate must be PASS before release publish (latest={binskim_conclusion}).")
-          if sbom_status != "PASS":
-              raise SystemExit("SBOM gate must be PASS before release publish.")
+          if trivy_status != "PASS":
+              raise SystemExit("Trivy gate must be PASS before release publish.")
+          if trivy_sbom_status != "PASS":
+              raise SystemExit("Trivy SBOM gate must be PASS before release publish.")
 
           lines = [
               "HackHub Release Security Report",
@@ -927,16 +871,16 @@ jobs:
               "",
               "-------------------------------------------------------------",
               "",
-              "[ TRUFFLEHOG ]",
+              "[ TRIVY ]",
               "",
-              f"trufflehog_status: {trufflehog_status}",
-              f"trufflehog_findings: {trufflehog_findings}",
-              f"trufflehog_verified: {trufflehog_verified}",
-              f"trufflehog_unverified: {trufflehog_unverified}",
-              f"trufflehog_unknown: {trufflehog_unknown}",
-              f"trufflehog_strict_mode: {trufflehog_strict}",
-              f"trufflehog_results: {trufflehog_results}",
-              "trufflehog_exclude_paths: tools/trufflehog_exclude_paths.txt",
+              f"trivy_status: {trivy_status}",
+              f"trivy_vulnerabilities: {trivy_vulnerabilities}",
+              f"trivy_secrets: {trivy_secrets}",
+              f"trivy_licenses: {trivy_licenses}",
+              f"trivy_strict_mode: {str(trivy_strict).lower()}",
+              f"trivy_sbom_status: {trivy_sbom_status}",
+              f"trivy_sbom_components: {trivy_sbom_components}",
+              f"trivy_sbom_output: {sbom_output.as_posix()}",
               "",
               "-------------------------------------------------------------",
               "",
@@ -972,23 +916,6 @@ jobs:
               f"safety_packages_found: {safety_packages}",
               f"safety_vulnerabilities_found: {safety_vuln}",
               f"safety_vulnerabilities_ignored: {safety_ignored}",
-              "",
-              "-------------------------------------------------------------",
-              "",
-              "[ PIP AUDIT ]",
-              "",
-              f"pip_audit_status: {pip_audit_status}",
-              f"pip_audit_dependencies_scanned: {pip_audit_dependencies}",
-              f"pip_audit_vulnerabilities_found: {pip_audit_vuln}",
-              "",
-              "-------------------------------------------------------------",
-              "",
-              "[ SBOM ]",
-              "",
-              f"sbom_status: {sbom_status}",
-              f"sbom_format: {sbom_format}",
-              f"sbom_components: {sbom_components}",
-              f"sbom_path: {sbom_output.as_posix()}",
               "",
               "-------------------------------------------------------------",
               "",
@@ -1249,12 +1176,10 @@ jobs:
               return f"![{result}](https://img.shields.io/badge/{result}-{color}?style=flat-square)"
 
           semgrep = values.get("semgrep_status", "UNKNOWN")
-          trufflehog = values.get("trufflehog_status", "UNKNOWN")
+          trivy = values.get("trivy_status", "UNKNOWN")
           bandit = values.get("bandit_status", "UNKNOWN")
           codeql = values.get("codeql_status", "UNKNOWN")
           binskim = values.get("binskim_status", "UNKNOWN")
-          sbom = values.get("sbom_status", "UNKNOWN")
-          pip_audit = values.get("pip_audit_status", "UNKNOWN")
           defender = values.get("defender_status", "UNKNOWN")
           vt = values.get("virustotal_status", "UNKNOWN")
           sha_match = values.get("asset_sha256_match", "unknown").lower()
@@ -1274,12 +1199,10 @@ jobs:
               "| Gate | Status |",
               "| --- | --- |",
               f"| Semgrep | {status_badge(semgrep)} |",
-              f"| TruffleHog | {status_badge(trufflehog)} |",
+              f"| Trivy | {status_badge(trivy)} |",
               f"| Bandit | {status_badge(bandit)} |",
               f"| CodeQL | {status_badge(codeql)} |",
               f"| BinSkim | {status_badge(binskim)} |",
-              f"| SBOM | {status_badge(sbom)} |",
-              f"| pip-audit | {status_badge(pip_audit)} |",
               f"| Microsoft Defender | {status_badge(defender)} |",
               f"| VirusTotal | {status_badge(vt)} |",
               f"| SHA256 | ![{sha_status}](https://img.shields.io/badge/{sha_status}-{badge_color(sha_status)}?style=flat-square) |",
