@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-03-01 (continued consolidation moved user settings/timer helpers into core infra/ui service modules for thinner editor orchestration).
+Last sync: 2026-03-01 (continued consolidation moved user settings/timer helpers into core infra/ui service modules and retired dead error-overlay card rendering paths).
 
 | Module | Purpose |
 | --- | --- |

@@ -42,7 +42,6 @@ def _normalize_gate_label(label: str) -> str:
     aliases = {
         "DEFENDER": "MICROSOFT DEFENDER",
         "VIRUSTOTAL": "VIRUS TOTAL",
-        "PIP-AUDIT": "PIP AUDIT",
     }
     return aliases.get(normalized, normalized)
 
@@ -91,10 +90,8 @@ def _expected_statuses(report_map: dict[str, str]) -> dict[str, str]:
         sha_status = "FAIL"
     return {
         "SEMGREP": _resolve_gate_result(report_map.get("semgrep_status", "")),
-        "TRUFFLEHOG": _resolve_gate_result(report_map.get("trufflehog_status", "")),
+        "TRIVY": _resolve_gate_result(report_map.get("trivy_status", "")),
         "BANDIT": _resolve_gate_result(report_map.get("bandit_status", "")),
-        "PIP AUDIT": _resolve_gate_result(report_map.get("pip_audit_status", "")),
-        "SBOM": _resolve_gate_result(report_map.get("sbom_status", "")),
         "MICROSOFT DEFENDER": _resolve_gate_result(report_map.get("defender_status", "")),
         "VIRUS TOTAL": _resolve_gate_result(report_map.get("virustotal_status", "")),
         "SHA256": sha_status,

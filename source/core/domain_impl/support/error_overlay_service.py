@@ -71,95 +71,6 @@ def clear_error_pin(owner: Any) -> Any:
             pass
 
 
-def show_error_overlay(owner: Any, title: Any, message: Any) -> Any:
-    # Build the floating error card and apply error tint to editor content.
-    pending_actions = getattr(owner, "_error_overlay_actions", None)
-    owner._destroy_error_overlay()
-    owner._last_error_overlay_message = str(message or "")
-    owner._apply_error_tint()
-    palette = owner._current_error_palette()
-    overlay_bg = palette.get("overlay_bg", "#11161f")
-    overlay_fg = palette.get("overlay_fg", "#ffffff")
-    metrics = _overlay_scale_metrics(owner, title)
-    owner._last_error_overlay_title = str(title or "")
-    overlay = tk.Frame(
-        owner.text,
-        bg=overlay_bg,
-        bd=0,
-        highlightthickness=2,
-        highlightbackground=palette["border"],
-        highlightcolor=palette["border"],
-    )
-    overlay.place(x=12, y=12)
-
-    msg_label = tk.Label(
-        overlay,
-        text=message,
-        bg=overlay_bg,
-        fg=overlay_fg,
-        font=(owner._preferred_mono_family(), metrics["text_font_size"]),
-        anchor="w",
-        justify="left",
-    )
-    msg_label._hh_overlay_role = "message_label"
-    msg_label.pack(fill="both", padx=metrics["pad_x"], pady=(metrics["pad_y"], metrics["pad_y"]))
-
-    actions = pending_actions
-    if actions:
-        button_row = tk.Frame(overlay, bg=overlay_bg, bd=0, highlightthickness=0)
-        button_row._hh_overlay_role = "button_row"
-        button_row.pack(fill="x", padx=metrics["pad_x"], pady=(0, metrics["pad_y"]))
-        button_host = tk.Frame(button_row, bg=overlay_bg, bd=0, highlightthickness=0)
-        button_host._hh_overlay_role = "button_host"
-        button_host.pack(side="right")
-        button_font = (owner._preferred_mono_family(), metrics["button_font_size"], "bold")
-        button_border = "#e6edf7"
-        button_fill = overlay_bg
-        button_text = overlay_fg
-        button_active = palette.get("line_bg", overlay_bg)
-        for action in tuple(actions):
-            if not isinstance(action, (tuple, list)) or len(action) < 2:
-                continue
-            action_label = str(action[0] or "").strip()
-            action_callback = action[1]
-            if not action_label or not callable(action_callback):
-                continue
-            btn_border_wrap = tk.Frame(
-                button_host,
-                bg=button_border,
-                bd=0,
-                highlightthickness=0,
-            )
-            btn_border_wrap._hh_overlay_role = "button_wrap"
-            btn_border_wrap.pack(side="left", padx=(0, 6))
-            btn = tk.Button(
-                btn_border_wrap,
-                text=action_label,
-                command=action_callback,
-                bd=0,
-                padx=metrics["button_pad_x"],
-                pady=0,
-                relief="flat",
-                activebackground=button_active,
-                activeforeground=button_text,
-                highlightthickness=0,
-                borderwidth=0,
-                highlightbackground=button_border,
-                highlightcolor=button_border,
-                bg=button_fill,
-                fg=button_text,
-                font=button_font,
-                cursor="hand2",
-            )
-            btn._hh_overlay_role = "action_button"
-            btn.pack(side="left", padx=1, pady=1)
-    else:
-        overlay.bind("<Button-1>", lambda _evt: owner._destroy_error_overlay())
-        msg_label.bind("<Button-1>", lambda _evt: owner._destroy_error_overlay())
-
-    owner.error_overlay = overlay
-
-
 def destroy_error_overlay(owner: Any) -> Any:
     # Fully clear overlay + tint + pin state.
     if owner.error_overlay is not None:
@@ -442,6 +353,7 @@ def position_error_overlay(owner: Any, line: Any) -> Any:
 
         is_warning_overlay = str(getattr(owner, "_last_error_overlay_title", "") or "").strip().lower() == "warning"
         gap = 2 if is_warning_overlay else 6
+        anchor_font: tkfont.Font | None = None
         try:
             anchor_font = tkfont.Font(font=owner.text.cget("font"))
             tab_shift_x = int(anchor_font.measure("    "))
@@ -452,7 +364,7 @@ def position_error_overlay(owner: Any, line: Any) -> Any:
             line_px = 16
         if is_warning_overlay:
             # Keep warning cards close to the edited highlighted key/token.
-            tab_shift_x = max(4, min(16, int(anchor_font.measure(" ")))) if 'anchor_font' in locals() else 6
+            tab_shift_x = max(4, min(16, int(anchor_font.measure(" ")))) if anchor_font else 6
             nudge_y = max(0, min(6, int(round(max(10, line_px) * 0.15))))
             nx = int(x)
         else:
