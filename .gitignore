@@ -1,1 +1,16 @@
+﻿# Python environments
 .venv/
+
+# Python cache artifacts
+__pycache__/
+*.py[cod]
+
+# Test and lint caches
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+
+# Local build/runtime artifacts
+artifacts/
+build/
+dist/
