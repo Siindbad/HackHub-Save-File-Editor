@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 
-def first_enabled_action(states: Any, ordered_actions: Any=("undo", "redo", "copy", "paste", "autofix")) -> Any:
+def first_enabled_action(states: Any, ordered_actions: Any=("undo", "redo", "copy", "paste")) -> Any:
     """Return first enabled action from configured priority order."""
     state_map = states or {}
     for action in ordered_actions:

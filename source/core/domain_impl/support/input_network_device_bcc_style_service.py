@@ -288,6 +288,14 @@ def _has_interpol_user_info(device: dict[str, Any]) -> bool:
     return False
 
 
+def _has_interpol_server_credentials(server: dict[str, Any]) -> bool:
+    """Return whether an INTERPOL server row has credential fields to show."""
+    for key in ("username", "password"):
+        if str(server.get(key, "") or "").strip():
+            return True
+    return False
+
+
 def collect_interpol_payload(owner: Any, normalized_path: Any, device: Any) -> dict[str, Any] | None:
     """Collect INTERPOL router/splitter/firewall identity rows for display."""
     if not is_network_interpol_payload(owner, normalized_path, device):
@@ -916,6 +924,8 @@ def _render_interpol_server_identity_row(
     server: dict[str, Any],
     variant: str,
 ) -> None:
+    online_fg = "#70e58a"
+    offline_fg = "#ff7b8f"
     image_col_w = 146
 
     row = tk.Frame(shell, bg=panel_bg, bd=0, highlightthickness=0)
@@ -927,17 +937,37 @@ def _render_interpol_server_identity_row(
         row,
         owner,
         width=image_col_w,
-        height=132,
+        height=160,
         border_hex=card_edge,
         fill_hex=image_card_bg,
     )
     device_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
     device_photo = _asset_photo(owner, _network_asset_filename_for_variant(variant, "server"), 138, 112)
     device_img = tk.Label(device_card_content, bg=device_card_content.cget("bg"), bd=0, highlightthickness=0)
-    device_img.pack(fill="both", expand=True)
+    device_img.pack(fill="both", expand=True, pady=(0, 4))
     if device_photo is not None:
         device_img.configure(image=device_photo)
         setattr(device_img, "image", device_photo)
+    online = server.get("online")
+    if isinstance(online, bool):
+        status_row = tk.Frame(device_card_content, bg=device_card_content.cget("bg"), bd=0, highlightthickness=0)
+        status_row.pack(fill="x", pady=(0, 1))
+        tk.Label(
+            status_row,
+            text="STATUS :",
+            bg=device_card_content.cget("bg"),
+            fg=key_fg,
+            font=(value_family, max(8, row_size), "bold"),
+            anchor="w",
+        ).pack(side="left")
+        tk.Label(
+            status_row,
+            text="Online" if online else "Offline",
+            bg=device_card_content.cget("bg"),
+            fg=online_fg if online else offline_fg,
+            font=(value_family, max(8, row_size), "bold"),
+            anchor="w",
+        ).pack(side="left", padx=(5, 0))
 
     right = tk.Frame(row, bg=panel_bg, bd=0, highlightthickness=0)
     right.grid(row=0, column=1, sticky="nsew")
@@ -948,7 +978,7 @@ def _render_interpol_server_identity_row(
         right,
         owner,
         width=None,
-        height=132,
+        height=160,
         border_hex=card_edge,
         fill_hex=card_bg,
     )
@@ -995,7 +1025,7 @@ def _render_interpol_server_identity_row(
         right,
         owner,
         width=None,
-        height=132,
+        height=160,
         border_hex=card_edge,
         fill_hex=card_bg,
     )
@@ -1017,6 +1047,25 @@ def _render_interpol_server_identity_row(
         font_family=value_family,
         size=row_size,
     )
+    if _has_interpol_server_credentials(server):
+        _readonly_line(
+            domain_info,
+            "USER NAME :",
+            server.get("username"),
+            key_fg=key_fg,
+            value_fg=value_fg,
+            font_family=value_family,
+            size=row_size,
+        )
+        _readonly_line(
+            domain_info,
+            "PASSWORD :",
+            server.get("password"),
+            key_fg=key_fg,
+            value_fg=value_fg,
+            font_family=value_family,
+            size=row_size,
+        )
 
 
 def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payload: dict[str, Any]) -> None:

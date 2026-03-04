@@ -35,7 +35,6 @@ def build_text_context_menu(owner: Any, *, tk: Any, expected_errors: Any) -> Non
             ("redo", "Redo", "Ctrl+Y"),
             ("copy", "Copy", "Ctrl+C"),
             ("paste", "Paste", "Ctrl+V"),
-            ("autofix", "Auto-Fix", ""),
         )
         total_items = len(menu_layout)
         for item_idx, (action, label, shortcut) in enumerate(menu_layout):
@@ -44,31 +43,15 @@ def build_text_context_menu(owner: Any, *, tk: Any, expected_errors: Any) -> Non
                 separator = tk.Frame(body, bd=0, height=1)
                 separator.pack(fill="x", padx=_s(7), pady=_s(5))
                 owner._text_context_menu_separator = separator
-            elif action == "autofix":
-                separator = tk.Frame(body, bd=0, height=1)
-                separator.pack(fill="x", padx=_s(7), pady=_s(5))
             row = tk.Frame(body, bd=0, highlightthickness=1, cursor="hand2")
             row_bottom = _s(0 if item_idx == (total_items - 1) else 1)
             row.pack(fill="x", padx=_s(2), pady=(_s(1), row_bottom))
             title = tk.Label(row, text=str(label).upper(), anchor="w")
             shortcut_label = tk.Label(row, text=shortcut, anchor="e")
-            if action == "autofix":
-                title.configure(anchor="center", justify="center")
-                title.grid(
-                    row=0,
-                    column=0,
-                    columnspan=2,
-                    padx=_s(6),
-                    pady=_s(4),
-                    sticky="nsew",
-                )
-                row.grid_columnconfigure(0, weight=1)
-                row.grid_columnconfigure(1, weight=1)
-            else:
-                title.grid(row=0, column=0, padx=(_s(11), _s(10)), pady=_s(4), sticky="w")
-                shortcut_label.grid(row=0, column=1, padx=(0, _s(7)), pady=_s(4), sticky="e")
-                row.grid_columnconfigure(0, weight=1)
-                row.grid_columnconfigure(1, weight=0)
+            title.grid(row=0, column=0, padx=(_s(11), _s(10)), pady=_s(4), sticky="w")
+            shortcut_label.grid(row=0, column=1, padx=(0, _s(7)), pady=_s(4), sticky="e")
+            row.grid_columnconfigure(0, weight=1)
+            row.grid_columnconfigure(1, weight=0)
             for widget in (row, title, shortcut_label):
                 widget_actions[widget] = action
                 widget.bind("<Motion>", owner._on_text_context_menu_motion, add="+")
@@ -88,7 +71,7 @@ def build_text_context_menu(owner: Any, *, tk: Any, expected_errors: Any) -> Non
                 "title": title,
                 "shortcut": shortcut_label,
             }
-            if separator is not None and action in ("copy", "autofix"):
+            if separator is not None and action == "copy":
                 try:
                     owner._text_context_menu_separators.append(separator)
                 except expected_errors:
@@ -272,18 +255,10 @@ def style_text_context_menu_row(
         except expected_errors:
             pass
     try:
-        if action == "autofix":
-            title_kwargs = {
-                "fg": row_fg,
-                "cursor": cursor,
-                "anchor": "center",
-                "justify": "center",
-            }
-        else:
-            title_kwargs = {
-                "fg": row_fg,
-                "cursor": cursor,
-            }
+        title_kwargs = {
+            "fg": row_fg,
+            "cursor": cursor,
+        }
         if apply_fonts:
             title_kwargs["font"] = (font_family, title_size, "bold")
         title.configure(**title_kwargs)
@@ -329,7 +304,6 @@ def show_text_context_menu(owner: Any, event: Any, *, expected_errors: Any) -> s
     owner._set_text_context_menu_item_state("redo", owner._text_can_redo())
     owner._set_text_context_menu_item_state("copy", owner._has_text_selection())
     owner._set_text_context_menu_item_state("paste", owner._clipboard_has_text())
-    owner._set_text_context_menu_item_state("autofix", owner._can_context_autofix())
     owner._text_context_menu_hover_action = None
 
     menu_req_h = 0

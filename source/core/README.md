@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-03-04 (validated startup/theme/tree core coverage and refreshed suite index metadata).
+Last sync: 2026-03-04 (validated startup/theme/tree core coverage, plus INPUT-network/text-context updates).
 
 | Module | Purpose |
 | --- | --- |

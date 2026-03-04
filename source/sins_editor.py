@@ -1980,7 +1980,7 @@ if button._siindbad_base_image is None:
         if small_size is None:
             small_size = max(7, int(round(9 * scale)))
 
-        for action in ("undo", "redo", "copy", "paste", "autofix"):
+        for action in ("undo", "redo", "copy", "paste"):
             self._style_text_context_menu_row(
                 action,
                 palette=palette,
@@ -2032,7 +2032,7 @@ if button._siindbad_base_image is None:
 
     def _first_enabled_text_context_action(self): return text_context_action_service.first_enabled_action(
             states=getattr(self, "_text_context_menu_item_states", {}) or {},
-            ordered_actions=("undo", "redo", "copy", "paste", "autofix"),
+            ordered_actions=("undo", "redo", "copy", "paste"),
         )
 
     def _set_text_context_menu_hover_action(self, action):
@@ -2102,7 +2102,6 @@ if button._siindbad_base_image is None:
                 "redo": self._on_context_redo,
                 "copy": self._on_context_copy,
                 "paste": self._on_context_paste,
-                "autofix": self._on_context_autofix,
             },
         )
 
@@ -2409,7 +2408,6 @@ if button._siindbad_base_image is None:
         self._set_text_context_menu_item_state("redo", False)
         self._set_text_context_menu_item_state("copy", can_copy)
         self._set_text_context_menu_item_state("paste", can_paste)
-        self._set_text_context_menu_item_state("autofix", False)
         self._text_context_menu_hover_action = None
         try:
             if hasattr(widget, "focus_set"):

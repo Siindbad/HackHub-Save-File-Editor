@@ -467,6 +467,27 @@ def _activate_bug_report_custom_chrome(self, dialog, header=None, drag_widgets=(
 def _text_context_menu_palette(self):
     theme = getattr(self, "_theme", {}) or {}
     variant = str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper()
+    if variant == "GLITCH":
+        return {
+            "bg": "#06110b",
+            "frame_bg": "#07160e",
+            "fg": theme.get("fg", "#d6ffe7"),
+            "shortcut_fg": "#8fe8b7",
+            "active_bg": "#0f3c24",
+            "active_fg": "#ecfff4",
+            "active_border": "#6ef7a8",
+            "border": theme.get("logo_border_outer", "#4bcf7f"),
+            "inset_border": "#1a5a37",
+            "panel_border": "#245f3d",
+            "panel_bg": "#06110b",
+            "pulse_start_border": "#1a5a37",
+            "pulse_start_inset": "#103324",
+            "pulse_start_panel": "#17472f",
+            "pulse_border": "#6ef7a8",
+            "pulse_inset": "#2d8759",
+            "separator": "#2b7a4f",
+            "disabled_fg": "#5d9074",
+        }
     if variant == "KAMUE":
         return {
             "bg": "#12091d",
@@ -632,7 +653,8 @@ def _show_text_context_menu_popup(self, popup_x, popup_y):
     except _EXPECTED_APP_ERRORS:
         return False
     self._bind_text_context_menu_global_dismiss()
-    self._start_text_context_menu_pulse()
+    # Keep context menu border colors static; no pulse animation.
+    self._stop_text_context_menu_pulse()
     return True
 
 def _tick_startup_loader_progress(self):
