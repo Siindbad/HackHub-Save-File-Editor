@@ -1057,10 +1057,7 @@ if button._siindbad_base_image is None:
         if isinstance(path, tuple) and path[0] == "__group__":
             _, list_path, group = path
             value = self._get_value(list_path)
-            group_items = [
-                item for item in value
-                if isinstance(item, dict) and item.get("type") == group
-            ]
+            group_items = input_mode_service.collect_group_items_for_selection(self, list_path, value, group)
             return list_path, group_items, f"group {group} ({len(group_items)})"
         try:
             value = self._get_value(path)
@@ -1073,6 +1070,8 @@ if button._siindbad_base_image is None:
 
     def _schedule_input_mode_refresh(self, item_id=None, immediate=False):
         return ui_timer_service._schedule_input_mode_refresh(**locals())
+
+    def _mark_tree_interaction_active(self): return ui_timer_service.mark_tree_interaction_active(self)
 
     def _refresh_editor_mode_view(self):
         # Regression contract marker: self._enforce_input_tree_expand_locks()
@@ -1106,6 +1105,8 @@ if button._siindbad_base_image is None:
 
     @staticmethod
     def _set_nested_value(container, rel_path, new_value): return input_mode_service.set_nested_value(container, rel_path, new_value)
+
+    def _clear_input_group_selection_cache(self): return input_mode_service.clear_group_selection_cache(self)
 
     @staticmethod
     def _strip_input_display_prefix(raw): return input_mode_service.strip_input_display_prefix(raw)
@@ -3081,37 +3082,41 @@ if button._siindbad_base_image is None:
         if variant == getattr(self, "_app_theme_variant", "SIINDBAD") and getattr(self, "_theme", None):
             self._update_app_theme_controls()
             return
-        self._app_theme_variant = variant
-        self._apply_dark_theme()
-        next_style = self._siindbad_effective_style()
-        toolbar_host = getattr(self, "_toolbar_host", None)
-        has_live_toolbar = (
-            toolbar_host is not None
-            and toolbar_host.winfo_exists()
-            and bool(getattr(self, "_toolbar_buttons", {}))
-            and previous_variant in ("SIINDBAD", "KAMUE", "GLITCH")
-        )
-        if has_live_toolbar and previous_style == "B" and next_style == "B":
-            self._render_font_control()
-            self._refresh_toolbar_button_images()
-        else:
-            self._rebuild_toolbar(preserve_find_text=True)
-        self._refresh_runtime_theme_widgets()
-        warmed = set(getattr(self, "_theme_prewarm_done", set()))
-        queued = set(str(item).upper() for item in list(getattr(self, "_theme_prewarm_queue", []) or []))
-        missing_variants = tuple(
-            candidate
-            for candidate in ("SIINDBAD", "KAMUE", "GLITCH")
-            if candidate != variant and candidate not in warmed and candidate not in queued
-        )
-        if missing_variants:
-            self._schedule_theme_asset_prewarm(targets=missing_variants, delay_ms=180)
-        if save:
-            try:
-                self._save_user_settings()
-            except (OSError, ValueError, TypeError, json.JSONDecodeError):
-                pass
-        self._log_theme_perf(f"switch {previous_variant}->{variant}", started_ts=switch_started)
+        self._theme_switch_active = True
+        try:
+            self._app_theme_variant = variant
+            self._apply_dark_theme()
+            next_style = self._siindbad_effective_style()
+            toolbar_host = getattr(self, "_toolbar_host", None)
+            has_live_toolbar = (
+                toolbar_host is not None
+                and toolbar_host.winfo_exists()
+                and bool(getattr(self, "_toolbar_buttons", {}))
+                and previous_variant in ("SIINDBAD", "KAMUE", "GLITCH")
+            )
+            if has_live_toolbar and previous_style == "B" and next_style == "B":
+                self._render_font_control()
+                self._refresh_toolbar_button_images()
+            else:
+                self._rebuild_toolbar(preserve_find_text=True)
+            self._refresh_runtime_theme_widgets()
+            warmed = set(getattr(self, "_theme_prewarm_done", set()))
+            queued = set(str(item).upper() for item in list(getattr(self, "_theme_prewarm_queue", []) or []))
+            missing_variants = tuple(
+                candidate
+                for candidate in ("SIINDBAD", "KAMUE", "GLITCH")
+                if candidate != variant and candidate not in warmed and candidate not in queued
+            )
+            if missing_variants:
+                self._schedule_theme_asset_prewarm(targets=missing_variants, delay_ms=220)
+            if save:
+                try:
+                    self._save_user_settings()
+                except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                    pass
+            self._log_theme_perf(f"switch {previous_variant}->{variant}", started_ts=switch_started)
+        finally:
+            self._theme_switch_active = False
     def _refresh_runtime_theme_widgets(self): return theme_service._refresh_runtime_theme_widgets(self)
     @staticmethod
     def _startup_loader_lines(ready=False): return loader_service.startup_loader_lines(ready=ready)
@@ -3915,6 +3920,7 @@ if button._siindbad_base_image is None:
     def _on_tree_double_click_guard(self, event): return tree_engine_service.on_tree_double_click_guard(self, event)
 
     def on_select(self, event):
+        self._mark_tree_interaction_active()
         item_id = self.tree.focus()
         if not item_id:
             return
@@ -3934,10 +3940,7 @@ if button._siindbad_base_image is None:
         if isinstance(path, tuple) and path[0] == "__group__":
             _, list_path, group = path
             value = self._get_value(list_path)
-            group_items = [
-                item for item in value
-                if isinstance(item, dict) and item.get("type") == group
-            ]
+            group_items = input_mode_service.collect_group_items_for_selection(self, list_path, value, group)
             if str(getattr(self, "_editor_mode", "JSON")).upper() == "INPUT":
                 if self._can_skip_input_mode_refresh(item_id, list_path):
                     self.set_status(f"group {group} ({len(group_items)})")

@@ -688,6 +688,7 @@ def _tick_startup_loader_statement(self):
     self._startup_loader_text_after_id = root.after(interval, self._tick_startup_loader_statement)
 
 def on_expand(self, event):
+    mark_tree_interaction_active(self)
     item_id = self.tree.focus()
     if item_id:
         if self._is_input_tree_expand_blocked(item_id):
@@ -699,6 +700,12 @@ def on_expand(self, event):
             self.set_status("INPUT mode: selected subcategory is locked.")
             return "break"
         self._populate_children(item_id)
+
+
+def mark_tree_interaction_active(self, window_ms: int = 1200) -> None:
+    """Mark tree interaction so background prewarm yields during active expand/select bursts."""
+    duration_ms = max(0, int(window_ms or 0))
+    self._tree_interaction_active_until = time.perf_counter() + (float(duration_ms) / 1000.0)
 
 def _cancel_live_feedback_timer(self):
     root = getattr(self, "root", None)

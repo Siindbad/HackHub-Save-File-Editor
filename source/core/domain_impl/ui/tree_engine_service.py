@@ -667,7 +667,7 @@ def populate_children(owner: Any, item_id: Any) -> Any:
             child_id = owner.tree.insert(item_id, "end", text=label, tags=("tree-sub-level",))
             owner.item_to_path[child_id] = (list(path) if isinstance(path, list) else []) + [idx]
             owner._add_placeholder_if_container(child_id, item)
-    refresh_tree_item_markers(owner)
+    refresh_tree_markers_for_subtree(owner, item_id)
 
 
 def refresh_tree_item_markers(owner: Any) -> Any:
@@ -760,6 +760,30 @@ def refresh_tree_marker_for_item(owner: Any, item_id: Any, selected: Any=False) 
         return
 
 
+def refresh_tree_markers_for_subtree(owner: Any, root_item_id: Any) -> Any:
+    tree = getattr(owner, "tree", None)
+    if tree is None or not root_item_id:
+        return
+    if str(getattr(owner, "_tree_style_variant", "B")).upper() != "B":
+        return
+    try:
+        selected = set(tree.selection())
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        selected = set()
+    stack = [root_item_id]
+    while stack:
+        item_id = stack.pop()
+        refresh_tree_marker_for_item(owner, item_id, selected=(item_id in selected))
+        try:
+            children = list(tree.get_children(item_id))
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
+            children = []
+        if children:
+            stack.extend(children)
+
+
 def tree_item_can_toggle(owner: Any, item_id: Any) -> Any:
     if not item_id:
         return False
@@ -810,7 +834,7 @@ def on_tree_click_toggle(owner: Any, event: Any) -> Any:
         if not currently_open:
             # Ensure lazy tree children are materialized on first single-click expand.
             populate_children(owner, item_id)
-        refresh_tree_item_markers(owner)
+        refresh_tree_markers_for_subtree(owner, item_id)
     except EXPECTED_ERRORS as exc:
         _LOG.debug('expected_error', exc_info=exc)
         return None

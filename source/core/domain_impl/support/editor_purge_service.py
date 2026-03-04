@@ -699,6 +699,7 @@ def _apply_input_edit(owner: Any):
 
         changed = working != value
         owner.data = working_root
+        owner._clear_input_group_selection_cache()
         owner._reset_find_state()
         owner._log_input_mode_apply_result(path, changed)
         owner._log_input_mode_apply_trace("applied", path, len(specs), changed=changed)
@@ -1022,6 +1023,7 @@ def load_document_payload(path: Any) -> Any:
 def apply_loaded_document(owner: Any, path: Any, data: Any) -> Any:
         """Apply loaded document payload to editor state and refresh dependent UI surfaces."""
         owner.data = data
+        owner._clear_input_group_selection_cache()
         owner.path = path
         owner.root.title(
             f"SIINDBAD's HackHub Editor - {os.path.basename(path)} - v{owner.APP_VERSION}"
@@ -1250,6 +1252,7 @@ def _read_diag_log_tail(owner: Any, max_chars=8000):
 
 def _set_value(owner: Any, path, new_value):
         owner.data = json_path_service.set_value(owner.data, path, new_value)
+        owner._clear_input_group_selection_cache()
         owner._reset_find_state()
 
 

@@ -19,6 +19,57 @@ _LOG = logging.getLogger(__name__)
 _EXPECTED_APP_ERRORS = EXPECTED_ERRORS
 
 
+def _group_cache_key(value: Any) -> Any:
+    """Return a stable, hashable cache key for group labels."""
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return json.dumps(value, sort_keys=True, ensure_ascii=True)
+
+
+def clear_group_selection_cache(owner: Any) -> None:
+    """Clear grouped-list selection cache after data mutations."""
+    owner._input_group_selection_cache = {}
+
+
+def collect_group_items_for_selection(
+    owner: Any,
+    list_path: Any,
+    list_value: Any,
+    group: Any,
+) -> list[Any]:
+    """Collect grouped rows with lazy caching for repeated group selections."""
+    if not isinstance(list_value, list):
+        return []
+    cache = getattr(owner, "_input_group_selection_cache", None)
+    if not isinstance(cache, dict):
+        cache = {}
+        owner._input_group_selection_cache = cache
+    path_key = tuple(list_path or [])
+    signature = (id(list_value), len(list_value))
+    path_entry = cache.get(path_key)
+    group_key = _group_cache_key(group)
+    if isinstance(path_entry, dict) and path_entry.get("signature") == signature:
+        groups = path_entry.get("groups")
+        if isinstance(groups, dict):
+            cached = groups.get(group_key)
+            if isinstance(cached, list):
+                return cached
+    grouped: dict[Any, list[Any]] = {}
+    for item in list_value:
+        if not isinstance(item, dict):
+            continue
+        item_key = _group_cache_key(item.get("type"))
+        grouped.setdefault(item_key, []).append(item)
+    cache[path_key] = {
+        "signature": signature,
+        "groups": grouped,
+    }
+    result = grouped.get(group_key)
+    if isinstance(result, list):
+        return result
+    return []
+
+
 def is_input_scalar(value: Any) -> Any:
     # INPUT mode only renders direct scalar leaves as editable fields.
     return isinstance(value, (str, int, float, bool)) or value is None

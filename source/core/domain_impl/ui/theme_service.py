@@ -114,6 +114,13 @@ def _is_document_load_active_or_cooling(owner: Any) -> bool:
         return elapsed_ms < quiet_window_ms
 
 
+def _is_tree_interaction_active(owner: Any) -> bool:
+        active_until = float(getattr(owner, "_tree_interaction_active_until", 0.0) or 0.0)
+        if active_until <= 0.0:
+            return False
+        return time.perf_counter() < active_until
+
+
 def theme_palette_for_variant(variant: Any) -> Any:
     use_variant = str(variant).upper()
     match use_variant:
@@ -578,6 +585,70 @@ def _schedule_footer_theme_refresh(owner: Any):
             owner._theme_footer_refresh_after_id = None
 
 
+def _schedule_runtime_theme_tail_refresh(owner: Any) -> None:
+        """Defer heavyweight theme-refresh tail work to one coalesced idle pass."""
+        root = getattr(owner, "root", None)
+        if root is None:
+            return
+        after_id = getattr(owner, "_theme_runtime_tail_after_id", None)
+        if after_id:
+            try:
+                root.after_cancel(after_id)
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            owner._theme_runtime_tail_after_id = None
+
+        def _run() -> None:
+            owner._theme_runtime_tail_after_id = None
+            try:
+                owner._style_text_widget()
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            try:
+                owner._refresh_open_readme_window()
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            try:
+                owner._refresh_tree_item_markers()
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            try:
+                owner._refresh_active_error_theme()
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+
+        try:
+            owner._theme_runtime_tail_after_id = root.after_idle(_run)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            owner._theme_runtime_tail_after_id = None
+
+
+def _schedule_logo_theme_refresh(owner: Any) -> None:
+        """Coalesce expensive logo raster refresh during rapid theme switches."""
+        root = getattr(owner, "root", None)
+        if root is None:
+            return
+        after_id = getattr(owner, "_theme_logo_refresh_after_id", None)
+        if after_id:
+            try:
+                root.after_cancel(after_id)
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+            owner._theme_logo_refresh_after_id = None
+
+        def _run() -> None:
+            owner._theme_logo_refresh_after_id = None
+            try:
+                owner._update_logo_for_theme(force=False)
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                pass
+
+        try:
+            owner._theme_logo_refresh_after_id = root.after_idle(_run)
+        except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+            owner._theme_logo_refresh_after_id = None
+
+
 def _refresh_runtime_theme_widgets(owner: Any):
         theme = getattr(owner, "_theme", None)
         if not theme:
@@ -587,7 +658,7 @@ def _refresh_runtime_theme_widgets(owner: Any):
         except (tk.TclError, RuntimeError, AttributeError, KeyError, TypeError):
             pass
 
-        owner._update_logo_for_theme(force=False)
+        _schedule_logo_theme_refresh(owner)
 
         if owner._font_stepper_label and owner._font_stepper_label.winfo_exists():
             try:
@@ -790,10 +861,7 @@ def _refresh_runtime_theme_widgets(owner: Any):
         owner._update_header_variant_controls()
         owner._update_tree_style_controls()
         owner._update_toolbar_style_controls()
-        owner._style_text_widget()
-        owner._refresh_open_readme_window()
-        owner._refresh_tree_item_markers()
-        owner._refresh_active_error_theme()
+        _schedule_runtime_theme_tail_refresh(owner)
 
 
 def build_theme_prewarm_tasks(owner: Any, variant: Any) -> list[dict[str, str]]:
@@ -1149,6 +1217,7 @@ def _schedule_phase2_data_path_prewarm(owner: Any) -> None:
                 _is_document_load_active_or_cooling(owner)
                 or _is_loader_overlay_visible(owner)
                 or _is_toolbar_interaction_active(owner)
+                or _is_tree_interaction_active(owner)
             ):
                 try:
                     owner._theme_phase2_data_prewarm_after_id = root.after(retry_ms, _run_or_defer)
@@ -1168,6 +1237,14 @@ def _run_theme_asset_prewarm(owner: Any):
         owner._theme_prewarm_after_id = None
         _run_phase1_ui_prewarm(owner)
         _schedule_phase2_data_path_prewarm(owner)
+        # Keep interactive theme switching responsive by deferring prewarm ticks
+        # until active user-initiated switch processing has fully completed.
+        if bool(getattr(owner, "_theme_switch_active", False)):
+            try:
+                owner._theme_prewarm_after_id = owner.root.after(96, owner._run_theme_asset_prewarm)
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                owner._theme_prewarm_after_id = None
+            return
         queue = list(getattr(owner, "_theme_prewarm_queue", []))
         raw_tasks = getattr(owner, "_theme_prewarm_tasks", None)
         if isinstance(raw_tasks, deque):
@@ -1195,9 +1272,9 @@ def _run_theme_asset_prewarm(owner: Any):
             loader_tick_ms=int(getattr(owner, "_theme_prewarm_loader_tick_ms", 16) or 16),
             idle_tick_ms=int(getattr(owner, "_theme_prewarm_idle_tick_ms", 12) or 12),
         )
-        # Build full bundles during startup prewarm so first manual theme switch
-        # is truly hot and does not trigger first-use sprite/render spikes.
-        owner._theme_prewarm_render_mode = "full"
+        # Keep startup loader prewarm exhaustive, then switch to fast mode after
+        # loader hide to reduce interactive UI stalls during background prewarm.
+        owner._theme_prewarm_render_mode = "full" if loader_visible else "fast"
         # Defer startup prewarm while document-load work is active or in short post-load cooldown.
         if _is_document_load_active_or_cooling(owner):
             try:
@@ -1210,6 +1287,15 @@ def _run_theme_asset_prewarm(owner: Any):
             return
         # Keep initial toolbar hover smooth: defer prewarm ticks while pointer/scan is active.
         if _is_toolbar_interaction_active(owner):
+            try:
+                owner._theme_prewarm_after_id = owner.root.after(
+                    max(80, int(next_tick_ms) * 2),
+                    owner._run_theme_asset_prewarm,
+                )
+            except (tk.TclError, RuntimeError, AttributeError, TypeError, ValueError):
+                owner._theme_prewarm_after_id = None
+            return
+        if _is_tree_interaction_active(owner):
             try:
                 owner._theme_prewarm_after_id = owner.root.after(
                     max(80, int(next_tick_ms) * 2),

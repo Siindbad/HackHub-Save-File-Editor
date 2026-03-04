@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-03-01 (continued consolidation moved user settings/timer helpers into core infra/ui service modules and retired dead error-overlay card rendering paths).
+Last sync: 2026-03-04 (validated startup/theme/tree core coverage and refreshed suite index metadata).
 
 | Module | Purpose |
 | --- | --- |
