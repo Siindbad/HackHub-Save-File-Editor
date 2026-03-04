@@ -117,8 +117,10 @@ def commit_json_edit(owner: Any, item_id: Any, path: Any, new_value: Any) -> Any
 """JSON edit flow helper logic for editor mode checks."""
 
 import json
+import re
 from typing import Any
 from core.exceptions import EXPECTED_ERRORS
+from core import json_diagnostics as json_diag_core
 import logging
 _LOG = logging.getLogger(__name__)
 
@@ -148,6 +150,55 @@ def can_auto_apply_current_edit(owner: Any) -> Any:
     if not owner._is_edit_allowed(path, new_value):
         return False
     return True
+
+
+def autocorrect_boolean_literal_payload(raw_text: Any, *, error_lineno: int | None = None) -> str:
+    """Auto-correct close-match JSON boolean/null literal typos when safe."""
+    raw = str(raw_text or "")
+    stripped = raw.strip()
+    if not stripped:
+        return raw
+
+    # Scalar leaf edits: allow fixing `tru` -> `true`, `flase` -> `false`, etc.
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", stripped):
+        suggested = json_diag_core.suggest_json_literal_from_token(stripped)
+        if suggested and suggested != stripped.casefold():
+            return suggested
+
+    if error_lineno is None:
+        return raw
+
+    lines = raw.splitlines()
+    if not lines:
+        return raw
+
+    def _line_getter(lineno: int) -> str:
+        if lineno < 1 or lineno > len(lines):
+            return ""
+        return str(lines[lineno - 1] or "")
+
+    ln, _txt, diag = json_diag_core.find_nearby_boolean_literal_typo_line(
+        _line_getter,
+        int(error_lineno),
+        lookback=2,
+    )
+    if not ln or not isinstance(diag, dict):
+        return raw
+    if ln < 1 or ln > len(lines):
+        return raw
+    try:
+        start_col = int(diag.get("start_col", -1))
+        end_col = int(diag.get("end_col", -1))
+        suggested = str(diag.get("suggested", "") or "")
+    except (TypeError, ValueError, AttributeError):
+        return raw
+    if start_col < 0 or end_col <= start_col or not suggested:
+        return raw
+    line = lines[ln - 1]
+    if end_col > len(line):
+        return raw
+    lines[ln - 1] = line[:start_col] + suggested + line[end_col:]
+    return "\n".join(lines)
 
 
 # --- Merged from validation_service.py ---

@@ -744,8 +744,25 @@ def apply_edit(owner: Any):
         try:
             new_value = json.loads(raw)
         except EXPECTED_ERRORS as exc:
-            _set_status(owner._format_json_error(exc))
-            return
+            corrected_raw = validation_service.autocorrect_boolean_literal_payload(
+                raw,
+                error_lineno=getattr(exc, "lineno", None),
+            )
+            if corrected_raw == raw:
+                _set_status(owner._format_json_error(exc))
+                return
+            try:
+                new_value = json.loads(corrected_raw)
+                raw = corrected_raw
+            except EXPECTED_ERRORS as parse_exc:
+                _set_status(owner._format_json_error(parse_exc))
+                return
+            try:
+                owner.text.delete("1.0", "end")
+                owner.text.insert("1.0", raw)
+            except EXPECTED_ERRORS as text_exc:
+                _LOG.debug('expected_error', exc_info=text_exc)
+                pass
         owner._clear_json_error_highlight()
 
         if not owner._is_json_edit_allowed(path, new_value, show_feedback=True, auto_restore=True):
