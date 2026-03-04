@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-03-04 (validated startup/theme/tree core coverage, plus JSON raw-lock latency fixes and Apply Edit boolean typo auto-correct support).
+Last sync: 2026-03-04 (validated startup/theme/tree core coverage, plus JSON raw-lock fixes and INPUT network readonly value copy-selection support).
 
 | Module | Purpose |
 | --- | --- |

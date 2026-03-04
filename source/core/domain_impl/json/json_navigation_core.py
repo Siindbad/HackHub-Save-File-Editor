@@ -103,6 +103,45 @@ def filter_json_find_matches(owner: Any, prior_matches: Any, query_lower: Any) -
     return matches
 
 
+def _json_find_anchor_path(path: list[Any]) -> list[Any]:
+    """Clamp navigation path to first subcategory depth under the root key."""
+    if len(path) <= 2:
+        return list(path)
+    return list(path[:2])
+
+
+def normalize_json_find_navigation_matches(matches: Any) -> list[Any]:
+    """Collapse deep JSON find matches into unique first-subcategory navigation anchors."""
+    if not isinstance(matches, list):
+        return []
+
+    normalized: list[Any] = []
+    seen: set[Any] = set()
+    for ref in matches:
+        if isinstance(ref, tuple) and len(ref) == 3 and ref[0] == "__group__":
+            key = ("__group__", tuple(ref[1]) if isinstance(ref[1], list) else ref[1], ref[2])
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(ref)
+            continue
+        if not isinstance(ref, list) or not ref:
+            continue
+        anchor = _json_find_anchor_path(ref)
+        key = tuple(anchor)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(anchor)
+    return normalized
+
+
+def _ensure_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    return []
+
+
 def _path_token_text(owner: Any, path: list[Any]) -> str:
     value = _resolve_path_value(getattr(owner, "data", None), path)
     if value is _PATH_MISSING:
@@ -258,14 +297,12 @@ def find_next_json_text_match(owner: Any, query: Any) -> Any:
         else:
             text_widget.tag_remove("find_next_match", "1.0", "end")
         text_widget.tag_add("find_next_match", start, end)
-        # Configure the match tag once per live text widget instead of per keystroke hit.
-        if getattr(owner, "_json_find_tag_widget", None) is not text_widget:
-            text_widget.tag_config(
-                "find_next_match",
-                background="#214a6a",
-                foreground="#e8f6ff",
-            )
-            owner._json_find_tag_widget = text_widget
+        _refresh_visible_json_find_matches(owner, text_widget, needle, active_start=start, active_end=end)
+        _configure_json_find_tags(owner, text_widget)
+        try:
+            text_widget.tag_raise("find_next_match")
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
         text_widget.mark_set("insert", end)
         text_widget.see(start)
         owner._json_find_last_query = query_key
@@ -279,6 +316,183 @@ def focus_json_find_match(owner: Any, query: Any) -> Any:
     """After tree-level Find Next picks a node, jump to text match in JSON editor."""
     owner._json_find_last_query = ""
     find_next_json_text_match(owner, query)
+
+
+def _json_find_palette(owner: Any) -> tuple[str, str, str, str]:
+    variant = str(getattr(owner, "_app_theme_variant", "SIINDBAD") or "SIINDBAD").upper()
+    if variant == "GLITCH":
+        return ("#3d6b4d", "#ecfff2", "#254232", "#def8e7")
+    if variant == "KAMUE":
+        return ("#4f3f71", "#f3ecff", "#34274b", "#ebe1ff")
+    return ("#2a5279", "#edf7ff", "#1a3a5b", "#dcefff")
+
+
+def _json_find_palette_key(owner: Any) -> tuple[str, str, str, str]:
+    return _json_find_palette(owner)
+
+
+def _json_find_active_bg(owner: Any) -> str:
+    return _json_find_palette(owner)[0]
+
+
+def _json_find_active_fg(owner: Any) -> str:
+    return _json_find_palette(owner)[1]
+
+
+def _json_find_window_bg(owner: Any) -> str:
+    return _json_find_palette(owner)[2]
+
+
+def _json_find_window_fg(owner: Any) -> str:
+    return _json_find_palette(owner)[3]
+
+
+def _refresh_visible_json_find_matches(
+    owner: Any,
+    text_widget: Any,
+    needle: str,
+    *,
+    active_start: str,
+    active_end: str,
+) -> None:
+    if not needle:
+        _clear_json_find_tags(owner, text_widget, clear_active=False)
+        return
+    try:
+        visible_start = text_widget.index("@0,0")
+        height = int(text_widget.winfo_height() or 0)
+        if height <= 0:
+            return
+        visible_end = text_widget.index(f"@0,{max(1, height)}")
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+        return
+    _clear_window_find_tag(text_widget)
+
+    match_count = 0
+    cursor = str(visible_start)
+    max_visible_matches = 120
+    while match_count < max_visible_matches:
+        hit = text_widget.search(needle, cursor, stopindex=visible_end, nocase=1)
+        if not hit:
+            break
+        hit_start = str(hit)
+        hit_end = f"{hit_start}+{len(needle)}c"
+        if not _index_range_equal(text_widget, hit_start, hit_end, active_start, active_end):
+            text_widget.tag_add("find_next_window_match", hit_start, hit_end)
+            match_count += 1
+        cursor = hit_end
+
+    _configure_json_find_window_tag(owner, text_widget)
+    try:
+        text_widget.tag_raise("find_next_match")
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+
+
+def _configure_json_find_tags(owner: Any, text_widget: Any) -> None:
+    _configure_json_find_active_tag(owner, text_widget)
+    _configure_json_find_window_tag(owner, text_widget)
+
+
+def _configure_json_find_active_tag(owner: Any, text_widget: Any) -> None:
+    palette_key = _json_find_palette_key(owner)
+    widget_changed = getattr(owner, "_json_find_tag_widget", None) is not text_widget
+    palette_changed = getattr(owner, "_json_find_active_palette_key", None) != palette_key
+    if not widget_changed and not palette_changed:
+        return
+    text_widget.tag_config(
+        "find_next_match",
+        background=_json_find_active_bg(owner),
+        foreground=_json_find_active_fg(owner),
+    )
+    owner._json_find_tag_widget = text_widget
+    owner._json_find_active_palette_key = palette_key
+
+
+def _configure_json_find_window_tag(owner: Any, text_widget: Any) -> None:
+    palette_key = _json_find_palette_key(owner)
+    widget_changed = getattr(owner, "_json_find_window_tag_widget", None) is not text_widget
+    palette_changed = getattr(owner, "_json_find_window_palette_key", None) != palette_key
+    if not widget_changed and not palette_changed:
+        return
+    text_widget.tag_config(
+        "find_next_window_match",
+        background=_json_find_window_bg(owner),
+        foreground=_json_find_window_fg(owner),
+    )
+    owner._json_find_window_tag_widget = text_widget
+    owner._json_find_window_palette_key = palette_key
+
+
+def _index_range_equal(text_widget: Any, a_start: str, a_end: str, b_start: str, b_end: str) -> bool:
+    try:
+        return bool(
+            str(text_widget.index(a_start)) == str(text_widget.index(b_start))
+            and str(text_widget.index(a_end)) == str(text_widget.index(b_end))
+        )
+    except EXPECTED_ERRORS:
+        return bool(str(a_start) == str(b_start) and str(a_end) == str(b_end))
+
+
+def _clear_window_find_tag(text_widget: Any) -> None:
+    try:
+        text_widget.tag_remove("find_next_window_match", "1.0", "end")
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+
+
+def _clear_json_find_tags(owner: Any, text_widget: Any, *, clear_active: bool = True) -> None:
+    if clear_active:
+        try:
+            text_widget.tag_remove("find_next_match", "1.0", "end")
+        except EXPECTED_ERRORS as exc:
+            _LOG.debug('expected_error', exc_info=exc)
+    _clear_window_find_tag(text_widget)
+    if clear_active:
+        owner._json_find_last_query = ""
+
+
+def clear_json_find_highlight_on_nav(owner: Any, event: Any) -> None:
+    text_widget = getattr(owner, "text", None)
+    if text_widget is None:
+        return
+    try:
+        if not text_widget.winfo_exists():
+            return
+        x = getattr(event, "x", None)
+        y = getattr(event, "y", None)
+        if x is None or y is None:
+            return
+        click_index = text_widget.index(f"@{x},{y}")
+        if not _index_in_tag_ranges(text_widget, "find_next_match", click_index) and not _index_in_tag_ranges(
+            text_widget, "find_next_window_match", click_index
+        ):
+            return
+        _clear_json_find_tags(owner, text_widget, clear_active=True)
+    except EXPECTED_ERRORS as exc:
+        _LOG.debug('expected_error', exc_info=exc)
+
+
+def _index_in_tag_ranges(text_widget: Any, tag_name: str, index: str) -> bool:
+    try:
+        ranges = list(text_widget.tag_ranges(tag_name))
+    except EXPECTED_ERRORS:
+        return False
+    if len(ranges) < 2:
+        return False
+    for pos in range(0, len(ranges), 2):
+        start = ranges[pos]
+        end = ranges[pos + 1]
+        try:
+            in_start = bool(text_widget.compare(index, ">=", start))
+            in_end = bool(text_widget.compare(index, "<", end))
+            if in_start and in_end:
+                return True
+        except EXPECTED_ERRORS:
+            if str(index) >= str(start) and str(index) < str(end):
+                return True
+    return False
 
 
 # --- Merged from json_find_orchestrator_service.py ---
@@ -301,28 +515,37 @@ def find_next(owner: Any, *, expected_errors: Any) -> None:
     if query_lower != owner.last_find_query:
         build_matches_fn = getattr(owner, "_build_json_find_matches", None)
         filter_matches_fn = getattr(owner, "_filter_json_find_matches", None)
+        prior_raw_matches = getattr(owner, "_json_find_raw_matches", None)
+        if not isinstance(prior_raw_matches, list) or not prior_raw_matches:
+            fallback_matches = getattr(owner, "find_matches", None)
+            prior_raw_matches = fallback_matches if isinstance(fallback_matches, list) else None
         can_narrow_prior = bool(
             owner.last_find_query
             and query_lower.startswith(str(owner.last_find_query))
-            and isinstance(owner.find_matches, list)
-            and owner.find_matches
+            and isinstance(prior_raw_matches, list)
+            and prior_raw_matches
         )
+        raw_matches: list[Any]
         if can_narrow_prior:
             if callable(filter_matches_fn):
-                owner.find_matches = filter_matches_fn(owner.find_matches, query_lower)
+                raw_matches = _ensure_list(filter_matches_fn(prior_raw_matches, query_lower))
             else:
-                owner.find_matches = json_find_service.filter_json_find_matches(
-                    owner,
-                    owner.find_matches,
-                    query_lower,
+                raw_matches = _ensure_list(
+                    json_find_service.filter_json_find_matches(
+                        owner,
+                        prior_raw_matches,
+                        query_lower,
+                    )
                 )
         elif callable(build_matches_fn):
-            owner.find_matches = build_matches_fn(query_lower)
+            raw_matches = _ensure_list(build_matches_fn(query_lower))
         else:
             # Backward-compatible fallback for lightweight test doubles.
             if not owner._find_search_entries:
                 owner._find_search_entries = owner._build_find_search_index()
-            owner.find_matches = [entry[0] for entry in owner._find_search_entries if query_lower in entry[1]]
+            raw_matches = [entry[0] for entry in owner._find_search_entries if query_lower in entry[1]]
+        owner._json_find_raw_matches = raw_matches
+        owner.find_matches = normalize_json_find_navigation_matches(raw_matches)
         owner.find_index = 0
         owner.last_find_query = query_lower
 
@@ -377,7 +600,30 @@ def find_next(owner: Any, *, expected_errors: Any) -> None:
     owner.on_select(None)
     focus_match_fn = getattr(owner, "_focus_json_find_match", None)
     if callable(focus_match_fn):
-        focus_match_fn(query)
+        root = getattr(owner, "root", None)
+        schedule_after_idle = getattr(root, "after_idle", None)
+        if callable(schedule_after_idle):
+            prior_after_id = getattr(owner, "_json_find_focus_after_id", None)
+            cancel_after = getattr(root, "after_cancel", None)
+            if prior_after_id is not None and callable(cancel_after):
+                try:
+                    cancel_after(prior_after_id)
+                except expected_errors:
+                    pass
+
+            def _apply_focus() -> None:
+                owner._json_find_focus_after_id = None
+                try:
+                    focus_match_fn(query)
+                except expected_errors:
+                    return
+
+            try:
+                owner._json_find_focus_after_id = schedule_after_idle(_apply_focus)
+            except expected_errors:
+                focus_match_fn(query)
+        else:
+            focus_match_fn(query)
     owner.set_status(f'Find: {owner.find_index}/{len(matches)}')
 
 __all__ = [name for name in globals() if not name.startswith("__")]

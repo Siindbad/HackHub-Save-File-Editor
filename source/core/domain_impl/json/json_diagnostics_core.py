@@ -4231,6 +4231,9 @@ def _on_text_keypress(owner: Any, event):
 
 def _on_text_nav_attempt(owner: Any, event):
         try:
+            clear_find_highlight = getattr(owner, "_clear_json_find_highlight_on_nav", None)
+            if callable(clear_find_highlight):
+                clear_find_highlight(event)
             if owner.error_overlay is None:
                 return
             target = owner.text.index(f"@{event.x},{event.y}")

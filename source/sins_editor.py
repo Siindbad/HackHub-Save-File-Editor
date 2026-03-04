@@ -3803,13 +3803,25 @@ if button._siindbad_base_image is None:
         self.last_find_query = ""
         self._find_search_entries = []
         self._json_find_path_token_cache = {}
+        self._json_find_raw_matches = []
         self._json_find_last_query = ""
         self._json_find_tag_widget = None
+        self._json_find_window_tag_widget = None
+        self._json_find_active_palette_key = None
+        self._json_find_window_palette_key = None
+        focus_after_id = getattr(self, "_json_find_focus_after_id", None)
+        self._json_find_focus_after_id = None
+        if focus_after_id is not None and getattr(self, "root", None) is not None:
+            try:
+                self.root.after_cancel(focus_after_id)
+            except _EXPECTED_APP_ERRORS:
+                pass
         self._find_last_root_item = ""
         text_widget = getattr(self, "text", None)
         if text_widget is not None:
             try:
                 text_widget.tag_remove("find_next_match", "1.0", "end")
+                text_widget.tag_remove("find_next_window_match", "1.0", "end")
             except _EXPECTED_APP_ERRORS:
                 pass
 
@@ -3890,6 +3902,9 @@ if button._siindbad_base_image is None:
 
     def _focus_json_find_match(self, query):
         json_text_find_service.focus_json_find_match(self, query)
+
+    def _clear_json_find_highlight_on_nav(self, event):
+        json_text_find_service.clear_json_find_highlight_on_nav(self, event)
 
     def _find_next_input_mode(self):
         input_mode_find_service.find_next_input_mode(self, tk_module=tk)

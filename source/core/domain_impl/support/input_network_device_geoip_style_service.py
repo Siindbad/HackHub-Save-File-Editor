@@ -207,7 +207,17 @@ def _mount_card(
     return shell, content
 
 
-def _readonly_line(parent: Any, label: str, value: Any, *, key_fg: str, value_fg: str, font_family: str, size: int) -> None:
+def _readonly_line(
+    owner: Any,
+    parent: Any,
+    label: str,
+    value: Any,
+    *,
+    key_fg: str,
+    value_fg: str,
+    font_family: str,
+    size: int,
+) -> None:
     row = tk.Frame(parent, bg=parent.cget("bg"), bd=0, highlightthickness=0)
     row.pack(fill="x", pady=1)
     tk.Label(
@@ -218,15 +228,31 @@ def _readonly_line(parent: Any, label: str, value: Any, *, key_fg: str, value_fg
         font=(font_family, max(8, size), "bold"),
         anchor="w",
     ).pack(side="left")
-    tk.Label(
+    value_entry = tk.Entry(
         row,
-        text=_non_empty(value),
+        bd=0,
+        relief="flat",
+        highlightthickness=0,
         bg=parent.cget("bg"),
+        readonlybackground=parent.cget("bg"),
         fg=value_fg,
+        disabledforeground=value_fg,
+        insertbackground=value_fg,
+        selectbackground="#2f3a4d",
+        selectforeground="#ffffff",
         font=(font_family, max(8, size), "bold"),
-        anchor="w",
         justify="left",
-    ).pack(side="left", padx=(6, 0), fill="x", expand=True)
+        state="normal",
+    )
+    value_entry.insert(0, _non_empty(value))
+    value_entry.configure(state="readonly")
+    value_entry.pack(side="left", padx=(6, 0), fill="x", expand=True)
+    bind_input_context = getattr(owner, "_bind_input_context_widget", None)
+    if callable(bind_input_context):
+        try:
+            bind_input_context(value_entry, allow_paste=False)
+        except EXPECTED_ERRORS:
+            pass
 
 
 def _geoip_style_for_variant(variant: Any) -> dict[str, str]:
@@ -351,8 +377,8 @@ def render_geoip_input(owner: Any, host: Any, normalized_path: Any, payload: dic
         font=(label_family, title_size, "bold"),
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
-    _readonly_line(router_info, "ROUTER IP :", payload.get("router", {}).get("ip"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
-    _readonly_line(router_info, "LAN :", payload.get("router", {}).get("lan_ip"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, router_info, "ROUTER IP :", payload.get("router", {}).get("ip"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, router_info, "LAN :", payload.get("router", {}).get("lan_ip"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
 
     # Device identity row
     device_row = tk.Frame(shell, bg=panel_bg, bd=0, highlightthickness=0)
@@ -421,11 +447,12 @@ def render_geoip_input(owner: Any, host: Any, normalized_path: Any, payload: dic
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     device_data = payload.get("device", {})
-    _readonly_line(device_info, "IP :", device_data.get("ip"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
-    _readonly_line(device_info, "CITY :", device_data.get("city"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
-    _readonly_line(device_info, "COUNTRY :", device_data.get("country"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, device_info, "IP :", device_data.get("ip"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, device_info, "CITY :", device_data.get("city"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, device_info, "COUNTRY :", device_data.get("country"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
     geo_size = max(7, row_size - 1)
     _readonly_line(
+        owner,
         device_info,
         "GEO :",
         f"LAT : {_non_empty(device_data.get('latitude'))} / LONG : {_non_empty(device_data.get('longitude'))}",
@@ -453,7 +480,7 @@ def render_geoip_input(owner: Any, host: Any, normalized_path: Any, payload: dic
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     user_data = payload.get("user", {})
-    _readonly_line(user_info, "FIRST NAME :", user_data.get("first_name"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
-    _readonly_line(user_info, "LAST NAME :", user_data.get("last_name"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
-    _readonly_line(user_info, "USER NAME :", user_data.get("username"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
-    _readonly_line(user_info, "PASSWORD :", user_data.get("password"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, user_info, "FIRST NAME :", user_data.get("first_name"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, user_info, "LAST NAME :", user_data.get("last_name"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, user_info, "USER NAME :", user_data.get("username"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)
+    _readonly_line(owner, user_info, "PASSWORD :", user_data.get("password"), key_fg=key_fg, value_fg=value_fg, font_family=value_family, size=row_size)

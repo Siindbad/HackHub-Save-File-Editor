@@ -498,7 +498,17 @@ def _mount_card(
     return shell, content
 
 
-def _readonly_line(parent: Any, label: str, value: Any, *, key_fg: str, value_fg: str, font_family: str, size: int) -> None:
+def _readonly_line(
+    owner: Any,
+    parent: Any,
+    label: str,
+    value: Any,
+    *,
+    key_fg: str,
+    value_fg: str,
+    font_family: str,
+    size: int,
+) -> None:
     row = tk.Frame(parent, bg=parent.cget("bg"), bd=0, highlightthickness=0)
     row.pack(fill="x", pady=1)
     tk.Label(
@@ -509,15 +519,67 @@ def _readonly_line(parent: Any, label: str, value: Any, *, key_fg: str, value_fg
         font=(font_family, max(8, size), "bold"),
         anchor="w",
     ).pack(side="left")
-    tk.Label(
+    value_entry = tk.Entry(
         row,
-        text=_non_empty(value),
+        bd=0,
+        relief="flat",
+        highlightthickness=0,
         bg=parent.cget("bg"),
+        readonlybackground=parent.cget("bg"),
         fg=value_fg,
+        disabledforeground=value_fg,
+        insertbackground=value_fg,
+        selectbackground="#2f3a4d",
+        selectforeground="#ffffff",
         font=(font_family, max(8, size), "bold"),
-        anchor="w",
         justify="left",
-    ).pack(side="left", padx=(6, 0), fill="x", expand=True)
+        state="normal",
+    )
+    value_entry.insert(0, _non_empty(value))
+    value_entry.configure(state="readonly")
+    value_entry.pack(side="left", padx=(6, 0), fill="x", expand=True)
+    bind_input_context = getattr(owner, "_bind_input_context_widget", None)
+    if callable(bind_input_context):
+        try:
+            bind_input_context(value_entry, allow_paste=False)
+        except EXPECTED_ERRORS:
+            pass
+
+
+def _readonly_table_value_cell(
+    owner: Any,
+    parent: Any,
+    value: Any,
+    *,
+    value_fg: str,
+    font_family: str,
+    size: int,
+) -> None:
+    value_entry = tk.Entry(
+        parent,
+        bd=0,
+        relief="flat",
+        highlightthickness=0,
+        bg=parent.cget("bg"),
+        readonlybackground=parent.cget("bg"),
+        fg=value_fg,
+        disabledforeground=value_fg,
+        insertbackground=value_fg,
+        selectbackground="#2f3a4d",
+        selectforeground="#ffffff",
+        font=(font_family, max(8, size), "bold"),
+        justify="left",
+        state="normal",
+    )
+    value_entry.insert(0, _non_empty(value))
+    value_entry.configure(state="readonly")
+    value_entry.pack(fill="x", padx=10, pady=4)
+    bind_input_context = getattr(owner, "_bind_input_context_widget", None)
+    if callable(bind_input_context):
+        try:
+            bind_input_context(value_entry, allow_paste=False)
+        except EXPECTED_ERRORS:
+            pass
 
 
 def _network_asset_filename_for_variant(variant: Any, asset: str) -> str:
@@ -706,6 +768,7 @@ def _render_identity_row(
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     _readonly_line(
+        owner,
         info,
         ip_label,
         identity.get("ip"),
@@ -715,6 +778,7 @@ def _render_identity_row(
         size=row_size,
     )
     _readonly_line(
+        owner,
         info,
         "LAN :",
         identity.get("lan_ip"),
@@ -812,6 +876,7 @@ def _render_interpol_device_identity_row(
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     _readonly_line(
+        owner,
         device_info,
         "IP :",
         device.get("ip"),
@@ -821,6 +886,7 @@ def _render_interpol_device_identity_row(
         size=row_size,
     )
     _readonly_line(
+        owner,
         device_info,
         "LAN :",
         device.get("lan_ip"),
@@ -832,6 +898,7 @@ def _render_interpol_device_identity_row(
     email_value = str(device.get("email", "") or "").strip()
     if email_value:
         _readonly_line(
+            owner,
             device_info,
             "EMAIL :",
             email_value,
@@ -869,6 +936,7 @@ def _render_interpol_device_identity_row(
         ).pack(fill="x", pady=(2, 0))
     else:
         _readonly_line(
+            owner,
             user_info,
             "FIRST NAME :",
             device.get("first_name"),
@@ -878,6 +946,7 @@ def _render_interpol_device_identity_row(
             size=row_size,
         )
         _readonly_line(
+            owner,
             user_info,
             "LAST NAME :",
             device.get("last_name"),
@@ -887,6 +956,7 @@ def _render_interpol_device_identity_row(
             size=row_size,
         )
         _readonly_line(
+            owner,
             user_info,
             "USER NAME :",
             device.get("username"),
@@ -896,6 +966,7 @@ def _render_interpol_device_identity_row(
             size=row_size,
         )
         _readonly_line(
+            owner,
             user_info,
             "PASSWORD :",
             device.get("password"),
@@ -992,6 +1063,7 @@ def _render_interpol_server_identity_row(
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     _readonly_line(
+        owner,
         device_info,
         "IP :",
         server.get("ip"),
@@ -1001,6 +1073,7 @@ def _render_interpol_server_identity_row(
         size=row_size,
     )
     _readonly_line(
+        owner,
         device_info,
         "LAN :",
         server.get("lan_ip"),
@@ -1012,6 +1085,7 @@ def _render_interpol_server_identity_row(
     email_value = str(server.get("email", "") or "").strip()
     if email_value:
         _readonly_line(
+            owner,
             device_info,
             "EMAIL :",
             email_value,
@@ -1039,6 +1113,7 @@ def _render_interpol_server_identity_row(
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     _readonly_line(
+        owner,
         domain_info,
         "SERVER :",
         server.get("name"),
@@ -1049,6 +1124,7 @@ def _render_interpol_server_identity_row(
     )
     if _has_interpol_server_credentials(server):
         _readonly_line(
+            owner,
             domain_info,
             "USER NAME :",
             server.get("username"),
@@ -1058,6 +1134,7 @@ def _render_interpol_server_identity_row(
             size=row_size,
         )
         _readonly_line(
+            owner,
             domain_info,
             "PASSWORD :",
             server.get("password"),
@@ -1134,6 +1211,7 @@ def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payloa
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     _readonly_line(
+        owner,
         router_info,
         "ROUTER IP :",
         payload.get("router", {}).get("ip"),
@@ -1143,6 +1221,7 @@ def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payloa
         size=row_size,
     )
     _readonly_line(
+        owner,
         router_info,
         "LAN :",
         payload.get("router", {}).get("lan_ip"),
@@ -1200,6 +1279,7 @@ def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payloa
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     _readonly_line(
+        owner,
         device_info,
         "IP :",
         primary.get("ip"),
@@ -1227,6 +1307,7 @@ def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payloa
         anchor="w",
     ).pack(fill="x", pady=(0, 4))
     _readonly_line(
+        owner,
         domain_info,
         "DOMAIN :",
         primary.get("domain"),
@@ -1269,14 +1350,14 @@ def render_bcc_domains_input(owner: Any, host: Any, normalized_path: Any, payloa
         for col, cell_value in enumerate((ip_value, domain_value)):
             cell = tk.Frame(table, bg=body_bg, bd=0, highlightthickness=1, highlightbackground=card_edge)
             cell.grid(row=idx, column=col, sticky="nsew")
-            tk.Label(
+            _readonly_table_value_cell(
+                owner,
                 cell,
-                text=cell_value,
-                bg=body_bg,
-                fg=domains_table_value_fg,
-                font=(value_family, max(8, row_size), "bold"),
-                anchor="w",
-            ).pack(fill="x", padx=10, pady=4)
+                cell_value,
+                value_fg=domains_table_value_fg,
+                font_family=value_family,
+                size=row_size,
+            )
 
 
 def render_blue_table_input(owner: Any, host: Any, normalized_path: Any, payload: dict[str, Any]) -> None:
