@@ -21,6 +21,7 @@ from core.domain_impl.json import json_io_core as document_io_service
 from core.domain_impl.json import json_io_core as json_apply_commit_service
 from core.domain_impl.json import json_io_core as json_edit_flow_service
 from core.domain_impl.json import json_io_core as json_path_service
+from core.domain_impl.json import json_diagnostics_core as json_raw_edit_guard_service
 from core.domain_impl.json import json_io_core as validation_service
 from core.domain_impl.json import json_navigation_core as json_find_nav_service
 from core.domain_impl.json import json_navigation_core as json_find_orchestrator_service
@@ -125,6 +126,7 @@ class JsonEngine:
     json_property_key_rule_service = json_property_key_rule_service
     json_quoted_item_tail_service = json_quoted_item_tail_service
     json_repair_service = json_repair_service
+    json_raw_edit_guard_service = json_raw_edit_guard_service
     json_scalar_tail_service = json_scalar_tail_service
     json_top_level_close_service = json_top_level_close_service
     json_validation_feedback_service = json_validation_feedback_service
@@ -167,4 +169,3 @@ DOCUMENT = JSON_LIFECYCLE.document
 JSON_ENGINE = JSON_LIFECYCLE.json_engine
 JSON_VIEW = JSON_LIFECYCLE.json_view
 VALIDATION = JSON_LIFECYCLE.validation
-

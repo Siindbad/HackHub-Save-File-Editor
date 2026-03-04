@@ -6,6 +6,7 @@ Contains merged logic from split JSON domain services.
 
 # --- Merged from json_nearby_line_service.py ---
 """Shared nearby-line scanning helper for JSON diagnostics."""
+from collections.abc import Mapping
 from typing import Any
 
 
@@ -44,9 +45,11 @@ def find_nearby_line(
         line -= 1
 
     for ln, txt in candidates:
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         if callable(predicate_kwargs_provider):
-            kwargs = dict(predicate_kwargs_provider(ln, txt) or {})
+            raw_kwargs = predicate_kwargs_provider(ln, txt)
+            if isinstance(raw_kwargs, Mapping):
+                kwargs = {str(key): value for key, value in raw_kwargs.items()}
         if predicate_fn(txt, **kwargs):
             return ln, txt
     return None, None
@@ -830,18 +833,29 @@ def log_json_error(owner: Any, exc: Exception, target_line: object, note: str = 
             try:
                 if os.path.isfile(legacy_path):
                     os.remove(legacy_path)
-            except EXPECTED_ERRORS as exc:
-                _LOG.debug('expected_error', exc_info=exc)
+            except EXPECTED_ERRORS as legacy_exc:
+                _LOG.debug('expected_error', exc_info=legacy_exc)
                 pass
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = getattr(exc, "msg", str(exc))
         lineno = getattr(exc, "lineno", None)
         colno = getattr(exc, "colno", None)
-        try:
-            target_line = int(target_line)
-        except (TypeError, ValueError, AttributeError):
-            target_line = int(lineno or 1)
-        target_line = max(1, target_line)
+        parsed_target_line: int | None = None
+        if isinstance(target_line, int):
+            parsed_target_line = target_line
+        elif isinstance(target_line, str):
+            raw_target_line = target_line.strip()
+            if raw_target_line:
+                try:
+                    parsed_target_line = int(raw_target_line)
+                except ValueError:
+                    parsed_target_line = None
+        if parsed_target_line is None:
+            try:
+                parsed_target_line = int(lineno) if lineno is not None else 1
+            except (TypeError, ValueError):
+                parsed_target_line = 1
+        target_line = max(1, parsed_target_line)
         diag_system = diag_system_from_note(
             note,
             is_symbol_error_note=getattr(owner, "_is_symbol_error_note", None),
@@ -4193,6 +4207,11 @@ def _on_text_keypress(owner: Any, event):
         try:
             keysym = getattr(event, "keysym", "") or ""
             char = getattr(event, "char", "") or ""
+            if str(getattr(owner, "_editor_mode", "JSON")).upper() == "JSON":
+                guard_fn = getattr(owner, "_json_raw_keypress_allowed", None)
+                if callable(guard_fn) and not bool(guard_fn(event)):
+                    owner.set_status("JSON lock: selected token is protected.")
+                    return "break"
             nav_keys = {
                 "Up", "Down", "Prior", "Next",
                 "Page_Up", "Page_Down",
@@ -4256,4 +4275,29 @@ def _preferred_error_insert_index(owner: Any, line, fallback_index):
         except EXPECTED_ERRORS:
             return fallback_index
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+
+def is_keypress_edit_allowed(owner: Any, event: Any, *, expected_errors: tuple[type[BaseException], ...]) -> bool:
+        """Route JSON raw keypress-guard checks through the diagnostics master pillar."""
+        from core.domain_impl.json import json_raw_edit_guard_service
+
+        return bool(
+            json_raw_edit_guard_service.is_keypress_edit_allowed(
+                owner,
+                event,
+                expected_errors=expected_errors,
+            )
+        )
+
+
+def is_paste_allowed(owner: Any, *, expected_errors: tuple[type[BaseException], ...]) -> bool:
+        """Route JSON raw paste-guard checks through the diagnostics master pillar."""
+        from core.domain_impl.json import json_raw_edit_guard_service
+
+        return bool(
+            json_raw_edit_guard_service.is_paste_allowed(
+                owner,
+                expected_errors=expected_errors,
+            )
+        )
+
+__all__ = [name for name in globals() if not name.startswith("__")]  # pyright: ignore[reportUnsupportedDunderAll]

@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-03-01 (Phase 2 consolidation moved JSON lifecycle and INPUT workflow orchestration into facade masters with compatibility shims).
+Last sync: 2026-03-04 (validated facade wiring updates, including JSON raw edit-guard exposure through JSON lifecycle services).
 
 | Module | Purpose |
 | --- | --- |

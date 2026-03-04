@@ -533,6 +533,7 @@ source/core/domain_impl/json/__init__.py
 source/core/domain_impl/json/json_diagnostics_core.py
 source/core/domain_impl/json/json_io_core.py
 source/core/domain_impl/json/json_navigation_core.py
+source/core/domain_impl/json/json_raw_edit_guard_service.py
 source/core/domain_impl/json/json_view_core.py
 source/core/domain_impl/support/__init__.py
 source/core/domain_impl/support/bug_report_api_service.py

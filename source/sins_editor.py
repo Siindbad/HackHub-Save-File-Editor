@@ -90,6 +90,7 @@ json_path_service = json_engine.JSON_ENGINE.json_path_service
 json_property_key_rule_service = json_engine.JSON_ENGINE.json_property_key_rule_service
 json_quoted_item_tail_service = json_engine.JSON_ENGINE.json_quoted_item_tail_service
 json_repair_service = json_engine.JSON_ENGINE.json_repair_service
+json_raw_edit_guard_service = json_engine.JSON_ENGINE.json_raw_edit_guard_service
 json_scalar_tail_service = json_engine.JSON_ENGINE.json_scalar_tail_service
 json_top_level_close_service = json_engine.JSON_ENGINE.json_top_level_close_service
 json_validation_feedback_service = json_engine.JSON_ENGINE.json_validation_feedback_service
@@ -2329,6 +2330,11 @@ if button._siindbad_base_image is None:
         if target_widget is not None and target_widget is not getattr(self, "text", None):
             self._on_input_context_paste()
             return
+        if str(getattr(self, "_editor_mode", "JSON")).upper() == "JSON":
+            paste_allowed = getattr(self, "_json_raw_paste_allowed", None)
+            if callable(paste_allowed) and not bool(paste_allowed()):
+                self.set_status("JSON lock: selected token is protected.")
+                return
         try:
             pasted = self.root.clipboard_get()
         except _EXPECTED_APP_ERRORS:
@@ -3985,6 +3991,15 @@ if button._siindbad_base_image is None:
     def _clear_json_lock_highlight(self): return json_diagnostics_service._clear_json_lock_highlight(self)
 
     def _set_json_text_editable(self, editable=True): return json_diagnostics_service._set_json_text_editable(self, editable)
+    def _json_raw_keypress_allowed(self, event): return json_raw_edit_guard_service.is_keypress_edit_allowed(
+            self,
+            event,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
+    def _json_raw_paste_allowed(self): return json_raw_edit_guard_service.is_paste_allowed(
+            self,
+            expected_errors=_EXPECTED_APP_ERRORS,
+        )
 
     # H-UI-05: extracted JSON repair/diagnostics routing is bound via json_engine.repair_dispatch.
 
