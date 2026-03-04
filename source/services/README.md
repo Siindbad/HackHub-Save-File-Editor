@@ -1,6 +1,6 @@
 # Services Suite
 
-Last sync: 2026-03-04 (validated facade wiring updates, including JSON raw edit-guard exposure through JSON lifecycle services).
+Last sync: 2026-03-04 (validated facade wiring updates, including async loader queue-drain exports through JSON lifecycle services).
 
 | Module | Purpose |
 | --- | --- |

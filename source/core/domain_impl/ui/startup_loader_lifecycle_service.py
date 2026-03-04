@@ -371,6 +371,9 @@ def poll_document_load_async(
             time_module=time_module,
         )
         return
+    drain_queue_fn = getattr(document_service_module, "drain_async_load_queue", None)
+    if callable(drain_queue_fn):
+        drain_queue_fn(owner, request_id=request_id)
     if not bool(result.get("done", False)):
         root = getattr(owner, "root", None)
         if root is None:

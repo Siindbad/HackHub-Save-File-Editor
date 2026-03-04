@@ -183,8 +183,26 @@ def _run_startup_wiring_sanity_check(owner: Any) -> None:
             return
 
 
-def _append_find_search_entries(owner: Any, path, value, entries):
+def _append_find_search_entries(
+    owner: Any,
+    path,
+    value,
+    entries,
+    *,
+    input_no_expand_root_keys=None,
+    input_no_expand_group_keys=None,
+):
         mode_is_input = str(getattr(owner, "_editor_mode", "JSON")).upper() == "INPUT"
+        no_expand_root_keys = (
+            set(getattr(owner, "INPUT_MODE_NO_EXPAND_ROOT_KEYS", set()))
+            if input_no_expand_root_keys is None
+            else input_no_expand_root_keys
+        )
+        no_expand_group_keys = (
+            set(getattr(owner, "INPUT_MODE_NETWORK_NO_EXPAND_GROUP_KEYS", set()))
+            if input_no_expand_group_keys is None
+            else input_no_expand_group_keys
+        )
         if isinstance(value, dict):
             hidden_keys_getter = getattr(owner, "_hidden_root_tree_keys_for_mode", None)
             hidden_keys = (
@@ -222,12 +240,19 @@ def _append_find_search_entries(owner: Any, path, value, entries):
                     and mode_is_input
                     and isinstance(path, list)
                     and not path
-                    and owner._normalize_root_tree_key(key) in set(getattr(owner, "INPUT_MODE_NO_EXPAND_ROOT_KEYS", set()))
+                    and owner._normalize_root_tree_key(key) in no_expand_root_keys
                 ):
                     # INPUT mode keeps locked roots collapsed; Find index should not force deep expansion.
                     should_recurse = False
                 if should_recurse:
-                    owner._append_find_search_entries(child_path, child_value, entries)
+                    _append_find_search_entries(
+                        owner,
+                        child_path,
+                        child_value,
+                        entries,
+                        input_no_expand_root_keys=no_expand_root_keys,
+                        input_no_expand_group_keys=no_expand_group_keys,
+                    )
             return
 
         if isinstance(value, list) and owner._is_network_list(path, value):
@@ -271,7 +296,7 @@ def _append_find_search_entries(owner: Any, path, value, entries):
                 group_is_locked = (
                     mode_is_input
                     and str(path[0] if path else "").strip().casefold() == "network"
-                    and str(group or "").strip().casefold() in set(getattr(owner, "INPUT_MODE_NETWORK_NO_EXPAND_GROUP_KEYS", set()))
+                    and str(group or "").strip().casefold() in no_expand_group_keys
                 )
                 for pos, (idx, item) in enumerate(items):
                     if _is_input_network_device_item_hidden(
@@ -349,7 +374,14 @@ def _append_find_search_entries(owner: Any, path, value, entries):
                     searchable_text = f"{label} {summary_text}".strip().casefold()
                     entries.append((child_path, searchable_text))
                     if not group_is_locked and isinstance(item, (dict, list)) and len(item) > 0:
-                        owner._append_find_search_entries(child_path, item, entries)
+                        _append_find_search_entries(
+                            owner,
+                            child_path,
+                            item,
+                            entries,
+                            input_no_expand_root_keys=no_expand_root_keys,
+                            input_no_expand_group_keys=no_expand_group_keys,
+                        )
             return
 
         if isinstance(value, list):
@@ -367,7 +399,14 @@ def _append_find_search_entries(owner: Any, path, value, entries):
                 searchable_text = f"{label} {summary_text}".strip().casefold()
                 entries.append((child_path, searchable_text))
                 if isinstance(item, (dict, list)) and len(item) > 0:
-                    owner._append_find_search_entries(child_path, item, entries)
+                    _append_find_search_entries(
+                        owner,
+                        child_path,
+                        item,
+                        entries,
+                        input_no_expand_root_keys=no_expand_root_keys,
+                        input_no_expand_group_keys=no_expand_group_keys,
+                    )
 
 
 def _is_edit_allowed(owner: Any, path, new_value):

@@ -499,7 +499,8 @@ def _siindbad_b_search_sprite_image(self, width, height):
     try:
         image_module = importlib.import_module("PIL.Image")
         image_tk_module = importlib.import_module("PIL.ImageTk")
-        image = image_module.open(base_path).convert("RGBA")
+        with image_module.open(base_path) as source_image:
+            image = source_image.convert("RGBA")
         if str(getattr(self, "_app_theme_variant", "SIINDBAD")).upper() in ("KAMUE", "GLITCH"):
             try:
                 image = self._shade_toolbar_button_for_theme(image, cache_key=f"search:{base_path}")

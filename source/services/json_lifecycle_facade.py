@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import queue
 from typing import Any, Callable
 
 from core.domain_impl.json import json_diagnostics_core as json_closer_symbol_service
@@ -46,7 +47,17 @@ def initialize_async_load_result(owner: Any, *, request_id: int, path: str) -> N
         "done": False,
         "payload": None,
         "error_text": "",
+        # Worker thread pushes result packets here; UI poll drains and commits.
+        "queue": queue.SimpleQueue(),
     }
+
+
+def _resolve_async_load_queue(result: dict[str, Any]) -> queue.SimpleQueue | None:
+    """Return async-load handoff queue when result payload is initialized."""
+    handoff_queue = result.get("queue")
+    if isinstance(handoff_queue, queue.SimpleQueue):
+        return handoff_queue
+    return None
 
 
 def build_async_document_load_worker(
@@ -70,11 +81,48 @@ def build_async_document_load_worker(
             return
         if int(result.get("request_id", 0) or 0) != int(request_id):
             return
-        result["payload"] = payload
-        result["error_text"] = error_text
-        result["done"] = True
+        handoff_queue = _resolve_async_load_queue(result)
+        if handoff_queue is None:
+            return
+        handoff_queue.put(
+            {
+                "request_id": int(request_id),
+                "path": str(path),
+                "payload": payload,
+                "error_text": str(error_text or ""),
+            }
+        )
 
     return _worker
+
+
+def drain_async_load_queue(owner: Any, *, request_id: int) -> None:
+    """Drain queued worker payloads and commit result on UI poll thread only."""
+    result = getattr(owner, "_document_load_async_result", None)
+    if not isinstance(result, dict):
+        return
+    if int(result.get("request_id", 0) or 0) != int(request_id):
+        return
+    handoff_queue = _resolve_async_load_queue(result)
+    if handoff_queue is None:
+        return
+    latest_packet: dict[str, Any] | None = None
+    while True:
+        try:
+            packet = handoff_queue.get_nowait()
+        except queue.Empty:
+            break
+        if not isinstance(packet, dict):
+            continue
+        if int(packet.get("request_id", 0) or 0) != int(request_id):
+            continue
+        latest_packet = packet
+    if not isinstance(latest_packet, dict):
+        return
+    result["path"] = str(latest_packet.get("path", result.get("path", "")) or "")
+    result["payload"] = latest_packet.get("payload")
+    result["error_text"] = str(latest_packet.get("error_text", "") or "")
+    result["done"] = True
 
 
 def apply_async_loaded_document(
@@ -96,7 +144,7 @@ def apply_async_loaded_document(
 
 def save(path: str, data: Any) -> None:
     """Save document data as pretty JSON text using JSON IO core formatting."""
-    payload = str(document_io_service.build_pretty_json_payload(data))
+    payload = document_io_service.build_pretty_json_payload(data)
     with open(str(path), "w", encoding="utf-8", newline="\n") as handle:
         handle.write(payload)
 
@@ -107,6 +155,7 @@ class DocumentService:
     editor_purge_service = editor_purge_service
     initialize_async_load_result = staticmethod(initialize_async_load_result)
     build_async_document_load_worker = staticmethod(build_async_document_load_worker)
+    drain_async_load_queue = staticmethod(drain_async_load_queue)
     apply_async_loaded_document = staticmethod(apply_async_loaded_document)
     save = staticmethod(save)
 

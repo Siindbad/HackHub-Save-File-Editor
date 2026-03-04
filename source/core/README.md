@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-03-04 (validated startup/theme/tree core coverage, plus JSON raw-lock fixes and INPUT network readonly value copy-selection support).
+Last sync: 2026-03-04 (validated startup/theme/tree core coverage, plus async loader poll hardening and visual asset handle safety updates).
 
 | Module | Purpose |
 | --- | --- |
