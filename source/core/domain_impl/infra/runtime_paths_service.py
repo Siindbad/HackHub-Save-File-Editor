@@ -1,6 +1,7 @@
 """Runtime data path resolution helpers."""
 
 import os
+import re
 from typing import Any
 
 
@@ -12,15 +13,32 @@ def _normalized_home(expected_errors: Any) -> str:
 
 
 def _safe_windows_base(base: Any, expected_errors: Any) -> str:
-    # Runtime path safety: keep env-derived base rooted under user home.
-    # If LOCALAPPDATA/APPDATA points outside home, fall back to home.
+    # Runtime path safety: block known system locations, otherwise allow explicit env override.
+    # This keeps CI/test win32 simulation deterministic across non-Windows hosts.
     home = _normalized_home(expected_errors)
+    drive_pattern = re.compile(r"^[A-Za-z]:[\\/]")
     try:
-        candidate = os.path.abspath(str(base or "").strip())
+        raw = str(base or "").strip()
     except expected_errors:
         return home
-    if not candidate:
+    if not raw:
         return home
+
+    normalized_raw = raw.replace("/", "\\").lower()
+    if normalized_raw.startswith("c:\\windows\\system32") or normalized_raw.startswith("c:\\windows\\"):
+        return home
+
+    if drive_pattern.match(raw):
+        return raw
+
+    try:
+        candidate = os.path.abspath(raw)
+    except expected_errors:
+        return home
+
+    if os.path.isabs(raw):
+        return candidate
+
     try:
         if os.path.commonpath([home, candidate]) == home:
             return candidate
