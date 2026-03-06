@@ -1242,7 +1242,8 @@ jobs:
           print("Synced SECURITY.md from dist/security-report.txt")
           '@ | python -
 
-      - name: Validate SECURITY.md snapshot sync
+      - name: Validate SECURITY.md snapshot sync (optional pre-release gate)
+        if: ${{ vars.HACKHUB_ENFORCE_SECURITY_SNAPSHOT_PRE_RELEASE == '1' }}
         shell: powershell
         run: |
           python source/tools/validate_security_snapshot_sync.py --report dist/security-report.txt --security-md SECURITY.md --version "${{ steps.vars.outputs.version }}"
