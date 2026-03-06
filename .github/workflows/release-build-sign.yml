@@ -68,12 +68,25 @@ jobs:
             $tmp = Join-Path $env:RUNNER_TEMP "trivy_install"
             if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
             New-Item -Path $tmp -ItemType Directory | Out-Null
-            $scriptPath = Join-Path $tmp "install-trivy.ps1"
-            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.ps1" -OutFile $scriptPath
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version latest -InstallDir $tmp
+            $headers = @{
+              "Accept" = "application/vnd.github+json"
+              "User-Agent" = "hackhub-release-workflow"
+              "X-GitHub-Api-Version" = "2022-11-28"
+            }
+            if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+              $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN"
+            }
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/aquasecurity/trivy/releases/latest" -Headers $headers -Method Get
+            $asset = @($release.assets | Where-Object { $_.name -match "^trivy_.*_windows-64bit\.zip$" }) | Select-Object -First 1
+            if (-not $asset) {
+              throw "Windows 64-bit Trivy release asset was not found."
+            }
+            $zipPath = Join-Path $tmp $asset.name
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+            Expand-Archive -Path $zipPath -DestinationPath $tmp -Force
             $exe = Get-ChildItem -Path $tmp -Recurse -File | Where-Object { $_.Name -ieq "trivy.exe" } | Select-Object -First 1
             if (-not $exe) {
-              throw "trivy.exe not found after install."
+              throw "trivy.exe not found after extracting $($asset.name)."
             }
             Add-Content -Path $env:GITHUB_PATH -Value $exe.DirectoryName
             Write-Host "Installed Trivy at $($exe.FullName)"
