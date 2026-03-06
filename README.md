@@ -26,7 +26,7 @@
 
 | <img align="left" alt="CHANGE LOGS" src="https://img.shields.io/badge/CHANGE%20LOGS-5B21B6?style=for-the-badge&labelColor=0F172A"> |
 |---|
-| **[ Version 1.3.9 ]**<br>- Added a clearer BANK layout so identity and transaction details are easier to read.<br>- Added a read-only BCC table with ID, Name, and Email columns.<br>- Added an INTERPOL view with Name, Email, and Position details.<br>- Added in-phone controls with simple On/Off toggles for Cellular and Hotspot.<br>- Fixed grouped Network path resolution.<br>- Fixed SIN/KAMUE ROUTER bleed by syncing readonly entry backgrounds on theme switch.<br>- Fixed bug report screenshot uploads.<br>- Improved startup and file-open responsiveness to reduce initial lag.<br>- Improved first-load Input Mode performance for network/device sections.<br>- Improved search so results narrow down as you type.<br>- Added Geo IP and BCC Domains sections in Network view for easier device lookup.<br>- Added Skypersky INPUT layout.<br>- Added BLUE TABLE and INTERPOL locked sections under Network devices.<br>- Bank balance edits now keep numbers clean and accept currency-style pastes.<br>- Fixed INPUT fixed-position sash lock.<br>- Fixed INPUT tree remap after max-to-min restore and reduced startup white flicker. |
+| **[ Version 1.4.0 ]**<br>- No changelog notes provided. |
 
 | <img align="left" alt="VERIFICATION SUITE" src="https://img.shields.io/badge/VERIFICATION%20SUITE-0F172A?style=for-the-badge&labelColor=0F172A"> |
 |---|
