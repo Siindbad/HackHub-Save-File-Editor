@@ -1,6 +1,6 @@
 # Core Suite
 
-Last sync: 2026-03-04 (validated startup/theme/tree core coverage, plus async loader poll hardening and visual asset handle safety updates).
+Last sync: 2026-03-06 (updated shared constants to align with the 1.4.0 release baseline).
 
 | Module | Purpose |
 | --- | --- |
