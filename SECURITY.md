@@ -19,6 +19,6 @@ Release version: **v1.4.0**
 ## VirusTotal Report
 
 - VirusTotal permalink:
-  [![Click Here For VirusTotal Results](https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=flat-square)](https://www.virustotal.com/gui/file/5a28ba6740d81dfdcd8990275f35ba2dbd215de0a02ce51f707e69a57996b395/detection)
+  [![Click Here For VirusTotal Results](https://img.shields.io/badge/Click%20Here%20For%20VirusTotal%20Results-0B5E20?style=flat-square)](https://www.virustotal.com/gui/file/8121068b4b71e593e14a5570e0c78c5316d8c5d9a9c2ecd55d7a368b3f8e912c/detection)
 
 See GitHub Releases for the matching release artifacts.

@@ -26,7 +26,7 @@
 
 | <img align="left" alt="CHANGE LOGS" src="https://img.shields.io/badge/CHANGE%20LOGS-5B21B6?style=for-the-badge&labelColor=0F172A"> |
 |---|
-| **[ Version 1.4.0 ]**<br>- No changelog notes provided. |
+| **[ Version 1.4.0 ]**<br>- Added GLITCH theme button.<br>- Added copyable values in INPUT Mode<br>- Fixed highlight refresh consistency.<br>- Added Highlight Text When Using Find Next<br>- Added JSON Guard : Edit Green, Blue, Red, White Values<br>- Removed Old Error Parsing System<br>- App doesn't create diag error logs anymore<br>- Find Next Speed Improvements<br>- Find Next Only Scans For Sub Category<br>- Find Next Doesn't Scan Deeper Sub Categories<br>- Fixed INTERPOL Server with it's credientials<br>- Removed Auto-Fix/pulse from right-click menu.<br>- Updated right-click menu to match GLITCH theme |
 
 | <img align="left" alt="VERIFICATION SUITE" src="https://img.shields.io/badge/VERIFICATION%20SUITE-0F172A?style=for-the-badge&labelColor=0F172A"> |
 |---|
