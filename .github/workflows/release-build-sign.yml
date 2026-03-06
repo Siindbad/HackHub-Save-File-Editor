@@ -54,6 +54,26 @@ jobs:
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "version=$($tag.Substring(1))" >> $env:GITHUB_OUTPUT
 
+      - name: Validate APP_VERSION matches release tag
+        shell: powershell
+        run: |
+          $expected = "${{ steps.vars.outputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($expected)) {
+            throw "Resolved release version is empty."
+          }
+          $match = Select-String -Path "source/core/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"' | Select-Object -First 1
+          $actual = ""
+          if ($match -and $match.Matches.Count -gt 0) {
+            $actual = $match.Matches[0].Groups[1].Value
+          }
+          if ([string]::IsNullOrWhiteSpace($actual)) {
+            throw "Failed to parse APP_VERSION from source/core/constants.py."
+          }
+          if ($actual -ne $expected) {
+            throw "Release tag version ($expected) does not match APP_VERSION ($actual). Update source/core/constants.py before releasing."
+          }
+          Write-Host "APP_VERSION validation passed: $actual"
+
       - name: Install build requirements
         shell: powershell
         run: |
