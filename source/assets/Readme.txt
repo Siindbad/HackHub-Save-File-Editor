@@ -60,25 +60,22 @@ there HackTheCube web address if they deleted the email.
 =================================================================================
 
 [ CHANGE LOGS ]
-[ Version 1.3.9 ]
+[ Version 1.4.0 ]
 =================================================================================
 
-- Added a clearer BANK layout so identity and transaction details are easier to read.
-- Added a read-only BCC table with ID, Name, and Email columns.
-- Added an INTERPOL view with Name, Email, and Position details.
-- Added in-phone controls with simple On/Off toggles for Cellular and Hotspot.
-- Fixed grouped Network path resolution.
-- Fixed SIN/KAMUE ROUTER bleed by syncing readonly entry backgrounds on theme switch.
-- Fixed bug report screenshot uploads.
-- Improved startup and file-open responsiveness to reduce initial lag.
-- Improved first-load Input Mode performance for network/device sections.
-- Improved search so results narrow down as you type.
-- Added Geo IP and BCC Domains sections in Network view for easier device lookup.
-- Added Skypersky INPUT layout.
-- Added BLUE TABLE and INTERPOL locked sections under Network devices.
-- Bank balance edits now keep numbers clean and accept currency-style pastes.
-- Fixed INPUT fixed-position sash lock.
-- Fixed INPUT tree remap after max-to-min restore and reduced startup white flicker.
+- Added GLITCH theme button.
+- Added copyable values in INPUT Mode
+- Fixed highlight refresh consistency.
+- Added Highlight Text When Using Find Next
+- Added JSON Guard : Edit Green, Blue, Red, White Values
+- Removed Old Error Parsing System
+- App doesn't create diag error logs anymore
+- Find Next Speed Improvements
+- Find Next Only Scans For Sub Category
+- Find Next Doesn't Scan Deeper Sub Categories
+- Fixed INTERPOL Server with it's credientials
+- Removed Auto-Fix/pulse from right-click menu.
+- Updated right-click menu to match GLITCH theme
 
 [ DISCLAIMER ]
 =================================================================================
